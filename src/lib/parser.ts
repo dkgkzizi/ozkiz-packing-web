@@ -39,22 +39,21 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
           sortedY.forEach(ry => {
             let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
             
-            // 데이터인지 확인하는 기준 강화 (박스 번호나 스타일, 수량이 보이면 우선 데이터로 간주)
-            let ctnF = cols.find(c => c.x > 0.4 && c.x < 2.2 && /^[0-9]+$/.test(c.text.trim()));
-            let ctnT = cols.find(c => c.x >= 2.0 && c.x < 4.0 && /^[0-9]+$/.test(c.text.trim()));
-            let hasQtyData = cols.some(c => c.x >= 9.5 && c.x < 22.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
-            let styleInZone = cols.find(c => c.x >= 3.0 && c.x < 7.0 && c.text.length >= 3 && !c.text.includes(' '));
+            // 데이터인지 확인 (박스 번호가 보이면 무조건 데이터)
+            let ctnF = cols.find(c => c.x > 0.3 && c.x < 2.5 && /^[0-9]+$/.test(c.text.trim()));
+            let ctnT = cols.find(c => c.x >= 2.0 && c.x < 4.5 && /^[0-9]+$/.test(c.text.trim()));
+            let qtyColsData = cols.filter(c => c.x >= 9.0 && c.x < 22.0 && /^[0-9,]+$/.test(c.text.replace(/[^0-9]/g,'')));
+            let styleInZone = cols.find(c => c.x >= 3.0 && c.x < 8.0 && c.text.length >= 3);
             
-            // 메타 행 판단을 더 엄격하게 (데이터 특징이 없을 때만 메타로 간주)
-            const containsMetaKeyword = cols.some(c => ['PAGE', 'SUB', 'WEIGHT', 'INVOICE', 'NET', 'GROSS'].some(k => c.text.toUpperCase().includes(k)));
-            const isTotalRow = cols.some(c => c.text.toUpperCase() === 'TOTAL' || c.text === '총 합계');
+            // 메타 행 판단을 최소화 (데이터 우선)
+            const isInvalidRow = cols.some(c => ['PAGE', 'SUB', 'WEIGHT', 'DATE'].some(k => c.text.toUpperCase().includes(k)));
             
-            let isDataRow = (!!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3)) && !isTotalRow;
-
-            if (isDataRow && !containsMetaKeyword) {
-              if (styleInZone) curS = styleInZone.text;
+            if (!isInvalidRow && (ctnF || styleInZone || qtyColsData.length > 0)) {
+              if (styleInZone && !/^[0-9\s-]+$/.test(styleInZone.text)) {
+                curS = styleInZone.text.trim();
+              }
               
-              let dataCand = cols.find(c => c.x >= 6.0 && c.x < 12.0);
+              let dataCand = cols.find(c => c.x >= 5.5 && c.x < 12.0 && c.text.length > 3);
               if (dataCand) {
                 let r = dataCand.text;
                 if (r.includes(' - ')) {
@@ -74,31 +73,29 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
               
               if (ctnF && ctnT) {
                 let vF = parseInt(ctnF.text) || 0, vT = parseInt(ctnT.text) || 0;
-                curBoxes = (vT - vF + 1); 
+                curBoxes = Math.abs(vT - vF) + 1; 
                 if (curBoxes <= 0 || isNaN(curBoxes)) curBoxes = 1;
-                if (curBoxes > 500) curBoxes = 1; 
               }
 
               Object.keys(sizes).forEach(sx => {
                 let sxNum = parseFloat(sx);
-                if (sxNum < 9.0 || sxNum > 22.5) return;
-                let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.3);
+                let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.0);
                 if (qtyCol) {
-                  let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
+                  let qStr = qtyCol.text.replace(/[^0-9]/g,'');
+                  let q = parseInt(qStr) || 0;
                   if (q > 0) {
                     results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * curBoxes });
                   }
                 }
               });
-            } else if (!isTotalRow && !containsMetaKeyword) {
-              // 사이즈 헤더 감지 범위를 더 확장
+            } else {
+              // 사이즈 헤더 자동 감지 (100, 110 등)
               let potSizes = cols.filter(c => 
-                c.x > 9.0 && c.x < 22.5 && 
-                c.text.length <= 10 && 
-                !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN', 'STYLE', 'COLOUR'].some(k => c.text.toUpperCase().includes(k)) &&
-                /^[0-9A-Z\/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                c.x > 9.0 && c.x < 22.0 && 
+                /^[0-9]+$/.test(c.text.trim()) &&
+                parseInt(c.text) >= 80 && parseInt(c.text) <= 200
               );
-              if (potSizes.length >= 2 && !styleInZone) {
+              if (potSizes.length >= 2) {
                 sizes = {}; 
                 potSizes.forEach(sc => { sizes[sc.x] = sc.text; });
               }
