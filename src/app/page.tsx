@@ -33,8 +33,8 @@ export default function DashboardManager() {
   const [activeCategory, setActiveCategory] = useState('india');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const CurrentComponent = CATEGORIES.find(c => c.id === activeCategory)?.component || ComingSoon;
   const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
+  const CurrentComponent = currentCategory?.component || ComingSoon;
 
   return (
     <div className="flex min-h-screen bg-[#020617] text-slate-200 selection:bg-indigo-500/30 font-sans overflow-hidden">
@@ -146,7 +146,7 @@ export default function DashboardManager() {
         </div>
       </main>
 
-      {/* Tailored Scrollbar Styling */}
+      {/* Custom Styles */}
       <style jsx global>{`
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -156,24 +156,10 @@ export default function DashboardManager() {
         }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.1); }
         
-        /* Dynamic color classes for Tailwind fallback */
-        .bg-indigo-600 { background-color: #4f46e5; }
-        .bg-orange-600 { background-color: #ea580c; }
-        .bg-cyan-600 { background-color: #0891b2; }
-        .bg-purple-600 { background-color: #9333ea; }
-        .bg-slate-600 { background-color: #475569; }
-        
-        .text-indigo-400 { color: #818cf8; }
-        .text-orange-400 { color: #fb923c; }
-        .text-cyan-400 { color: #22d3ee; }
-        .text-purple-400 { color: #c084fc; }
-        .text-slate-400 { color: #94a3b8; }
-        
-        .ring-indigo-500\/30 { box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3); }
-        .ring-orange-500\/30 { box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.3); }
-        .ring-cyan-500\/30 { box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.3); }
-        .ring-purple-500\/30 { box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.3); }
-        .ring-slate-500\/30 { box-shadow: 0 0 0 1px rgba(100, 116, 139, 0.3); }
+        /* Fallback Utility classes handled by Tailwind v4 usually, but kept for JS transparency */
+        .bg-indigo-600 { background-color: rgb(79 70 229); }
+        .text-indigo-400 { color: rgb(129 140 248); }
+        .ring-indigo-500\/30 { --tw-ring-color: rgb(99 102 241 / 0.3); box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000); }
       `}</style>
     </div>
   );
