@@ -1,9 +1,11 @@
 import ExcelJS from 'exceljs';
 import { Pool } from 'pg';
 
-// 슈파베이스 연결 설정 (환경 변수 사용)
+// 슈파베이스 연결 설정 (비상용 주소 포함)
+const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: connectionString,
   ssl: { rejectUnauthorized: false }
 });
 
