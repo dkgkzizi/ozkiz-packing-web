@@ -9,7 +9,6 @@ import {
   Upload, 
   FileSpreadsheet, 
   FileCheck, 
-  Download, 
   Loader2, 
   AlertCircle,
   Clock,
@@ -40,7 +39,8 @@ export default function IndiaPacking() {
       
       if (isVerifyReady || isOtherReady) {
         setAutoStartNext(false);
-        setTimeout(() => startConversion(), 300);
+        const timer = setTimeout(() => startConversion(), 300);
+        return () => clearTimeout(timer);
       }
     }
   }, [file, secondFile, activeTab, autoStartNext, loading, processingMode]);
@@ -64,7 +64,7 @@ export default function IndiaPacking() {
     
     const steps: Record<string, string[]> = {
       convert: ['Cloud Stream Uploading...', 'Deep Parsing & Analyzing...', 'Generating Digital Assets...'],
-      match: ['Syncing Master Data...', 'Establishing Relationship...', 'Mapping Product Entities...'],
+      match: ['Syncing Master 데이터...', 'Establishing Relationship...', 'Mapping Product Entities...'],
       verify: ['System Snapshot Loading...', 'Quantity Cross-Verification...', 'Generating Audit Report...']
     };
 
@@ -164,7 +164,6 @@ export default function IndiaPacking() {
 
   return (
     <div className="animate-in fade-in duration-700">
-      {/* Header */}
       <header className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <div className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-widest">
@@ -184,7 +183,6 @@ export default function IndiaPacking() {
         </p>
       </header>
 
-      {/* Tab Switcher & Mode Toggle */}
       <div className="flex flex-col md:flex-row items-center gap-4 mb-12">
         <div className="flex bg-slate-800/40 p-1 rounded-xl border border-white/5 backdrop-blur-md w-full max-w-md shadow-2xl">
           {[
@@ -234,7 +232,6 @@ export default function IndiaPacking() {
         </div>
       </div>
 
-      {/* Main Interface */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         <div className="lg:col-span-3 space-y-6">
           <div className="bg-slate-800/40 border border-white/5 rounded-3xl p-8 backdrop-blur-2xl shadow-3xl">
