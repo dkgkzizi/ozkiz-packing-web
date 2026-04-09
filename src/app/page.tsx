@@ -13,8 +13,8 @@ import {
   Globe,
   Home
 } from 'lucide-react';
-import IndiaPacking from '@/components/IndiaPacking';
-import DomesticPacking from '@/components/DomesticPacking';
+import IndiaPacking from '../components/IndiaPacking';
+import DomesticPacking from '../components/DomesticPacking';
 
 type ToolCategory = 'india' | 'domestic' | 'inventory' | 'settings';
 
