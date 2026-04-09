@@ -14,6 +14,7 @@ const COLOR_MAP: Record<string, string[]> = {
     'GRAY': ['그레이', '회색', '멜란지'],
     'BEIGE': ['베이지', '오트밀'],
     'BLUE': ['블루', '파랑', '민트'],
+    'MELANGE': ['멜란지', '회색', '그레이', 'G MEL', 'MEL'],
     'NAVY': ['네이비', '남색'],
     'RED': ['레드', '빨강', '와인'],
     'GREEN': ['그린', '초록'],
@@ -25,7 +26,8 @@ const COLOR_MAP: Record<string, string[]> = {
     'BROWN': ['브라운', '갈색', '코코아'],
     'WINE': ['와인', '레드'],
     'LAVENDER': ['라벤더', '퍼플'],
-    'KHAKI': ['카키']
+    'KHAKI': ['카키'],
+    'MELANGE': ['멜란지', '회색', '그레이', 'G MEL', 'MEL']
 };
 
 async function fetchCSV(url: string, hops = 0): Promise<string> {
