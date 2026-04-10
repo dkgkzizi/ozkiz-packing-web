@@ -9,16 +9,30 @@ import {
   Zap, 
   Menu, 
   X,
-  CreditCard,
   Settings,
   Database,
-  Truck,
   Package,
   Boxes
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import IndiaPacking from '@/components/IndiaPacking';
 import DomesticPacking from '@/components/DomesticPacking';
+
+// Define placeholder early to avoid ReferenceError
+function ComingSoon() {
+  return (
+    <div className="h-[60vh] flex flex-col items-center justify-center text-center">
+      <div className="w-24 h-24 bg-slate-800/50 rounded-[2rem] flex items-center justify-center mb-8 shadow-inner border border-white/5">
+        <Boxes className="w-10 h-10 text-slate-500 animate-pulse" />
+      </div>
+      <h2 className="text-4xl font-black text-white italic tracking-tighter mb-4 uppercase">Coming Soon</h2>
+      <p className="text-slate-500 max-w-sm leading-relaxed font-bold">
+        더 나은 물류 자동화 환경을 위해 새로운 기능을 준비 중입니다. <br />
+        곧 업데이트될 예정입니다.
+      </p>
+    </div>
+  );
+}
 
 const CATEGORIES = [
   { id: 'india', name: '인도 패킹리스트', sub: 'Category 1', icon: Globe, component: IndiaPacking, color: 'indigo' },
@@ -32,8 +46,10 @@ export default function DashboardManager() {
   const [activeCategory, setActiveCategory] = useState('india');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const currentCategory = CATEGORIES.find(c => c.id === activeCategory);
-  const CurrentComponent = currentCategory?.component || ComingSoon;
+  // Safely find category and component
+  const currentCategory = CATEGORIES.find(c => c.id === activeCategory) || CATEGORIES[0];
+  const CurrentComponent = currentCategory.component || ComingSoon;
+  const CategoryIcon = currentCategory.icon || Package;
 
   return (
     <div className="flex min-h-screen bg-[#020617] text-slate-200 selection:bg-indigo-500/30 font-sans overflow-hidden">
@@ -82,40 +98,43 @@ export default function DashboardManager() {
         </div>
 
         <nav className="flex-1 px-4 py-8 space-y-2">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={cn(
-                "w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group relative text-left",
-                activeCategory === cat.id 
-                  ? `bg-${cat.color}-600/10 text-${cat.color}-400 border border-${cat.color}-500/20 shadow-lg` 
-                  : "text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent"
-              )}
-            >
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 shrink-0",
-                activeCategory === cat.id ? `bg-${cat.color}-600 text-white` : "bg-slate-800/50 group-hover:bg-slate-800"
-              )}>
-                <cat.icon className="w-5 h-5" />
-              </div>
-              
-              {sidebarOpen && (
-                <motion.div 
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex flex-col items-start flex-1"
-                >
-                  <span className="text-xs font-black tracking-tighter leading-none">{cat.name}</span>
-                  <span className="text-[9px] font-bold opacity-50 uppercase tracking-widest mt-1">{cat.sub}</span>
-                </motion.div>
-              )}
+          {CATEGORIES.map((cat) => {
+             const Icon = cat.icon;
+             return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={cn(
+                  "w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group relative text-left",
+                  activeCategory === cat.id 
+                    ? `bg-white/5 text-white border border-white/10 shadow-lg` 
+                    : "text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent"
+                )}
+              >
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 shrink-0",
+                  activeCategory === cat.id ? "bg-indigo-600 text-white" : "bg-slate-800/50 group-hover:bg-slate-800"
+                )}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                
+                {sidebarOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex flex-col items-start flex-1"
+                  >
+                    <span className="text-xs font-black tracking-tighter leading-none">{cat.name}</span>
+                    <span className="text-[9px] font-bold opacity-50 uppercase tracking-widest mt-1">{cat.sub}</span>
+                  </motion.div>
+                )}
 
-              {activeCategory === cat.id && (
-                <motion.div layoutId="nav-glow" className={cn("absolute inset-0 rounded-2xl ring-1", `ring-${cat.color}-500/30`)} />
-              )}
-            </button>
-          ))}
+                {activeCategory === cat.id && (
+                  <motion.div layoutId="nav-glow" className="absolute inset-0 rounded-2xl ring-1 ring-white/10" />
+                )}
+              </button>
+             );
+          })}
         </nav>
 
         <div className="p-4">
@@ -145,7 +164,6 @@ export default function DashboardManager() {
         </div>
       </main>
 
-      {/* Custom Styles */}
       <style jsx global>{`
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -154,27 +172,7 @@ export default function DashboardManager() {
           border-radius: 10px; 
         }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.1); }
-        
-        /* Fallback Utility classes handled by Tailwind v4 usually, but kept for JS transparency */
-        .bg-indigo-600 { background-color: rgb(79 70 229); }
-        .text-indigo-400 { color: rgb(129 140 248); }
-        .ring-indigo-500\/30 { --tw-ring-color: rgb(99 102 241 / 0.3); box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000); }
       `}</style>
-    </div>
-  );
-}
-
-function ComingSoon() {
-  return (
-    <div className="h-[60vh] flex flex-col items-center justify-center text-center">
-      <div className="w-24 h-24 bg-slate-800/50 rounded-[2rem] flex items-center justify-center mb-8 shadow-inner border border-white/5">
-        <Boxes className="w-10 h-10 text-slate-500 animate-pulse" />
-      </div>
-      <h2 className="text-4xl font-black text-white italic tracking-tighter mb-4 uppercase">Coming Soon</h2>
-      <p className="text-slate-500 max-w-sm leading-relaxed font-bold">
-        더 나은 물류 자동화 환경을 위해 새로운 기능을 준비 중입니다. <br />
-        곧 업데이트될 예정입니다.
-      </p>
     </div>
   );
 }
