@@ -17,7 +17,8 @@ import {
   ChevronRight,
   ShieldCheck,
   RefreshCcw,
-  Download
+  Download,
+  Layers
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

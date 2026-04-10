@@ -7,7 +7,6 @@ import {
   Home, 
   ShieldCheck, 
   Zap, 
-  Layers, 
   Menu, 
   X,
   CreditCard,
