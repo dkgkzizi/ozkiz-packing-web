@@ -1,24 +1,42 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Globe, 
   Home, 
-  ShieldCheck, 
   Zap, 
   Menu, 
   X,
   Settings,
   Database,
   Package,
-  Boxes
+  Boxes,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import IndiaPacking from '@/components/IndiaPacking';
-import DomesticPacking from '@/components/DomesticPacking';
 
-// Define placeholder early to avoid ReferenceError
+// Dynamic imports with SSR disabled to prevent Prerender Errors on Vercel
+const IndiaPacking = dynamic(() => import('@/components/IndiaPacking'), { 
+  ssr: false,
+  loading: () => <LoadingPlaceholder label="인도 패킹 모듈 로드 중..." />
+});
+
+const DomesticPacking = dynamic(() => import('@/components/DomesticPacking'), { 
+  ssr: false,
+  loading: () => <LoadingPlaceholder label="국내 패킹 모듈 로드 중..." />
+});
+
+function LoadingPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="h-[60vh] flex flex-col items-center justify-center text-center">
+      <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
+      <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">{label}</p>
+    </div>
+  );
+}
+
 function ComingSoon() {
   return (
     <div className="h-[60vh] flex flex-col items-center justify-center text-center">
@@ -43,13 +61,19 @@ const CATEGORIES = [
 ];
 
 export default function DashboardManager() {
+  const [mounted, setMounted] = useState(false);
   const [activeCategory, setActiveCategory] = useState('india');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Safely find category and component
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div className="min-h-screen bg-[#020617]" />;
+
   const currentCategory = CATEGORIES.find(c => c.id === activeCategory) || CATEGORIES[0];
-  const CurrentComponent = currentCategory.component || ComingSoon;
-  const CategoryIcon = currentCategory.icon || Package;
+  const CurrentComponent = currentCategory.component;
 
   return (
     <div className="flex min-h-screen bg-[#020617] text-slate-200 selection:bg-indigo-500/30 font-sans overflow-hidden">
@@ -97,7 +121,7 @@ export default function DashboardManager() {
           </AnimatePresence>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2">
+        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto custom-scrollbar">
           {CATEGORIES.map((cat) => {
              const Icon = cat.icon;
              return (
@@ -105,7 +129,7 @@ export default function DashboardManager() {
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
                 className={cn(
-                  "w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group relative text-left",
+                  "w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group relative text-left outline-hidden",
                   activeCategory === cat.id 
                     ? `bg-white/5 text-white border border-white/10 shadow-lg` 
                     : "text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent"
@@ -148,7 +172,7 @@ export default function DashboardManager() {
       </motion.aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 relative overflow-y-auto">
+      <main className="flex-1 relative overflow-y-auto custom-scrollbar">
         <div className="px-6 py-12 md:px-12 md:py-16 max-w-6xl mx-auto">
           <AnimatePresence mode="wait">
             <motion.div
