@@ -57,8 +57,27 @@ export default function IndiaPacking() {
       if (num === 1) {
         setFile(selected);
         if (activeTab === 'convert') setOriginalPdfFile(selected);
+        // 자동 모드일 경우 파일 선택 즉시 시작 트리거
+        if (processingMode === 'auto') setAutoStartNext(true);
       } else {
         setSecondFile(selected);
+        // 검증 탭에서 두 번째 파일 선택 시 자동 시작
+        if (processingMode === 'auto' && file) setAutoStartNext(true);
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, num: 1 | 2 = 1) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const selected = e.dataTransfer.files[0];
+      if (num === 1) {
+        setFile(selected);
+        if (activeTab === 'convert') setOriginalPdfFile(selected);
+        if (processingMode === 'auto') setAutoStartNext(true);
+      } else {
+        setSecondFile(selected);
+        if (processingMode === 'auto' && file) setAutoStartNext(true);
       }
     }
   };
@@ -74,7 +93,7 @@ export default function IndiaPacking() {
       verify: ['System Snapshot Loading...', 'Quantity Cross-Verification...', 'Generating Audit Report...']
     };
 
-    setProgress(steps[activeTab].map(s => ({ label: s, status: 'pending' })));
+    setProgress(steps[activeTab]?.map(s => ({ label: s, status: 'pending' })) || []);
 
     try {
       setProgress(prev => prev.map((s, i) => i === 0 ? { ...s, status: 'loading' } : s));
@@ -133,23 +152,24 @@ export default function IndiaPacking() {
       window.URL.revokeObjectURL(url);
 
       const resultFile = new File([blob], fileName, { type: blob.type });
-      if (activeTab === 'convert') {
+      
+      if (processingMode === 'auto') {
         setTimeout(() => { 
-          setFile(resultFile); 
-          setActiveTab('match'); 
-          setResult(null); 
-          setProgress([]); 
-          if (processingMode === 'auto') setAutoStartNext(true); 
-        }, 1200);
-      } else if (activeTab === 'match') {
-        setTimeout(() => { 
-          setActiveTab('verify'); 
-          setFile(originalPdfFile); 
-          setSecondFile(resultFile); 
-          setResult(null); 
-          setProgress([]); 
-          if (processingMode === 'auto') setAutoStartNext(true); 
-        }, 1200);
+          if (activeTab === 'convert') {
+            setFile(resultFile); 
+            setActiveTab('match'); 
+            setResult(null); 
+            setProgress([]); 
+            setAutoStartNext(true); 
+          } else if (activeTab === 'match') {
+            setActiveTab('verify'); 
+            setFile(originalPdfFile); 
+            setSecondFile(resultFile); 
+            setResult(null); 
+            setProgress([]); 
+            setAutoStartNext(true); 
+          }
+        }, 1500);
       }
 
     } catch (err: any) {
@@ -158,6 +178,12 @@ export default function IndiaPacking() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const TAB_COLORS: Record<string, string> = {
+    convert: 'bg-indigo-600',
+    match: 'bg-blue-600',
+    verify: 'bg-emerald-600'
   };
 
   return (
@@ -192,11 +218,11 @@ export default function IndiaPacking() {
           ].map((tab) => (
             <button 
               key={tab.id} 
-              onClick={() => { setActiveTab(tab.id as any); setFile(null); setResult(null); setProgress([]); }} 
+              onClick={() => { setActiveTab(tab.id as any); setFile(null); setResult(null); setProgress([]); setAutoStartNext(false); }} 
               className={cn(
                 "relative flex-1 md:w-32 flex flex-col items-center justify-center gap-1 py-2 px-4 rounded-xl transition-all duration-300",
                 activeTab === tab.id 
-                  ? `bg-${tab.color}-600 text-white shadow-lg shadow-${tab.color}-600/20` 
+                  ? `${TAB_COLORS[tab.id]} text-white shadow-lg shadow-indigo-600/20` 
                   : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
               )}
             >
@@ -247,6 +273,8 @@ export default function IndiaPacking() {
                       : "border-slate-800 hover:border-indigo-500/30 hover:bg-slate-900/50"
                   )}
                   onClick={() => document.getElementById('file-input-india')?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => handleDrop(e, 1)}
                 >
                   <input id="file-input-india" type="file" className="hidden" onChange={handleFileChange} accept={activeTab === 'match' ? '.xlsx' : '.pdf'} />
                   
@@ -294,6 +322,8 @@ export default function IndiaPacking() {
                         : "border-slate-800 hover:border-cyan-500/30"
                     )} 
                     onClick={() => document.getElementById('file-input-india-2')?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => handleDrop(e, 2)}
                   >
                     <input id="file-input-india-2" type="file" className="hidden" onChange={(e) => handleFileChange(e, 2)} accept=".xlsx" />
                     {secondFile ? (
