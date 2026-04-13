@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import pg from 'pg';
 const { Pool } = pg;
 
-// 슈파베이스 연결 설정 (비상용 주소 포함)
+// 슈파베이스 연결 설정 (DATABASE_URL 우선 사용)
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
 
 const pool = new Pool({
@@ -10,6 +10,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// 색상 매핑 사전 업데이트
 const COLOR_MAP: Record<string, string[]> = {
     'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
     'WHITE': ['화이트', '아이보리', '백아이보리'],
@@ -24,48 +25,19 @@ const COLOR_MAP: Record<string, string[]> = {
     'NAVY': ['네이비', '남색'],
     'RED': ['레드', '빨강', '와인'],
     'GREEN': ['그린', '초록'],
-    'MINT': ['민트'],
     'PURPLE': ['퍼플', '보라', '라벤더'],
     'CHARCOAL': ['차콜', '먹색'],
     'CORAL': ['코랄'],
     'PEACH': ['피치'],
     'BROWN': ['브라운', '갈색', '코코아'],
-    'WINE': ['와인', '레드'],
-    'LAVENDER': ['라벤더', '퍼플'],
-    'KHAKI': ['카키'],
-    'OATMEAL': ['오트밀', '베이지'],
-    'CREAM': ['크림', '아이보리'],
-    'COCOA': ['코코아', '브라운'],
     'LIME': ['라임', '연두'],
     'ORANGE': ['오렌지', '주황']
 };
 
 function normalizeStr(s: any) {
     if (!s) return "";
+    // 특수문자 제거 및 0/O 혼동 방지 (비교용 정규화)
     return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase().replace(/0/g, 'O');
-}
-
-function normalizeColor(c: any) {
-    if (!c) return "";
-    return c.toString().trim().toUpperCase();
-}
-
-function getSimilarity(s1: string, s2: string) {
-    if (!s1 || !s2) return 0;
-    s1 = s1.toLowerCase().replace(/\s+/g, '');
-    s2 = s2.toLowerCase().replace(/\s+/g, '');
-    if (s1 === s2) return 1.0;
-    const pairs1 = getBigrams(s1), pairs2 = getBigrams(s2);
-    const union = pairs1.length + pairs2.length;
-    let hit = 0;
-    for (const x of pairs1) { for (const y of pairs2) { if (x === y) hit++; } }
-    return hit > 0 ? (2.0 * hit) / union : 0;
-}
-
-function getBigrams(str: string) {
-    const pairs = [];
-    for (let i = 0; i < str.length - 1; i++) pairs.push(str.substring(i, i + 2));
-    return pairs;
 }
 
 export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
@@ -73,6 +45,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     await workbook.xlsx.load(buffer as any);
     const sheet = workbook.worksheets[0];
     
+    // 1. 엑셀 데이터 추출
     const excelRecords: any[] = [];
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
@@ -88,6 +61,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         });
     });
 
+    // 2. 슈파베이스 DB 데이터 조회
     const client = await pool.connect();
     let dbRecords: any[] = [];
     try {
@@ -98,66 +72,70 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
             option: r.옵션 || '',
             normStyle: normalizeStr(r.상품코드)
         }));
+    } catch (err) {
+        console.error('DB 쿼리 중 오류:', err);
     } finally {
         client.release();
     }
 
+    // 3. 지능형 매칭 수행
     const matchedRaw: any[] = [];
     excelRecords.forEach(ex => {
         const exNormStyle = normalizeStr(ex.styleNo);
-        let matches = dbRecords.filter(s => s.normStyle.includes(exNormStyle) || exNormStyle.includes(s.normStyle));
+        // 스타일 번호가 완벽히 일치하거나 포함되는 것들 1차 필터링
+        let matches = dbRecords.filter(s => s.normStyle === exNormStyle || s.normStyle.includes(exNormStyle) || exNormStyle.includes(s.normStyle));
         
+        // 스타일로 안 잡히면 상품명으로 2차 필터링
         if (matches.length === 0) {
-            matches = dbRecords.filter(s => s.productName.includes(ex.styleNo));
+            matches = dbRecords.filter(s => s.productName.includes(ex.styleNo) || s.productName.includes(ex.pdfName));
         }
 
         let bestMatch: any = null, bestScore = -1;
         if (matches.length > 0) {
-            const exColor = normalizeColor(ex.color);
+            const exColor = ex.color.toUpperCase().trim();
             for(let m of matches) {
                 let score = 0;
                 const opt = m.option.replace(/\s+/g, '').toUpperCase();
-                if (m.normStyle === exNormStyle) score += 40;
-                if (ex.size && opt.includes(ex.size.replace(/\s+/g, '').toUpperCase())) score += 20;
                 
-                let foundInColorMap = false;
+                // 가중치 부여
+                if (m.normStyle === exNormStyle) score += 50; // 스타일번호 일치 시 높은 점수
+                if (ex.size && opt.includes(ex.size.replace(/\s+/g, '').toUpperCase())) score += 15;
+                
+                // 색상 매핑 점수
                 for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
                   if (group === exColor || synonyms.includes(exColor)) {
                     const targets = [group, ...synonyms];
                     if (targets.some(t => opt.includes(t.replace(/\s+/g, '').toUpperCase()))) {
-                      score += 15;
-                      foundInColorMap = true;
+                      score += 25; // 색상 매칭 시 가중 점수
                       break;
                     }
                   }
                 }
                 
-                const sim = getSimilarity(ex.pdfName, m.productName);
-                if (sim >= 0.6) score += (sim * 20);
                 if (score > bestScore) { bestScore = score; bestMatch = m; }
             }
         }
         
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
-        if (bestMatch && bestScore >= 30) {
-            let korColor = ex.color;
+        if (bestMatch && bestScore >= 40) { // 최소 매칭 임계점
+            let korColor = ex.color; // 폴백: 영문
+            
+            // DB 옵션에서 가장 적절한 한국어 색상 명칭 찾기
             const optParts = bestMatch.option.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
-            const exColor = normalizeColor(ex.color);
+            const exColor = ex.color.toUpperCase().trim();
             
             let foundGroupName = "";
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
               if (group === exColor || synonyms.includes(exColor)) {
-                foundGroupName = group;
-                break;
+                foundGroupName = group; break;
               }
             }
 
             if (foundGroupName) {
               const targets = [foundGroupName, ...COLOR_MAP[foundGroupName]];
               for (let p of optParts) {
-                if (targets.some(t => p.toUpperCase() === t.toUpperCase())) {
-                  korColor = p;
-                  break;
+                if (targets.some(t => p.toUpperCase() === t.toUpperCase() || p.includes(t))) {
+                  korColor = p; break;
                 }
               }
             }
@@ -178,6 +156,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         }
     });
 
+    // 4. 합계 및 정렬 후 엑셀 출력
     const aggregated: Record<string, any> = {};
     matchedRaw.forEach(item => {
         const key = `${item.productCode}|${item.sheetName}|${item.color}|${item.size}`;
@@ -208,12 +187,12 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         { header: '사이즈', key: 'size', width: 12 },
         { header: '작업수량', key: 'qty', width: 15 },
         { header: '메모', key: 'memo', width: 25 },
-        { header: '식별키 (검증용)', key: 'originalKeys', width: 35, hidden: true }
+        { header: '식별키', key: 'originalKey', width: 35, hidden: true }
     ];
 
-    const headerRow = outWs.getRow(1);
-    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+    const hRow = outWs.getRow(1);
+    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
     
     finalResults.forEach(r => {
         const row = outWs.addRow({
@@ -223,7 +202,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
             size: r.size,
             qty: r.qty,
             memo: memoContent,
-            originalKeys: r.originalKeys.join(';')
+            originalKey: r.originalKeys.join(';')
         });
         if (r.productCode === '미매칭') {
             row.eachCell(c => { c.font = { color: { argb: 'FFFF0000' } }; });
