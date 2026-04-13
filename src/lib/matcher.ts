@@ -2,7 +2,6 @@ import ExcelJS from 'exceljs';
 import pg from 'pg';
 const { Pool } = pg;
 
-// 슈파베이스 연결 설정
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
 
 const pool = new Pool({
@@ -35,24 +34,54 @@ const COLOR_MAP: Record<string, string[]> = {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase().replace(/0/g, 'O');
+    // 모든 특수문자와 공백을 제거하여 순수한 숫자/알파벳만 남김
+    return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase();
 }
 
-// 유사도 측정 함수 (80% 일치 확인용)
-function getSimilarity(s1: string, s2: string) {
-    if (!s1 || !s2) return 0;
-    const n1 = normalizeStr(s1);
-    const n2 = normalizeStr(s2);
-    if (n1 === n2) return 1.0;
-    if (n1.includes(n2) || n2.includes(n1)) return 0.9;
-    
-    // 단순 글자 포함 비율로 유사도 측정
-    let matchingChars = 0;
-    const minLen = Math.min(n1.length, n2.length);
-    for (let i = 0; i < minLen; i++) {
-        if (n1[i] === n2[i]) matchingChars++;
+/**
+ * 지능형 유사도 측정 (스타일 번호 vs 바코드)
+ */
+function getMatchScore(style: string, barcode: string, option: string, color: string, size: string): number {
+    const s = normalizeStr(style);
+    const b = normalizeStr(barcode);
+    const o = option.toUpperCase().replace(/\s+/g, '');
+    const c = color.toUpperCase();
+    const sz = size.toUpperCase();
+
+    if (!s || !b) return 0;
+
+    let score = 0;
+
+    // 1. 바코드 기반 매칭 (핵심)
+    if (b === s) score += 100;
+    else if (b.startsWith(s)) score += 80;
+    else if (b.includes(s)) score += 60;
+    else {
+        // 80% 이상의 글자가 일치하는지 확인
+        let matches = 0;
+        const minLen = Math.min(s.length, b.length);
+        for(let i=0; i<minLen; i++) if(s[i] === b[i]) matches++;
+        const ratio = matches / Math.max(s.length, b.length);
+        if (ratio >= 0.8) score += (ratio * 70);
     }
-    return matchingChars / Math.max(n1.length, n2.length);
+
+    if (score < 40) return 0; // 최소 기준 미달
+
+    // 2. 옵션(색상/사이즈) 보조 매칭
+    // 색상 확인
+    for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
+        if (group === c || synonyms.includes(c)) {
+            const targets = [group, ...synonyms];
+            if (targets.some(t => o.includes(t))) {
+                score += 15;
+                break;
+            }
+        }
+    }
+    // 사이즈 확인
+    if (sz && o.includes(sz)) score += 10;
+
+    return score;
 }
 
 export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
@@ -78,73 +107,47 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     const client = await pool.connect();
     let dbRecords: any[] = [];
     try {
-        // '상품바코드' 컬럼 추가 쿼리
         const result = await client.query('SELECT "상품코드", "상품명", "옵션", "상품바코드" FROM products');
         dbRecords = result.rows.map(r => ({
             productCode: r.상품코드 || '',
             productName: r.상품명 || '',
             option: r.옵션 || '',
-            barcode: r.상품바코드 || '',
-            normBarcode: normalizeStr(r.상품바코드)
+            barcode: r.상품바코드 || ''
         }));
-    } catch (err) {
-        console.error('DB 쿼리 중 오류:', err);
     } finally {
         client.release();
     }
 
     const matchedRaw: any[] = [];
     excelRecords.forEach(ex => {
-        const exNormStyle = normalizeStr(ex.styleNo);
         let bestMatch: any = null, bestScore = -1;
 
-        // 바코드 기반 매칭 (80% 유사도 룰 적용)
         for (let m of dbRecords) {
-            let score = 0;
-            const sim = getSimilarity(ex.styleNo, m.barcode);
-            
-            if (sim >= 0.8) {
-                score += (sim * 80); // 바코드 유사도 80% 이상 시 높은 가중치
-            } else {
-                continue; // 바코드가 안 맞으면 일단 패스 (오매칭 방지)
+            const score = getMatchScore(ex.styleNo, m.barcode, m.option, ex.color, ex.size);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = m;
             }
-
-            // 색상 및 옵션 점수 가산
-            const opt = m.option.replace(/\s+/g, '').toUpperCase();
-            const exColor = ex.color.toUpperCase().trim();
-            for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
-              if (group === exColor || synonyms.includes(exColor)) {
-                const targets = [group, ...synonyms];
-                if (targets.some(t => opt.includes(t.replace(/\s+/g, '').toUpperCase()))) {
-                  score += 20;
-                  break;
-                }
-              }
-            }
-
-            if (score > bestScore) { bestScore = score; bestMatch = m; }
         }
 
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
-        if (bestMatch && bestScore >= 60) {
+        if (bestMatch && bestScore >= 50) {
+            // 한글 색상명 찾기
             let korColor = ex.color;
             const optParts = bestMatch.option.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
             const exColor = ex.color.toUpperCase().trim();
             
-            let foundGroupName = "";
+            let foundGroup = "";
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
-              if (group === exColor || synonyms.includes(exColor)) {
-                foundGroupName = group; break;
-              }
+                if (group === exColor || synonyms.includes(exColor)) { foundGroup = group; break; }
             }
-
-            if (foundGroupName) {
-              const targets = [foundGroupName, ...COLOR_MAP[foundGroupName]];
-              for (let p of optParts) {
-                if (targets.some(t => p.toUpperCase() === t.toUpperCase() || p.includes(t))) {
-                  korColor = p; break;
+            if (foundGroup) {
+                const targets = [foundGroup, ...COLOR_MAP[foundGroup]];
+                for (let p of optParts) {
+                    if (targets.some(t => p.toUpperCase() === t.toUpperCase() || p.includes(t))) {
+                        korColor = p; break;
+                    }
                 }
-              }
             }
 
             matchedRaw.push({
