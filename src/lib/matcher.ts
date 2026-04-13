@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
-import { Pool } from 'pg';
+import pg from 'pg';
+const { Pool } = pg;
 
 // 슈파베이스 연결 설정 (비상용 주소 포함)
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
