@@ -34,54 +34,38 @@ const COLOR_MAP: Record<string, string[]> = {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    // 모든 특수문자와 공백을 제거하여 순수한 숫자/알파벳만 남김
     return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase();
 }
 
 /**
- * 지능형 유사도 측정 (스타일 번호 vs 바코드)
+ * 전방위 유사도 측정 (스타일 번호 vs DB 모든 필드)
  */
-function getMatchScore(style: string, barcode: string, option: string, color: string, size: string): number {
+function getBestFieldScore(style: string, dbRow: any): number {
     const s = normalizeStr(style);
-    const b = normalizeStr(barcode);
-    const o = option.toUpperCase().replace(/\s+/g, '');
-    const c = color.toUpperCase();
-    const sz = size.toUpperCase();
+    if (!s) return 0;
 
-    if (!s || !b) return 0;
+    let maxScore = 0;
+    
+    // DB의 모든 컬럼 값을 순회하며 스타일 번호와 대조
+    for (const key in dbRow) {
+        const val = normalizeStr(dbRow[key]);
+        if (!val) continue;
 
-    let score = 0;
-
-    // 1. 바코드 기반 매칭 (핵심)
-    if (b === s) score += 100;
-    else if (b.startsWith(s)) score += 80;
-    else if (b.includes(s)) score += 60;
-    else {
-        // 80% 이상의 글자가 일치하는지 확인
-        let matches = 0;
-        const minLen = Math.min(s.length, b.length);
-        for(let i=0; i<minLen; i++) if(s[i] === b[i]) matches++;
-        const ratio = matches / Math.max(s.length, b.length);
-        if (ratio >= 0.8) score += (ratio * 70);
-    }
-
-    if (score < 40) return 0; // 최소 기준 미달
-
-    // 2. 옵션(색상/사이즈) 보조 매칭
-    // 색상 확인
-    for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
-        if (group === c || synonyms.includes(c)) {
-            const targets = [group, ...synonyms];
-            if (targets.some(t => o.includes(t))) {
-                score += 15;
-                break;
-            }
+        let currentScore = 0;
+        if (val === s) currentScore = 100;
+        else if (val.includes(s) || s.includes(val)) currentScore = 80;
+        else {
+            // Fuzzy 80% 매칭
+            let matches = 0;
+            const minLen = Math.min(s.length, val.length);
+            for(let i=0; i<minLen; i++) if(s[i] === val[i]) matches++;
+            const ratio = matches / Math.max(s.length, val.length);
+            if (ratio >= 0.8) currentScore = (ratio * 75);
         }
+        
+        if (currentScore > maxScore) maxScore = currentScore;
     }
-    // 사이즈 확인
-    if (sz && o.includes(sz)) score += 10;
-
-    return score;
+    return maxScore;
 }
 
 export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
@@ -105,15 +89,13 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     });
 
     const client = await pool.connect();
-    let dbRecords: any[] = [];
+    let dbRows: any[] = [];
     try {
-        const result = await client.query('SELECT "상품코드", "상품명", "옵션", "상품바코드" FROM products');
-        dbRecords = result.rows.map(r => ({
-            productCode: r.상품코드 || '',
-            productName: r.상품명 || '',
-            option: r.옵션 || '',
-            barcode: r.상품바코드 || ''
-        }));
+        // 컬럼 이름을 명시하지 않고 전체를 가져와서 유연하게 대응
+        const result = await client.query('SELECT * FROM products');
+        dbRows = result.rows;
+    } catch (err) {
+        console.error('DB 쿼리 오류:', err);
     } finally {
         client.release();
     }
@@ -122,19 +104,33 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     excelRecords.forEach(ex => {
         let bestMatch: any = null, bestScore = -1;
 
-        for (let m of dbRecords) {
-            const score = getMatchScore(ex.styleNo, m.barcode, m.option, ex.color, ex.size);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMatch = m;
+        for (let row of dbRows) {
+            const score = getBestFieldScore(ex.styleNo, row);
+            
+            // 옵션(색상) 보조 점수 가중치
+            let optScore = 0;
+            const opt = (row["옵션"] || "").toString().toUpperCase();
+            const exColor = ex.color.toUpperCase().trim();
+            for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
+                if (group === exColor || synonyms.includes(exColor)) {
+                    if ([group, ...synonyms].some(t => opt.includes(t))) {
+                        optScore += 10; break;
+                    }
+                }
+            }
+
+            const totalScore = score + optScore;
+            if (totalScore > bestScore) {
+                bestScore = totalScore;
+                bestMatch = row;
             }
         }
 
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
-        if (bestMatch && bestScore >= 50) {
-            // 한글 색상명 찾기
+        if (bestMatch && bestScore >= 45) {
             let korColor = ex.color;
-            const optParts = bestMatch.option.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
+            const optVal = (bestMatch["옵션"] || "").toString();
+            const optParts = optVal.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
             const exColor = ex.color.toUpperCase().trim();
             
             let foundGroup = "";
@@ -151,8 +147,8 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
             }
 
             matchedRaw.push({
-                productCode: bestMatch.productCode,
-                sheetName: bestMatch.productName,
+                productCode: bestMatch["상품코드"] || bestMatch["code"] || '코드누락',
+                sheetName: bestMatch["상품명"] || bestMatch["name"] || '상품명누락',
                 color: korColor, size: ex.size, qty: ex.qty,
                 originalKey: originalKey
             });
@@ -185,8 +181,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
 
     const outWb = new ExcelJS.Workbook();
     const outWs = outWb.addWorksheet('매칭결과');
-    const today = new Date();
-    const memoDate = today.toISOString().slice(2, 10).replace(/-/g, '');
+    const memoDate = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const memoContent = `${memoDate}_인도 입고`;
 
     outWs.columns = [
