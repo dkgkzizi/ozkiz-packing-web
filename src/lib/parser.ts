@@ -9,7 +9,11 @@ export interface PackingResult {
     qty: number;
 }
 
-const COLORS = ['IVORY', 'WHITE', 'BLACK', 'PINK', 'YELLOW', 'MELANGE', 'GRAY', 'BEIGE', 'BLUE', 'NAVY', 'RED', 'GREEN', 'MINT', 'PURPLE', 'CHARCOAL', 'CORAL', 'PEACH', 'BROWN', 'WINE', 'LAVENDER', 'KHAKI', 'G MEL', 'DENIM', 'CREAM', 'OATMEAL', 'COCOA', 'MINT', 'LIME'];
+const COLORS = [
+    'IVORY', 'WHITE', 'BLACK', 'PINK', 'YELLOW', 'MELANGE', 'GRAY', 'GREY', 'BEIGE', 'BLUE', 'NAVY', 
+    'RED', 'GREEN', 'MINT', 'PURPLE', 'CHARCOAL', 'CORAL', 'PEACH', 'BROWN', 'WINE', 'LAVENDER', 
+    'KHAKI', 'G MEL', 'DENIM', 'CREAM', 'OATMEAL', 'COCOA', 'LIME', 'ORANGE', 'GOLD', 'SILVER'
+];
 
 export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
     const pdfExtract = new PDFExtract();
@@ -34,10 +38,14 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
             data.pages.forEach((page: any) => {
                 const rowsRaw: Record<number, any[]> = {};
                 page.content.forEach((item: any) => {
-                    // Normalize Y coordinates by rounding to 1 decimal place
-                    const y = Math.round(item.y * 10) / 10;
-                    if (!rowsRaw[y]) rowsRaw[y] = [];
-                    rowsRaw[y].push({ x: item.x, text: item.str });
+                    // Improved row grouping with tolerance
+                    const y = item.y;
+                    const existingY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.5);
+                    if (existingY) {
+                        rowsRaw[parseFloat(existingY)].push({ x: item.x, text: item.str });
+                    } else {
+                        rowsRaw[y] = [{ x: item.x, text: item.str }];
+                    }
                 });
 
                 const sortedY = Object.keys(rowsRaw).sort((a, b) => Number(a) - Number(b));
@@ -45,52 +53,67 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
                     const ryNum = Number(ry);
                     const cols = rowsRaw[ryNum].sort((a,b) => a.x - b.x);
                     
-                    // 1. Detect size headers (80 - 200 range)
+                    // 1. Detect size headers - broaden search and include alpha sizes
                     const potSizes = cols.filter(c => 
-                        c.x > 8.0 && c.x < 24.0 && 
-                        /^[0-9]+$/.test(c.text.trim()) &&
-                        parseInt(c.text.trim()) >= 70 && parseInt(c.text.trim()) <= 200
+                        c.x > 7.0 && c.x < 25.0 && 
+                        (
+                          (/^[0-9]+$/.test(c.text.trim()) && parseInt(c.text.trim()) >= 10 && parseInt(c.text.trim()) <= 400) ||
+                          (['S', 'M', 'L', 'XL', 'XXL', 'FREE', 'F', '90', '100', '110', '120', '130', '140', '150'].includes(c.text.trim().toUpperCase())) ||
+                          (/^[0-9]+\/[0-9]+$/.test(c.text.trim()))
+                        )
                     );
                     
-                    if (potSizes.length >= 2) {
+                    // Only update sizes if it looks like a header row (many sizes, no CTN data)
+                    const tempCtnF = cols.find(c => c.x > 0.1 && c.x < 3.0 && /^[0-9]+$/.test(c.text.trim()));
+                    const isMetaRow = cols.some(c => ['STYLE', 'COLOR', 'NAME', 'PRODUCT'].some(k => c.text.toUpperCase().includes(k)));
+                    
+                    if (potSizes.length >= 2 && !tempCtnF) {
                         sizes = {};
                         potSizes.forEach(sc => { 
-                            // Store size by X position
                             sizes[sc.x] = sc.text.trim(); 
                         });
                     }
 
                     // 2. Data analysis
-                    // CTN FROM/TO columns are often at the far left
-                    const ctnF = cols.find(c => c.x > 0.3 && c.x < 3.0 && /^[0-9]+$/.test(c.text.trim()));
-                    const ctnT = cols.find(c => c.x >= 2.0 && c.x < 5.0 && /^[0-9]+$/.test(c.text.trim()));
+                    const ctnF = cols.find(c => c.x > 0.1 && c.x < 2.5 && /^[0-9]+$/.test(c.text.trim()));
+                    const ctnT = cols.find(c => c.x >= 1.5 && c.x < 4.5 && /^[0-9]+$/.test(c.text.trim()));
                     
-                    // Style is usually after CTN columns
-                    const styleInZone = cols.find(c => c.x >= 3.5 && c.x < 9.0 && c.text.length >= 3 && !/^\d+$/.test(c.text));
+                    // Style detection - loosed constraints
+                    const styleInZone = cols.find(c => c.x >= 2.5 && c.x < 10.0 && c.text.length >= 2 && !/^\d+$/.test(c.text));
                     
-                    const isMeta = cols.some(c => ['PAGE', 'SUB', 'WEIGHT', 'DATE', 'PACKING', 'LIST', 'INVOICE'].some(k => c.text.toUpperCase().includes(k)));
+                    const isMeta = cols.some(c => ['PAGE', 'SUB', 'WEIGHT', 'DATE', 'PACKING', 'LIST', 'INVOICE', 'SHIP', 'TO', 'PER'].some(k => c.text.toUpperCase().includes(k)));
                     const isTotalSumRow = cols.some(c => c.text.toUpperCase().includes('TOTAL') || c.text.includes('합계')) && !ctnF;
 
-                    if (!isMeta && !isTotalSumRow) {
+                    if (!isMeta && !isTotalSumRow && !isMetaRow) {
                         if (styleInZone) {
                             curS = styleInZone.text.trim();
                         }
 
-                        // Extract name and color - often adjacent or in a specific zone
-                        const nameColorCand = cols.find(c => c.x >= 5.0 && c.x < 13.0 && c.text.length > 2);
+                        // Extract name and color
+                        const nameColorCand = cols.find(c => c.x >= 4.0 && c.x < 15.0 && c.text.length > 1);
                         if (nameColorCand) {
                             const text = nameColorCand.text.trim();
-                            if (text.includes(' - ')) {
-                                const parts = text.split(' - ');
-                                if (COLORS.some(cl => parts[0].toUpperCase().includes(cl))) {
-                                    curC = parts[0].trim();
-                                    curN = parts.slice(1).join(' - ').trim();
-                                } else {
-                                    curN = parts[0].trim();
-                                    curC = parts.slice(1).join(' - ').trim();
+                            const splitters = [' - ', ' / ', '(', ' -', '- ']; // Flexible separators
+                            let splitFound = false;
+                            
+                            for (const s of splitters) {
+                                if (text.includes(s)) {
+                                    const parts = text.split(s).map(p => p.trim());
+                                    if (COLORS.some(cl => parts[0].toUpperCase().includes(cl)) || COLORS.some(cl => parts[1]?.toUpperCase().includes(cl))) {
+                                        if (COLORS.some(cl => parts[0].toUpperCase().includes(cl))) {
+                                            curC = parts[0];
+                                            curN = parts.slice(1).join(s).replace(')', '').trim();
+                                        } else {
+                                            curN = parts[0];
+                                            curC = parts.slice(1).join(s).replace(')', '').trim();
+                                        }
+                                        splitFound = true;
+                                        break;
+                                    }
                                 }
-                            } else {
-                                // Fallback: check if the string contains a color
+                            }
+                            
+                            if (!splitFound) {
                                 const foundColor = COLORS.find(cl => text.toUpperCase().includes(cl));
                                 if (foundColor) {
                                     curC = text;
@@ -113,6 +136,9 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
                             if (qtyCol) {
                                 const q = parseInt(qtyCol.text.replace(/[^0-9]/g, '')) || 0;
                                 if (q > 0) {
+                                    // If we don't have name/color yet, try to find it in the same row
+                                    const localNameCand = cols.find(c => c.x >= 4.0 && c.x < 15.0 && c.text.length > 1);
+                                    
                                     results.push({ 
                                         style: curS, 
                                         name: curN || curS, 
