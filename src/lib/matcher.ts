@@ -38,29 +38,30 @@ function normalizeStr(s: any) {
 }
 
 /**
- * 전방위 유사도 측정 (스타일 번호 vs DB 모든 필드)
+ * 정밀 매칭 (바코드 성격의 필드만 정밀 타격)
  */
-function getBestFieldScore(style: string, dbRow: any): number {
+function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number {
     const s = normalizeStr(style);
     if (!s) return 0;
 
     let maxScore = 0;
     
-    // DB의 모든 컬럼 값을 순회하며 스타일 번호와 대조
-    for (const key in dbRow) {
+    // 바코드나 코드 성격의 필드만 집중적으로 검색
+    for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
 
         let currentScore = 0;
         if (val === s) currentScore = 100;
-        else if (val.includes(s) || s.includes(val)) currentScore = 80;
+        else if (val.startsWith(s)) currentScore = 90;
+        else if (val.includes(s)) currentScore = 70;
         else {
             // Fuzzy 80% 매칭
             let matches = 0;
             const minLen = Math.min(s.length, val.length);
             for(let i=0; i<minLen; i++) if(s[i] === val[i]) matches++;
             const ratio = matches / Math.max(s.length, val.length);
-            if (ratio >= 0.8) currentScore = (ratio * 75);
+            if (ratio >= 0.8) currentScore = (ratio * 80);
         }
         
         if (currentScore > maxScore) maxScore = currentScore;
@@ -90,12 +91,23 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
 
     const client = await pool.connect();
     let dbRows: any[] = [];
+    let barcodeCols: string[] = [];
     try {
-        // 컬럼 이름을 명시하지 않고 전체를 가져와서 유연하게 대응
+        // 1. 컬럼 구조 파악
+        const tableInfo = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'products'");
+        const allCols = tableInfo.rows.map(r => r.column_name);
+        
+        // 바코드, 코드, 스타일 등의 이름이 들어간 '핵심 매칭 필드' 추출
+        barcodeCols = allCols.filter(c => 
+            ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k))
+        );
+        
+        // 만약 후보가 없다면 상품코드와 상품명이라도 사용
+        if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
+
+        // 2. 전체 데이터 조회
         const result = await client.query('SELECT * FROM products');
         dbRows = result.rows;
-    } catch (err) {
-        console.error('DB 쿼리 오류:', err);
     } finally {
         client.release();
     }
@@ -105,21 +117,22 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         let bestMatch: any = null, bestScore = -1;
 
         for (let row of dbRows) {
-            const score = getBestFieldScore(ex.styleNo, row);
+            // 핵심 필드(바코드 등)에서만 점수 측정
+            const score = getMatchScore(ex.styleNo, row, barcodeCols);
             
-            // 옵션(색상) 보조 점수 가중치
-            let optScore = 0;
+            // 색상 일치 여부로 정확도 보정 (+20점 가점)
+            let colorBonus = 0;
             const opt = (row["옵션"] || "").toString().toUpperCase();
             const exColor = ex.color.toUpperCase().trim();
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
                 if (group === exColor || synonyms.includes(exColor)) {
                     if ([group, ...synonyms].some(t => opt.includes(t))) {
-                        optScore += 10; break;
+                        colorBonus = 20; break;
                     }
                 }
             }
 
-            const totalScore = score + optScore;
+            const totalScore = score + colorBonus;
             if (totalScore > bestScore) {
                 bestScore = totalScore;
                 bestMatch = row;
@@ -127,7 +140,8 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         }
 
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
-        if (bestMatch && bestScore >= 45) {
+        // 기준 점수를 높여 오매칭 방지 (60점 이상만 확정)
+        if (bestMatch && bestScore >= 60) {
             let korColor = ex.color;
             const optVal = (bestMatch["옵션"] || "").toString();
             const optParts = optVal.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
