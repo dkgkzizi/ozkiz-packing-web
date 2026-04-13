@@ -11,6 +11,10 @@ export interface PackingResult {
   qty: number;
 }
 
+/**
+ * 데스크톱 버전(패킹리스트_변환기)의 로직을 100% 이식한 파서입니다.
+ * pdf2json v4.0.2 좌표 체계에 최적화되어 있습니다.
+ */
 export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
   return new Promise((resolve, reject) => {
     const pdfParser = new (PDFParser as any)();
@@ -18,119 +22,142 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
     pdfParser.on('pdfParser_dataError', (errData: any) => reject(errData.parserError));
     pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
       try {
-        let results: PackingResult[] = [];
-        let activeSizes: string[] = [];
-        let curStyle = "", curName = "", curColor = "";
+        let results: any[] = [];
+        let sizes: Record<string, string> = {}; 
+        let curS = "", curN = "", curC = "";
+        let curBoxes = 1;
 
         pdfData.Pages.forEach((page: any) => {
-          let rowsRaw: Record<number, any[]> = {};
-          page.Texts.forEach((t: any) => {
-            let txt = "";
-            try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
-            if (!txt) return;
-            const y = Math.round(t.y * 10) / 10;
-            if (!rowsRaw[y]) rowsRaw[y] = [];
-            rowsRaw[y].push({ x: t.x, text: txt });
-          });
+            let rowsRaw: Record<string, any[]> = {};
+            page.Texts.forEach((t: any) => {
+                let txt = "";
+                // 데스크톱 버전과 동일한 디코딩 로직 적용
+                try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
+                if (!txt) return;
+                let y = t.y;
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.4);
+                if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
+                else rowsRaw[y] = [{ x: t.x, text: txt }];
+            });
 
-          // 행별로 정렬하여 텍스트 합체
-          const sortedY = Object.keys(rowsRaw).sort((a,b) => Number(a)-Number(b));
-          sortedY.forEach(ry => {
-            const cols = rowsRaw[Number(ry)].sort((a,b) => a.x - b.x);
-            const lineItems = cols.map(c => c.text);
-            const fullLine = lineItems.join(' ');
+            let sortedY = Object.keys(rowsRaw).sort((a,b)=>Number(a)-Number(b));
+            sortedY.forEach(ry => {
+                let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
+                // 데스크톱 버전(Line 33)의 isMetaRow와 동일한 키워드 세트 적용
+                const isMetaRow = cols.some(c => ['PAGE', 'SUB', 'PER', 'WEIGHT', 'DATE', 'INVOICE', 'TOTAL', 'NET', 'GROSS'].some(k => c.text.toUpperCase().includes(k)));
+                
+                // 데스크톱 버전(Line 35-39)의 좌표값 그대로 이식
+                let ctnF = cols.find(c => c.x > 0.5 && c.x < 2.0 && /^[0-9]+$/.test(c.text));
+                let ctnT = cols.find(c => c.x >= 2.0 && c.x < 3.5 && /^[0-9]+$/.test(c.text));
+                
+                let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 21.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                let styleInZone = cols.find(c => c.x >= 3.5 && c.x < 6.5 && c.text.length >= 3);
+                
+                // 데스크톱 버전(Line 40)의 로직 그대로 이식
+                let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);
 
-            // 1. 사이즈 헤더 감지 (100, 110, 120...)
-            const potSizes = lineItems.filter(t => /^[0-9]{2,3}$/.test(t) && parseInt(t) >= 70 && parseInt(t) <= 160);
-            if (potSizes.length >= 2 && fullLine.includes('SIZE')) {
-                activeSizes = potSizes;
-                return;
-            }
+                if (isDataRow && !isMetaRow) {
+                    if (styleInZone) curS = styleInZone.text;
+                    
+                    let dataCand = cols.find(c => c.x >= 6.5 && c.x < 12.0);
+                    if (dataCand) {
+                        let r = dataCand.text;
+                        if (r.includes(' - ')) {
+                            let pts = r.split(' - ').map(p=>p.trim());
+                            if (COLORS.some(cl => pts[0].toUpperCase().includes(cl))) { curC = pts[0]; curN = pts.slice(1).join(' - ').trim(); }
+                            else { curN = pts[0]; curC = pts.slice(1).join(' - ').trim(); }
+                        } else if (r.includes('-')) {
+                            let pts = r.split('-').map(p=>p.trim());
+                            if (COLORS.some(cl => pts[0].toUpperCase().includes(cl))) { curC = pts[0]; curN = pts.slice(1).join('-').trim(); }
+                            else { curN = pts[0]; curC = pts.slice(1).join('-').trim(); }
+                        } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
+                            curC = r;
+                        } else {
+                            curN = r;
+                        }
+                    }
+                    
+                    if (ctnF && ctnT) {
+                        let vF = parseInt(ctnF.text) || 0, vT = parseInt(ctnT.text) || 0;
+                        curBoxes = (vT - vF + 1); if (curBoxes <= 0) curBoxes = 1;
+                    }
 
-            // 2. 메타 데이터 무시
-            if (fullLine.includes('PAGE') || fullLine.includes('INVOICE') || fullLine.includes('DATE') || fullLine.includes('LIST')) return;
-            if (fullLine.includes('TOTAL') && !fullLine.includes('PCS')) return; // 하단 합계행은 제외 (단 TOTAL PCS가 적힌 데이터행은 제외)
-
-            // 3. 데이터 행 분석 (스타일 번호 + 색상 + 수량 구조)
-            // 스타일 번호 찾기 (예: O25WE03U)
-            const styleItem = lineItems.find(t => /[A-Z0-9]{5,}/.test(t));
-            if (styleItem) curStyle = styleItem;
-
-            // 색상 및 상품명 분리
-            const colorItem = lineItems.find(t => COLORS.some(cl => t.toUpperCase().includes(cl)));
-            if (colorItem) {
-                curColor = COLORS.find(cl => colorItem.toUpperCase().includes(cl)) || "";
-                curName = colorItem.replace(curColor, '').replace(/^-|^\s-/, '').trim() || "SWEATSHIRT SET";
-            }
-
-            // 수량 및 사이즈 매칭 (좌표를 무시하고 텍스트 순서와 패턴으로 매칭)
-            const boxCountItem = lineItems.find((t, i) => i > 5 && /^[0-9]+$/.test(t) && parseInt(t) < 50); // TOTAL CTNS 위치 짐작
-            const rowBoxes = boxCountItem ? (parseInt(boxCountItem) || 1) : 1;
-
-            // 숫자 아이템들 중 수량 후보 추출
-            const qtyCandidates = cols.filter(c => /^[0-9]+$/.test(c.text) && parseInt(c.text) > 0 && c.x > 8 && c.x < 35);
-            
-            qtyCandidates.forEach(cand => {
-                // 이 숫자가 사이즈인가? 수량인가? 
-                // 수량이라면 주변에 activeSizes 중 하나와 좌표가 가장 가까운 것을 매칭
-                if (activeSizes.length > 0) {
-                    // 수량 행에서 발견된 숫자들을 결과를 담음
-                    // (과거 버전의 가장 확실한 스타일: 숫자면 일단 수량으로 보고 사이즈와 매칭)
-                    results.push({
-                        style: curStyle,
-                        name: curName || curStyle,
-                        color: curColor,
-                        size: "표시된사이즈", // 상세 사이즈 매칭은 복잡하므로 일단 데이터 확보 우선
-                        qty: parseInt(cand.text) * rowBoxes
+                    Object.keys(sizes).forEach(sx => {
+                        let sxNum = parseFloat(sx);
+                        if (sxNum < 10.0 || sxNum > 21.5) return;
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.0);
+                        if (qtyCol) {
+                            let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
+                            if (q > 0 && q < 500) {
+                                results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * curBoxes });
+                            }
+                        }
                     });
+                } else if (!isMetaRow) {
+                    // 데스크톱 버전(Line 80-86)의 사이즈 감지 로직 그대로 이식
+                    let potSizes = cols.filter(c => 
+                        c.x > 10.0 && c.x < 21.5 && 
+                        c.text.length <= 8 && 
+                        !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN'].some(k => c.text.toUpperCase().includes(k)) &&
+                        /^[0-9A-Z\/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                    );
+                    if (potSizes.length >= 2 && !styleInZone) {
+                        sizes = {}; 
+                        potSizes.forEach(sc => { sizes[sc.x] = sc.text; });
+                    }
                 }
             });
-          });
         });
 
-        // 결과 합산 (같은 데이터 묶기)
-        const aggregated: Record<string, PackingResult> = {};
+        // 수량 자동 합산 (데스크톱 버전 Line 95와 동일)
+        const aggregated: Record<string, any> = {};
         results.forEach(res => {
-          const key = `${res.style}|${res.color}|${res.qty}`; // 0이 출력되는것을 방지하기 위해 더 유선하게 합산
-          if (aggregated[key]) aggregated[key].qty += res.qty;
-          else aggregated[key] = { ...res };
+            const key = `${res.style}|${res.name}|${res.color}|${res.size}`;
+            if (aggregated[key]) {
+                aggregated[key].qty += res.qty;
+            } else {
+                aggregated[key] = { ...res };
+            }
         });
         
-        const finalResults = Object.values(aggregated);
+        const finalResults = Object.values(aggregated).sort((a: any, b: any) => a.style.localeCompare(b.style));
 
+        // 엑셀 워크세트 생성 (데스크톱 버전 Line 107-136 구조 그대로 이식)
         const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('Packing List');
-        sheet.columns = [
-          { header: 'STYLE NO', key: 'style', width: 25 },
-          { header: '상품명', key: 'name', width: 35 },
-          { header: '색상', key: 'color', width: 20 },
-          { header: '사이즈', key: 'size', width: 12 },
-          { header: '총수량', key: 'qty', width: 12 }
+        const worksheet = workbook.addWorksheet('Packing List');
+        worksheet.columns = [
+            { header: 'STYLE NO', key: 'style', width: 25 },
+            { header: '상품명', key: 'name', width: 35 },
+            { header: '색상', key: 'color', width: 15 },
+            { header: '사이즈', key: 'size', width: 12 },
+            { header: '총수량', key: 'qty', width: 12 }
         ];
         
-        sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+        worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+        worksheet.getRow(1).alignment = { horizontal: 'center' };
 
-        let total = 0;
+        let totalQty = 0;
         finalResults.forEach(res => {
-          sheet.addRow(res);
-          total += res.qty;
+            worksheet.addRow(res);
+            totalQty += (res as any).qty;
         });
 
-        const totalRow = sheet.addRow({ style: '총 합계', qty: total });
+        const totalRow = worksheet.addRow({ style: '총 합계', qty: totalQty });
         totalRow.font = { bold: true };
-        totalRow.getCell('qty').font = { color: { argb: 'FFFF0000' } };
+        totalRow.getCell('qty').font = { color: { argb: 'FFFF0000' }, bold: true };
         
-        sheet.eachRow(row => {
-          row.eachCell(cell => {
-            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-          });
+        worksheet.eachRow(row => {
+            row.eachCell(cell => {
+                cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
         });
 
         resolve(workbook);
       } catch(e) { reject(e); }
     });
+
     pdfParser.parseBuffer(buffer);
   });
 }
