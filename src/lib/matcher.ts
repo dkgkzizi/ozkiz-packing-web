@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import pg from 'pg';
 const { Pool } = pg;
 
-// 슈파베이스 연결 설정 (DATABASE_URL 우선 사용)
+// 슈파베이스 연결 설정
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
 
 const pool = new Pool({
@@ -10,7 +10,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// 색상 매핑 사전 업데이트
 const COLOR_MAP: Record<string, string[]> = {
     'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
     'WHITE': ['화이트', '아이보리', '백아이보리'],
@@ -36,8 +35,24 @@ const COLOR_MAP: Record<string, string[]> = {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    // 특수문자 제거 및 0/O 혼동 방지 (비교용 정규화)
     return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase().replace(/0/g, 'O');
+}
+
+// 유사도 측정 함수 (80% 일치 확인용)
+function getSimilarity(s1: string, s2: string) {
+    if (!s1 || !s2) return 0;
+    const n1 = normalizeStr(s1);
+    const n2 = normalizeStr(s2);
+    if (n1 === n2) return 1.0;
+    if (n1.includes(n2) || n2.includes(n1)) return 0.9;
+    
+    // 단순 글자 포함 비율로 유사도 측정
+    let matchingChars = 0;
+    const minLen = Math.min(n1.length, n2.length);
+    for (let i = 0; i < minLen; i++) {
+        if (n1[i] === n2[i]) matchingChars++;
+    }
+    return matchingChars / Math.max(n1.length, n2.length);
 }
 
 export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
@@ -45,7 +60,6 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     await workbook.xlsx.load(buffer as any);
     const sheet = workbook.worksheets[0];
     
-    // 1. 엑셀 데이터 추출
     const excelRecords: any[] = [];
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
@@ -61,16 +75,17 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         });
     });
 
-    // 2. 슈파베이스 DB 데이터 조회
     const client = await pool.connect();
     let dbRecords: any[] = [];
     try {
-        const result = await client.query('SELECT "상품코드", "상품명", "옵션" FROM products');
+        // '상품바코드' 컬럼 추가 쿼리
+        const result = await client.query('SELECT "상품코드", "상품명", "옵션", "상품바코드" FROM products');
         dbRecords = result.rows.map(r => ({
             productCode: r.상품코드 || '',
             productName: r.상품명 || '',
             option: r.옵션 || '',
-            normStyle: normalizeStr(r.상품코드)
+            barcode: r.상품바코드 || '',
+            normBarcode: normalizeStr(r.상품바코드)
         }));
     } catch (err) {
         console.error('DB 쿼리 중 오류:', err);
@@ -78,49 +93,41 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         client.release();
     }
 
-    // 3. 지능형 매칭 수행
     const matchedRaw: any[] = [];
     excelRecords.forEach(ex => {
         const exNormStyle = normalizeStr(ex.styleNo);
-        // 스타일 번호가 완벽히 일치하거나 포함되는 것들 1차 필터링
-        let matches = dbRecords.filter(s => s.normStyle === exNormStyle || s.normStyle.includes(exNormStyle) || exNormStyle.includes(s.normStyle));
-        
-        // 스타일로 안 잡히면 상품명으로 2차 필터링
-        if (matches.length === 0) {
-            matches = dbRecords.filter(s => s.productName.includes(ex.styleNo) || s.productName.includes(ex.pdfName));
+        let bestMatch: any = null, bestScore = -1;
+
+        // 바코드 기반 매칭 (80% 유사도 룰 적용)
+        for (let m of dbRecords) {
+            let score = 0;
+            const sim = getSimilarity(ex.styleNo, m.barcode);
+            
+            if (sim >= 0.8) {
+                score += (sim * 80); // 바코드 유사도 80% 이상 시 높은 가중치
+            } else {
+                continue; // 바코드가 안 맞으면 일단 패스 (오매칭 방지)
+            }
+
+            // 색상 및 옵션 점수 가산
+            const opt = m.option.replace(/\s+/g, '').toUpperCase();
+            const exColor = ex.color.toUpperCase().trim();
+            for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
+              if (group === exColor || synonyms.includes(exColor)) {
+                const targets = [group, ...synonyms];
+                if (targets.some(t => opt.includes(t.replace(/\s+/g, '').toUpperCase()))) {
+                  score += 20;
+                  break;
+                }
+              }
+            }
+
+            if (score > bestScore) { bestScore = score; bestMatch = m; }
         }
 
-        let bestMatch: any = null, bestScore = -1;
-        if (matches.length > 0) {
-            const exColor = ex.color.toUpperCase().trim();
-            for(let m of matches) {
-                let score = 0;
-                const opt = m.option.replace(/\s+/g, '').toUpperCase();
-                
-                // 가중치 부여
-                if (m.normStyle === exNormStyle) score += 50; // 스타일번호 일치 시 높은 점수
-                if (ex.size && opt.includes(ex.size.replace(/\s+/g, '').toUpperCase())) score += 15;
-                
-                // 색상 매핑 점수
-                for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
-                  if (group === exColor || synonyms.includes(exColor)) {
-                    const targets = [group, ...synonyms];
-                    if (targets.some(t => opt.includes(t.replace(/\s+/g, '').toUpperCase()))) {
-                      score += 25; // 색상 매칭 시 가중 점수
-                      break;
-                    }
-                  }
-                }
-                
-                if (score > bestScore) { bestScore = score; bestMatch = m; }
-            }
-        }
-        
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
-        if (bestMatch && bestScore >= 40) { // 최소 매칭 임계점
-            let korColor = ex.color; // 폴백: 영문
-            
-            // DB 옵션에서 가장 적절한 한국어 색상 명칭 찾기
+        if (bestMatch && bestScore >= 60) {
+            let korColor = ex.color;
             const optParts = bestMatch.option.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
             const exColor = ex.color.toUpperCase().trim();
             
@@ -156,7 +163,6 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         }
     });
 
-    // 4. 합계 및 정렬 후 엑셀 출력
     const aggregated: Record<string, any> = {};
     matchedRaw.forEach(item => {
         const key = `${item.productCode}|${item.sheetName}|${item.color}|${item.size}`;
