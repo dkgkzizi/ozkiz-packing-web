@@ -36,20 +36,6 @@ export default function IndiaPacking() {
   const [progress, setProgress] = useState<ProgressStep[]>([]);
   const [originalPdfFile, setOriginalPdfFile] = useState<File | null>(null);
   const [processingMode, setProcessingMode] = useState<'auto' | 'manual'>('auto');
-  const [autoStartNext, setAutoStartNext] = useState(false);
-
-  useEffect(() => {
-    if (processingMode === 'auto' && autoStartNext && !loading) {
-      const isVerifyReady = activeTab === 'verify' && (file && secondFile);
-      const isOtherReady = activeTab !== 'verify' && !!file;
-      
-      if (isVerifyReady || isOtherReady) {
-        setAutoStartNext(false);
-        const timer = setTimeout(() => startConversion(), 300);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [file, secondFile, activeTab, autoStartNext, loading, processingMode]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, num: 1 | 2 = 1) => {
     if (e.target.files && e.target.files[0]) {
@@ -57,12 +43,10 @@ export default function IndiaPacking() {
       if (num === 1) {
         setFile(selected);
         if (activeTab === 'convert') setOriginalPdfFile(selected);
-        // 자동 모드일 경우 파일 선택 즉시 시작 트리거
-        if (processingMode === 'auto') setAutoStartNext(true);
+        setResult(null);
       } else {
         setSecondFile(selected);
-        // 검증 탭에서 두 번째 파일 선택 시 자동 시작
-        if (processingMode === 'auto' && file) setAutoStartNext(true);
+        setResult(null);
       }
     }
   };
@@ -74,16 +58,20 @@ export default function IndiaPacking() {
       if (num === 1) {
         setFile(selected);
         if (activeTab === 'convert') setOriginalPdfFile(selected);
-        if (processingMode === 'auto') setAutoStartNext(true);
+        setResult(null);
       } else {
         setSecondFile(selected);
-        if (processingMode === 'auto' && file) setAutoStartNext(true);
+        setResult(null);
       }
     }
   };
 
-  const startConversion = async () => {
-    if (!file) return;
+  const startConversion = async (overrideTab?: string, overrideFile?: File, overrideSecond?: File) => {
+    const currentTab = overrideTab || activeTab;
+    const currentFile = overrideFile || file;
+    const currentSecond = overrideSecond || secondFile;
+
+    if (!currentFile) return;
     setLoading(true);
     setResult(null);
     
@@ -93,20 +81,21 @@ export default function IndiaPacking() {
       verify: ['System Snapshot Loading...', 'Quantity Cross-Verification...', 'Generating Audit Report...']
     };
 
-    setProgress(steps[activeTab]?.map(s => ({ label: s, status: 'pending' })) || []);
+    setProgress(steps[currentTab as string]?.map(s => ({ label: s, status: 'pending' })) || []);
 
     try {
       setProgress(prev => prev.map((s, i) => i === 0 ? { ...s, status: 'loading' } : s));
       
       const formData = new FormData();
-      if (activeTab === 'convert') formData.append('pdf', file);
-      else if (activeTab === 'match') formData.append('excel', file);
+      if (currentTab === 'convert') formData.append('pdf', currentFile);
+      else if (currentTab === 'match') formData.append('excel', currentFile);
       else {
-        formData.append('pdf', file);
-        if (secondFile) formData.append('excel', secondFile);
+        formData.append('pdf', currentFile);
+        if (currentSecond) formData.append('excel', currentSecond);
+        else throw new Error('검증할 엑셀 파일이 필요합니다.');
       }
 
-      const response = await fetch(`/api/${activeTab}`, { method: 'POST', body: formData });
+      const response = await fetch(`/api/${currentTab}`, { method: 'POST', body: formData });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -118,10 +107,10 @@ export default function IndiaPacking() {
       
       setProgress(prev => prev.map((s, i) => i === 1 ? { ...s, status: 'done' } : i === 2 ? { ...s, status: 'loading' } : s));
       
-      if (activeTab === 'verify') {
+      if (currentTab === 'verify') {
         const data = await response.json();
         setProgress(prev => prev.map(s => ({ ...s, status: 'done' })));
-        setResult({ success: true, message: '수량 검증이 완료되었습니다.', stats: data });
+        setResult({ success: true, message: '모든 자동화 공정이 완료되었습니다!', stats: data });
         setLoading(false);
         return;
       }
@@ -132,50 +121,47 @@ export default function IndiaPacking() {
       link.href = url;
       
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const originalBase = (file.name || 'document').split('.').slice(0, -1).join('.');
+      const originalBase = (currentFile.name || 'document').split('.').slice(0, -1).join('.');
       
       let fileName = '';
-      if (activeTab === 'convert') {
-        fileName = `${today}_${originalBase}.xlsx`;
-      } else if (activeTab === 'match') {
+      if (currentTab === 'convert') fileName = `${today}_${originalBase}.xlsx`;
+      else if (currentTab === 'match') {
         const pdfBase = originalPdfFile ? originalPdfFile.name.split('.').slice(0, -1).join('.') : originalBase.replace(/^\d{8}_/, '').replace(/_Packing$/, '');
         fileName = `${today}_${pdfBase}_매칭완료.xlsx`;
-      } else {
-        fileName = `${today}_Result.xlsx`;
       }
       
       link.download = fileName;
       setProgress(prev => prev.map(s => ({ ...s, status: 'done' })));
-      setResult({ success: true, message: `${activeTab === 'convert' ? 'PDF 변환' : '데이터 매칭'} 완료!`, fileName: fileName });
+      setResult({ success: true, message: `${currentTab === 'convert' ? 'PDF 변환' : '데이터 매칭'} 완료!`, fileName: fileName });
 
       link.click();
       window.URL.revokeObjectURL(url);
 
-      const resultFile = new File([blob], fileName, { type: blob.type });
-      
       if (processingMode === 'auto') {
-        setTimeout(() => { 
-          if (activeTab === 'convert') {
-            setFile(resultFile); 
-            setActiveTab('match'); 
-            setResult(null); 
-            setProgress([]); 
-            setAutoStartNext(true); 
-          } else if (activeTab === 'match') {
-            setActiveTab('verify'); 
-            setFile(originalPdfFile); 
-            setSecondFile(resultFile); 
-            setResult(null); 
-            setProgress([]); 
-            setAutoStartNext(true); 
+        const nextFile = new File([blob], fileName, { type: blob.type });
+        setTimeout(() => {
+          if (currentTab === 'convert') {
+            setActiveTab('match');
+            setFile(nextFile);
+            setResult(null);
+            setProgress([]);
+            startConversion('match', nextFile);
+          } else if (currentTab === 'match') {
+            setActiveTab('verify');
+            setFile(originalPdfFile);
+            setSecondFile(nextFile);
+            setResult(null);
+            setProgress([]);
+            startConversion('verify', originalPdfFile || undefined, nextFile);
           }
-        }, 1500);
+        }, 1200);
+      } else {
+        setLoading(false);
       }
 
     } catch (err: any) {
       setProgress(prev => prev.map(s => s.status === 'loading' ? { ...s, status: 'error' } : s));
       setResult({ success: false, message: err.message || '작업 중 오류가 발생했습니다.' });
-    } finally {
       setLoading(false);
     }
   };
@@ -218,7 +204,7 @@ export default function IndiaPacking() {
           ].map((tab) => (
             <button 
               key={tab.id} 
-              onClick={() => { setActiveTab(tab.id as any); setFile(null); setResult(null); setProgress([]); setAutoStartNext(false); }} 
+              onClick={() => { setActiveTab(tab.id as any); setFile(null); setResult(null); setProgress([]); }} 
               className={cn(
                 "relative flex-1 md:w-32 flex flex-col items-center justify-center gap-1 py-2 px-4 rounded-xl transition-all duration-300",
                 activeTab === tab.id 
@@ -302,7 +288,7 @@ export default function IndiaPacking() {
                         className="space-y-6"
                       >
                         <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto">
-                          <Upload className="text-slate-400 w-8 h-8" />
+                           <Upload className="text-slate-400 w-8 h-8" />
                         </div>
                         <div className="space-y-1">
                           <p className="text-white text-xl font-bold tracking-tight">여기에 문서를 드롭하세요</p>
@@ -345,7 +331,7 @@ export default function IndiaPacking() {
 
                 <button 
                   disabled={!file || loading} 
-                  onClick={startConversion} 
+                  onClick={() => startConversion()} 
                   className={cn(
                     "w-full h-20 rounded-[1.5rem] font-black text-sm uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-4 group overflow-hidden shadow-2xl relative",
                     !file || loading 
@@ -394,10 +380,10 @@ export default function IndiaPacking() {
                         </div>
                         <div className="flex flex-col">
                            <span className={cn(
-                            "text-[13px] font-bold transition-colors",
-                            step.status === 'done' ? "text-emerald-400" : 
-                            step.status === 'loading' ? "text-white" : "text-slate-600"
-                          )}>
+                             "text-[13px] font-bold transition-colors",
+                             step.status === 'done' ? "text-emerald-400" : 
+                             step.status === 'loading' ? "text-white" : "text-slate-600"
+                           )}>
                              {step.label}
                            </span>
                            <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest mt-0.5">{step.status}</span>
