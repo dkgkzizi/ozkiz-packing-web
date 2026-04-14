@@ -90,7 +90,9 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         const allCols = tableInfo.rows.map(r => r.column_name);
         barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k)));
         if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
-        const result = await client.query('SELECT * FROM products ORDER BY id DESC'); // 최신순 정렬
+        
+        // 정렬 기준을 'id'에서 '업로드일시'로 변경하여 에러 수정
+        const result = await client.query('SELECT * FROM products ORDER BY "업로드일시" DESC NULLS LAST');
         dbRows = result.rows;
     } finally {
         client.release();
@@ -101,7 +103,6 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         let candidates: any[] = [];
         const normalizedExColor = ex.color.toUpperCase().trim();
 
-        // 1단계: 모든 후보군 추출 및 점수 산정
         for (let row of dbRows) {
             const baseScore = getMatchScore(ex.styleNo, row, barcodeCols);
             if (baseScore <= 0) continue;
@@ -118,16 +119,13 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
 
             const dbName = (row["상품명"] || row["name"] || "").toString();
             const dbCode = (row["상품코드"] || row["code"] || "").toString();
-            // 진짜 한국어 이름이 있는 행에 엄청난 가산점 부여 (품질 우선순위)
             let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 200 : 0;
 
             candidates.push({ row, score: baseScore + colorScore + qualityScore, nameScore: qualityScore });
         }
 
-        // 2단계: 최적의 후보 선정 (점수 최고점 중에서도 품질 점수가 높은 것 우선)
         candidates.sort((a, b) => b.score - a.score);
         const bestCandidate = candidates[0];
-
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
         
         if (bestCandidate && bestCandidate.score >= 50) {
@@ -149,16 +147,13 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
                 }
             }
 
-            // 품질 점수가 0인 경우(이름이 코드와 같은 경우), 다른 후보들 중에서 진짜 이름이 있는지 한 번 더 수색
             let finalName = bestMatch["상품명"] || bestMatch["name"] || '상품명누락';
             if (bestCandidate.nameScore === 0) {
                 const legacyMatch = candidates.find(c => c.nameScore > 0);
                 if (legacyMatch) finalName = legacyMatch.row["상품명"] || legacyMatch.row["name"];
             }
 
-            // 그래도 여전히 이름이 부실하면 PDF 이름을 사용하거나 DB 이름을 유지
             if (finalName === bestMatch["상품코드"] || finalName.length < 2) {
-                // PDF 이름 조차 부실할 때만 DB 이름을 최후의 수단으로 사용
                 finalName = (ex.pdfName && ex.pdfName.length > 2) ? ex.pdfName : finalName;
             }
 
@@ -238,4 +233,3 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
 
     return outWb;
 }
-// Recovery Logic Fix: 1776138209460
