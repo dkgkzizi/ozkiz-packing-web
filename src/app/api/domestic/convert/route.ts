@@ -27,73 +27,35 @@ function getSimilarity(s1: string, s2: string) {
 function getSeasonScore(seasonStr: string) {
     if (!seasonStr) return 0;
     const match = seasonStr.match(/\d+/);
-    if (match) return parseInt(match[0]);
-    return 0;
+    return match ? parseInt(match[0]) : 0;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const type = formData.get('type') as string || 'naeju';
 
     if (!file) return NextResponse.json({ success: false, message: '파일 없음' }, { status: 400 });
-    const fileName = file.name.toLowerCase();
     
-    let rawItems: any[] = [];
-    let detectedSeason = "";
-
-    // --- CASE 1: EXCEL OR CSV (AI LESS MATCHING) ---
-    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
-        const worksheet = workbook.worksheets[0];
-        
-        worksheet.eachRow((row, i) => {
-            if (i === 1) return; // Header
-            const productName = row.getCell(1).text || row.getCell(2).text; // 1열 또는 2열에서 이름 추출
-            if (productName && !productName.includes('TOTAL')) {
-                rawItems.push({
-                    productName: productName,
-                    color: row.getCell(3).text || "",
-                    size: row.getCell(4).text || "",
-                    qty: parseInt(row.getCell(5).text) || 0
-                });
-            }
-        });
-    } 
-    // --- CASE 2: IMAGE OR PDF (AI OCR MATCHING) ---
-    else {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            return NextResponse.json({ 
-                success: false, 
-                message: 'AI 분석 전용 GEMINI_API_KEY가 없습니다. 엑셀 파일을 업로드하시거나 관리자에게 키 등록을 요청하세요.' 
-            }, { status: 403 });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const worksheet = workbook.worksheets[0];
+    
+    const rawItems: any[] = [];
+    worksheet.eachRow((row, i) => {
+        if (i === 1) return;
+        const pName = row.getCell(1).text || row.getCell(2).text;
+        if (pName && !pName.includes('합계')) {
+            rawItems.push({
+                productName: pName,
+                color: row.getCell(3).text || "",
+                size: row.getCell(4).text || "",
+                qty: Math.abs(parseInt(row.getCell(5).text)) || 0
+            });
         }
+    });
 
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const base64Data = buffer.toString('base64');
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-        
-        const aiRes = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `입고전표 JSON 추출: {items: [{productName, color, size, qty}], detectedSeason}` }, { inline_data: { mime_type: file.type, data: base64Data } }] }],
-            generationConfig: { response_mime_type: "application/json" }
-          })
-        });
-
-        const aiData = await aiRes.json();
-        if (!aiData.candidates?.[0]) throw new Error('AI 분석 응답 실패');
-        const parsed = JSON.parse(aiData.candidates[0].content.parts[0].text);
-        rawItems = parsed.items || [];
-        detectedSeason = parsed.detectedSeason || "";
-    }
-
-    // --- UNIVERSAL SUPABASE MATCHING ---
     const client = await pool.connect();
     let finalItems = [];
     try {
@@ -103,29 +65,17 @@ export async function POST(req: NextRequest) {
       finalItems = rawItems.map((item: any) => {
         let bestMatch = null;
         let maxScore = -1;
-
         for (const dbRow of dbRows) {
           let score = 0;
           const nameSim = getSimilarity(item.productName, dbRow.상품명);
-          
           if (nameSim >= 0.8) score += (nameSim * 100); 
-          else if (dbRow.상품명.includes(item.productName) || item.productName.includes(dbRow.상품명)) score += 20;
-
+          else if (dbRow.상품명.includes(item.productName)) score += 20;
           if (item.color && dbRow.옵션.includes(item.color)) score += 15;
           if (item.size && dbRow.옵션.includes(item.size)) score += 15;
-
-          const dbSeasonScore = getSeasonScore(dbRow.시즌);
-          score += (dbSeasonScore * 2);
-
-          if (detectedSeason && dbRow.시즌 && dbRow.시즌.includes(detectedSeason)) score += 50;
-
-          if (score > maxScore) {
-            maxScore = score;
-            bestMatch = dbRow;
-          }
+          score += (getSeasonScore(dbRow.시즌) * 2);
+          if (score > maxScore) { maxScore = score; bestMatch = dbRow; }
         }
-
-        const isMatched = bestMatch && maxScore >= 60;
+        const isMatched = bestMatch && maxScore >= 70;
         return {
           ...item,
           matchedCode: isMatched ? bestMatch.상품코드 : '미매칭',
@@ -136,11 +86,8 @@ export async function POST(req: NextRequest) {
     } finally {
       client.release();
     }
-
     return NextResponse.json({ success: true, items: finalItems });
-
   } catch (err: any) {
-    console.error(err);
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: '매칭 처리 중 오류 발생' }, { status: 500 });
   }
 }
