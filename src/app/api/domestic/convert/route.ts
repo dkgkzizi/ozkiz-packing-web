@@ -36,26 +36,64 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File;
 
     if (!file) return NextResponse.json({ success: false, message: '파일 없음' }, { status: 400 });
+    const fileName = file.name.toLowerCase();
     
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const worksheet = workbook.worksheets[0];
-    
-    const rawItems: any[] = [];
-    worksheet.eachRow((row, i) => {
-        if (i === 1) return;
-        const pName = row.getCell(1).text || row.getCell(2).text;
-        if (pName && !pName.includes('합계')) {
-            rawItems.push({
-                productName: pName,
-                color: row.getCell(3).text || "",
-                size: row.getCell(4).text || "",
-                qty: Math.abs(parseInt(row.getCell(5).text)) || 0
-            });
-        }
-    });
+    let rawItems: any[] = [];
+    let detectedSeason = "";
 
+    // --- CASE 1: EXCEL OR CSV ---
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        worksheet.eachRow((row, i) => {
+            if (i === 1) return;
+            const pName = row.getCell(1).text || row.getCell(2).text;
+            if (pName && !pName.includes('합계')) {
+                rawItems.push({
+                    productName: pName,
+                    color: row.getCell(3).text || "",
+                    size: row.getCell(4).text || "",
+                    qty: Math.abs(parseInt(row.getCell(5).text)) || 0
+                });
+            }
+        });
+    } 
+    // --- CASE 2: IMAGE OR PDF (AI RESTORED) ---
+    else {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return NextResponse.json({ 
+                success: false, 
+                message: 'Vercel 관리자 페이지에서 GEMINI_API_KEY를 등록해 주세요.' 
+            }, { status: 403 });
+        }
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const base64Data = buffer.toString('base64');
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        
+        const aiRes = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [
+                { text: `이 전표에서 [상품명, 색상, 사이즈, 수량]을 추출하고 연도가 보이면 detectedSeason에 넣으세요. JSON {items: [...], detectedSeason: "26"}` }, 
+                { inline_data: { mime_type: file.type, data: base64Data } }
+            ] }],
+            generationConfig: { response_mime_type: "application/json" }
+          })
+        });
+
+        const aiData = await aiRes.json();
+        if (!aiData.candidates?.[0]) throw new Error('AI 분석 실패: ' + JSON.stringify(aiData.error || 'Unknown Error'));
+        const parsed = JSON.parse(aiData.candidates[0].content.parts[0].text);
+        rawItems = parsed.items || [];
+        detectedSeason = parsed.detectedSeason || "";
+    }
+
+    // --- UNIVERSAL SUPABASE MATCHING ---
     const client = await pool.connect();
     let finalItems = [];
     try {
@@ -69,10 +107,11 @@ export async function POST(req: NextRequest) {
           let score = 0;
           const nameSim = getSimilarity(item.productName, dbRow.상품명);
           if (nameSim >= 0.8) score += (nameSim * 100); 
-          else if (dbRow.상품명.includes(item.productName)) score += 20;
-          if (item.color && dbRow.옵션.includes(item.color)) score += 15;
-          if (item.size && dbRow.옵션.includes(item.size)) score += 15;
+          else if (dbRow.상품명.includes(item.productName) || item.productName.includes(dbRow.상품명)) score += 20;
+          if (item.color && dbRow.옵션.toString().includes(item.color)) score += 15;
+          if (item.size && dbRow.옵션.toString().includes(item.size)) score += 15;
           score += (getSeasonScore(dbRow.시즌) * 2);
+          if (detectedSeason && dbRow.시즌 && dbRow.시즌.includes(detectedSeason)) score += 50;
           if (score > maxScore) { maxScore = score; bestMatch = dbRow; }
         }
         const isMatched = bestMatch && maxScore >= 70;
@@ -88,6 +127,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ success: true, items: finalItems });
   } catch (err: any) {
-    return NextResponse.json({ success: false, message: '매칭 처리 중 오류 발생' }, { status: 500 });
+    console.error(err);
+    return NextResponse.json({ success: false, message: '매칭 처리 오류: ' + err.message }, { status: 500 });
   }
 }
