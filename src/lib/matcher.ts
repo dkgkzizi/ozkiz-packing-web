@@ -9,17 +9,18 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// 영문 색상을 한국어 DB 옵션과 연결하기 위한 맵 확장
 const COLOR_MAP: Record<string, string[]> = {
     'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
-    'WHITE': ['화이트', '아이보리', '백아이보리'],
-    'BLACK': ['블랙', '검정'],
+    'WHITE': ['화이트', '아이보리', '백아이보리', '흰색'],
+    'BLACK': ['블랙', '검정', '검정색'],
     'PINK': ['핑크', '분홍', '핫핑크', '연핑크'],
     'YELLOW': ['옐로우', '노랑'],
     'MELANGE': ['멜란지', '회색', '그레이', 'G MEL', 'MEL', 'GMEL'],
     'GRAY': ['그레이', '회색', '멜란지'],
     'GREY': ['그레이', '회색', '멜란지'],
     'BEIGE': ['베이지', '오트밀'],
-    'BLUE': ['블루', '파랑', '민트', '소라'],
+    'BLUE': ['블루', '파랑', '민트', '소라', 'S BLUE', 'SKY BLUE'],
     'NAVY': ['네이비', '남색'],
     'RED': ['레드', '빨강', '와인'],
     'GREEN': ['그린', '초록'],
@@ -37,16 +38,11 @@ function normalizeStr(s: any) {
     return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase();
 }
 
-/**
- * 정밀 매칭 (바코드 성격의 필드만 정밀 타격)
- */
 function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number {
     const s = normalizeStr(style);
     if (!s) return 0;
 
     let maxScore = 0;
-    
-    // 바코드나 코드 성격의 필드만 집중적으로 검색
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
@@ -56,14 +52,12 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number
         else if (val.startsWith(s)) currentScore = 90;
         else if (val.includes(s)) currentScore = 70;
         else {
-            // Fuzzy 80% 매칭
             let matches = 0;
             const minLen = Math.min(s.length, val.length);
             for(let i=0; i<minLen; i++) if(s[i] === val[i]) matches++;
             const ratio = matches / Math.max(s.length, val.length);
             if (ratio >= 0.8) currentScore = (ratio * 80);
         }
-        
         if (currentScore > maxScore) maxScore = currentScore;
     }
     return maxScore;
@@ -93,19 +87,10 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     let dbRows: any[] = [];
     let barcodeCols: string[] = [];
     try {
-        // 1. 컬럼 구조 파악
         const tableInfo = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'products'");
         const allCols = tableInfo.rows.map(r => r.column_name);
-        
-        // 바코드, 코드, 스타일 등의 이름이 들어간 '핵심 매칭 필드' 추출
-        barcodeCols = allCols.filter(c => 
-            ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k))
-        );
-        
-        // 만약 후보가 없다면 상품코드와 상품명이라도 사용
-        if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
-
-        // 2. 전체 데이터 조회
+        barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드'].some(k => c.toLowerCase().includes(k)));
+        if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명'].filter(c => allCols.includes(c));
         const result = await client.query('SELECT * FROM products');
         dbRows = result.rows;
     } finally {
@@ -117,22 +102,30 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         let bestMatch: any = null, bestScore = -1;
 
         for (let row of dbRows) {
-            // 핵심 필드(바코드 등)에서만 점수 측정
             const score = getMatchScore(ex.styleNo, row, barcodeCols);
             
-            // 색상 일치 여부로 정확도 보정 (+20점 가점)
             let colorBonus = 0;
             const opt = (row["옵션"] || "").toString().toUpperCase();
             const exColor = ex.color.toUpperCase().trim();
+            
+            // 색상 매칭 가중치 로직 개선
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
-                if (group === exColor || synonyms.includes(exColor)) {
+                if (exColor.includes(group) || synonyms.some(s => exColor.includes(s))) {
                     if ([group, ...synonyms].some(t => opt.includes(t))) {
-                        colorBonus = 20; break;
+                        colorBonus = 30; // 가중치 상향
+                        break;
                     }
                 }
             }
 
-            const totalScore = score + colorBonus;
+            // 상품명 품질 보너스 (코드가 아닌 진짜 이름이 있으면 가점)
+            let nameBonus = 0;
+            const dbName = (row["상품명"] || row["name"] || "").toString();
+            if (dbName && dbName !== row["상품코드"] && dbName.length > 3) {
+                nameBonus = 10;
+            }
+
+            const totalScore = score + colorBonus + nameBonus;
             if (totalScore > bestScore) {
                 bestScore = totalScore;
                 bestMatch = row;
@@ -140,8 +133,8 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         }
 
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
-        // 기준 점수를 높여 오매칭 방지 (60점 이상만 확정)
-        if (bestMatch && bestScore >= 60) {
+        
+        if (bestMatch && bestScore >= 50) { // 매칭 문턱값 소폭 조정하여 성공률 제고
             let korColor = ex.color;
             const optVal = (bestMatch["옵션"] || "").toString();
             const optParts = optVal.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
@@ -149,7 +142,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
             
             let foundGroup = "";
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
-                if (group === exColor || synonyms.includes(exColor)) { foundGroup = group; break; }
+                if (exColor.includes(group) || synonyms.some(s => exColor.includes(s))) { foundGroup = group; break; }
             }
             if (foundGroup) {
                 const targets = [foundGroup, ...COLOR_MAP[foundGroup]];
@@ -160,9 +153,15 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
                 }
             }
 
+            // 매칭된 상품의 이름이 코드와 같다면 PDF의 원본 상품명을 사용
+            let finalName = bestMatch["상품명"] || bestMatch["name"] || '상품명누락';
+            if (finalName === bestMatch["상품코드"] || finalName.length < 2) {
+                finalName = ex.pdfName;
+            }
+
             matchedRaw.push({
                 productCode: bestMatch["상품코드"] || bestMatch["code"] || '코드누락',
-                sheetName: bestMatch["상품명"] || bestMatch["name"] || '상품명누락',
+                sheetName: finalName,
                 color: korColor, size: ex.size, qty: ex.qty,
                 originalKey: originalKey
             });
