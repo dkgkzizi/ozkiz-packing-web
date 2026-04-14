@@ -12,8 +12,8 @@ export interface PackingResult {
 }
 
 /**
- * 데스크톱 버전(패킹리스트_변환기/parser.js)의 로직을 100% 그대로 이식한 파서입니다.
- * 좌표값, 필터링, 정렬 로직이 데스크톱과 완벽히 일치합니다.
+ * 와이드 레이아웃 대응 강화 파서입니다.
+ * 가로 좌표 제한을 대폭 넓히고 수량 추출 누락을 방지합니다.
  */
 export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
   return new Promise((resolve, reject) => {
@@ -27,7 +27,6 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
         let curS = "", curN = "", curC = "";
         let curBoxes = 1;
 
-        // 페이지 루프 (results, sizes, curS 등이 바깥에 선언되어 있어 멀티페이지 대응 가능)
         pdfData.Pages.forEach((page: any) => {
             let rowsRaw: Record<string, any[]> = {};
             page.Texts.forEach((t: any) => {
@@ -43,13 +42,13 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
             let sortedY = Object.keys(rowsRaw).sort((a,b)=>Number(a)-Number(b));
             sortedY.forEach(ry => {
                 let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
-                // 데스크톱 버전의 isMetaRow 로직 (Line 33)
                 const isMetaRow = cols.some(c => ['PAGE', 'SUB', 'PER', 'WEIGHT', 'DATE', 'INVOICE', 'TOTAL', 'NET', 'GROSS'].some(k => c.text.toUpperCase().includes(k)));
                 
                 let ctnF = cols.find(c => c.x > 0.5 && c.x < 2.0 && /^[0-9]+$/.test(c.text));
                 let ctnT = cols.find(c => c.x >= 2.0 && c.x < 3.5 && /^[0-9]+$/.test(c.text));
                 
-                let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 21.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                // 수량 데이터 감지 범위를 30.0까지 대폭 확장
+                let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 30.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 let styleInZone = cols.find(c => c.x >= 3.5 && c.x < 6.5 && c.text.length >= 3);
                 let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);
 
@@ -79,21 +78,22 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
                         curBoxes = (vT - vF + 1); if (curBoxes <= 0) curBoxes = 1;
                     }
 
+                    // 사이즈 매칭 루프 - 모든 감지된 사이즈에 대해 수량 확인
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        if (sxNum < 10.0 || sxNum > 21.5) return;
                         let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.0);
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
-                            if (q > 0 && q < 500) {
+                            // 매우 큰 수량이나 0 제외
+                            if (q > 0 && q < 1000) {
                                 results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * curBoxes });
                             }
                         }
                     });
                 } else if (!isMetaRow) {
-                    // 데스크톱 버전의 사이즈 감지 로직 (Line 80-86)
+                    // 사이즈 헤더 인식 범위도 30.0까지 확장
                     let potSizes = cols.filter(c => 
-                        c.x > 10.0 && c.x < 21.5 && 
+                        c.x > 10.0 && c.x < 30.0 && 
                         c.text.length <= 8 && 
                         !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN'].some(k => c.text.toUpperCase().includes(k)) &&
                         /^[0-9A-Z\/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
@@ -106,7 +106,6 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
             });
         });
 
-        // 결과 합산
         const aggregated: Record<string, any> = {};
         results.forEach(res => {
             const key = `${res.style}|${res.name}|${res.color}|${res.size}`;
