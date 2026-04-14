@@ -12,8 +12,8 @@ export interface PackingResult {
 }
 
 /**
- * 데스크톱 버전(패킹리스트_변환기)의 로직을 100% 이식한 파서입니다.
- * pdf2json v4.0.2 좌표 체계에 최적화되어 있습니다.
+ * 대용량 및 멀티 페이지 PDF 대응을 위해 강화된 파서입니다.
+ * 필터링 로직을 완화하고 헤더 인식의 견고함을 높였습니다.
  */
 export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
   return new Promise((resolve, reject) => {
@@ -27,15 +27,17 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
         let curS = "", curN = "", curC = "";
         let curBoxes = 1;
 
+        // 모든 페이지를 순차적으로 처리
         pdfData.Pages.forEach((page: any) => {
             let rowsRaw: Record<string, any[]> = {};
             page.Texts.forEach((t: any) => {
                 let txt = "";
-                // 데스크톱 버전과 동일한 디코딩 로직 적용
                 try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
                 if (!txt) return;
+                
                 let y = t.y;
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.4);
+                // y좌표 오차 범위를 0.5로 약간 넓혀 데이터 누락 방지
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.5);
                 if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
                 else rowsRaw[y] = [{ x: t.x, text: txt }];
             });
@@ -43,17 +45,22 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
             let sortedY = Object.keys(rowsRaw).sort((a,b)=>Number(a)-Number(b));
             sortedY.forEach(ry => {
                 let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
-                // 데스크톱 버전(Line 33)의 isMetaRow와 동일한 키워드 세트 적용
-                const isMetaRow = cols.some(c => ['PAGE', 'SUB', 'PER', 'WEIGHT', 'DATE', 'INVOICE', 'TOTAL', 'NET', 'GROSS'].some(k => c.text.toUpperCase().includes(k)));
                 
-                // 데스크톱 버전(Line 35-39)의 좌표값 그대로 이식
+                // MetaRow 필터 완화: 텍스트가 많은 경우 합계행으로 오인하지 않도록 조건 강화
+                const fullLineText = cols.map(c => c.text.toUpperCase()).join(' ');
+                const isMetaRow = (
+                    (fullLineText.includes('TOTAL') && (fullLineText.includes('KGS') || fullLineText.includes('GROSS') || fullLineText.includes('NET'))) ||
+                    fullLineText.includes('PAGE ') ||
+                    fullLineText.includes('DATE :')
+                );
+                
                 let ctnF = cols.find(c => c.x > 0.5 && c.x < 2.0 && /^[0-9]+$/.test(c.text));
                 let ctnT = cols.find(c => c.x >= 2.0 && c.x < 3.5 && /^[0-9]+$/.test(c.text));
                 
                 let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 21.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 let styleInZone = cols.find(c => c.x >= 3.5 && c.x < 6.5 && c.text.length >= 3);
                 
-                // 데스크톱 버전(Line 40)의 로직 그대로 이식
+                // 데이터 행 판단 기준: 스타일 번호가 있거나, 수량 데이터가 확실히 있는 경우
                 let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);
 
                 if (isDataRow && !isMetaRow) {
@@ -88,18 +95,18 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
                         let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.0);
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
-                            if (q > 0 && q < 500) {
+                            if (q > 0) {
                                 results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * curBoxes });
                             }
                         }
                     });
-                } else if (!isMetaRow) {
-                    // 데스크톱 버전(Line 80-86)의 사이즈 감지 로직 그대로 이식
+                } else {
+                    // 사이즈 헤더 인식 (isMetaRow에 관계없이 감지 가능하도록 하여 누락 방지)
                     let potSizes = cols.filter(c => 
                         c.x > 10.0 && c.x < 21.5 && 
                         c.text.length <= 8 && 
-                        !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN'].some(k => c.text.toUpperCase().includes(k)) &&
-                        /^[0-9A-Z\/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                        !['QTY','PCS','TOTAL','PER','BOX','CTN'].some(k => c.text.toUpperCase() === k) &&
+                        /^[0-10A-Z\/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
                     );
                     if (potSizes.length >= 2 && !styleInZone) {
                         sizes = {}; 
@@ -109,7 +116,7 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
             });
         });
 
-        // 수량 자동 합산 (데스크톱 버전 Line 95와 동일)
+        // 수량 합산
         const aggregated: Record<string, any> = {};
         results.forEach(res => {
             const key = `${res.style}|${res.name}|${res.color}|${res.size}`;
@@ -122,7 +129,6 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
         
         const finalResults = Object.values(aggregated).sort((a: any, b: any) => a.style.localeCompare(b.style));
 
-        // 엑셀 워크세트 생성 (데스크톱 버전 Line 107-136 구조 그대로 이식)
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Packing List');
         worksheet.columns = [
