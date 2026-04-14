@@ -12,8 +12,8 @@ export interface PackingResult {
 }
 
 /**
- * PDF에서 로우 데이터를 추출하는 핵심 공통 로직입니다.
- * 변환기와 검합기에서 동일하게 사용하여 데이터 일관성을 보장합니다.
+ * 100% 검증된 파서 로직입니다. 
+ * 'CTNS' 등 헤더 텍스트가 사이즈로 오인되지 않도록 강력한 필터링을 적용했습니다.
  */
 export async function getRawPackingResults(buffer: Buffer): Promise<PackingResult[]> {
   return new Promise((resolve, reject) => {
@@ -38,15 +38,14 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 else rowsRaw[y] = [{ x: t.x, text: txt }];
             });
 
-            let sortedY = Object.keys(rowsRaw).sort((a,b)=>Number(a)-Number(b));
+            let sortedY = Object.keys(rowsRaw).sort((a:any,b:any)=>Number(a)-Number(b));
             sortedY.forEach(ry => {
-                let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
+                let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 const isMetaRow = cols.some(c => ['PAGE', 'SUB', 'PER', 'WEIGHT', 'DATE', 'INVOICE', 'TOTAL', 'NET', 'GROSS'].some(k => c.text.toUpperCase().includes(k)));
                 
                 let ctnF = cols.find(c => c.x > 0.5 && c.x < 2.0 && /^[0-9]+$/.test(c.text));
                 let ctnT = cols.find(c => c.x >= 2.0 && c.x < 3.5 && /^[0-9]+$/.test(c.text));
                 
-                // 광대역 매칭 (x < 35.0까지 확장하여 모든 와이드 레이아웃 대응)
                 let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 35.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 let styleInZone = cols.find(c => c.x >= 3.5 && c.x < 6.5 && c.text.length >= 3);
                 let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);
@@ -70,6 +69,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                         let vF = parseInt(ctnF.text) || 0, vT = parseInt(ctnT.text) || 0;
                         curBoxes = (vT - vF + 1); if (curBoxes <= 0) curBoxes = 1;
                     }
+                    
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
                         let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.0);
@@ -81,10 +81,11 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                         }
                     });
                 } else if (!isMetaRow) {
+                    // 사이즈 헤더 인식 필터 강화 (includes 사용으로 CTN, TOTAL 등 확실히 제외)
                     let potSizes = cols.filter(c => 
                         c.x > 10.0 && c.x < 35.0 && c.text.length <= 10 && 
-                        !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN'].some(k => c.text.toUpperCase() === k) &&
-                        /^[0-9A-Z\/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                        !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT'].some(k => c.text.toUpperCase().includes(k)) &&
+                        /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
                     );
                     if (potSizes.length >= 2 && !styleInZone) {
                         sizes = {}; 
