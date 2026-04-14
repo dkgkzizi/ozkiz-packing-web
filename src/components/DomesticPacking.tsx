@@ -29,9 +29,9 @@ type PackingItem = {
 };
 
 const TYPES = [
-  { id: 'naeju', name: '내주 (수기)', desc: '공장 수기 전표' },
-  { id: 'minju', name: '민주 (거래)', desc: '거래명세표 양식' },
-  { id: 'sejong', name: '세종 (거래)', desc: '세종 업체 양식' }
+  { id: 'naeju', name: '내주' },
+  { id: 'minju', name: '민주' },
+  { id: 'sejong', name: '세종' }
 ];
 
 export default function DomesticPacking() {
@@ -140,26 +140,27 @@ export default function DomesticPacking() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-12 xl:col-span-5 space-y-6">
           <div className="bg-slate-900/50 border border-white/5 rounded-3xl p-8 backdrop-blur-3xl shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+            {/* BACKGROUND ICON: Added pointer-events-none to fix button blocking */}
+            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none z-0">
                 <FileSpreadsheet className="w-32 h-32 text-orange-500" />
             </div>
 
-            <h3 className="text-xs font-black text-white uppercase tracking-widest mb-8 flex items-center gap-2">
+            <h3 className="text-xs font-black text-white uppercase tracking-widest mb-8 flex items-center gap-2 relative z-10">
               <Sparkles className="w-4 h-4 text-orange-500" />
               Analyze Configuration
             </h3>
 
-            <div className="grid grid-cols-3 gap-3 mb-8">
+            {/* SELECTION GRID: Clean UI without sub-text */}
+            <div className="grid grid-cols-3 gap-3 mb-8 relative z-10">
               {TYPES.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setType(t.id)}
-                  className={`text-center p-4 rounded-2xl border transition-all duration-300 ${
+                  className={`text-center py-5 rounded-2xl border transition-all duration-300 font-black text-sm ${
                     type === t.id ? 'bg-orange-600/10 border-orange-500/50 text-white shadow-[0_0_20px_rgba(239,104,15,0.1)]' : 'bg-white/2 border-transparent text-slate-500 hover:bg-white/5'
                   }`}
                 >
-                  <div className="font-black text-[12px] mb-1">{t.name.split(' ')[0]}</div>
-                  <div className="text-[8px] opacity-40 font-bold uppercase tracking-widest leading-none">{t.desc.split(' ')[0]}</div>
+                  {t.name}
                 </button>
               ))}
             </div>
@@ -264,4 +265,8 @@ export default function DomesticPacking() {
       </div>
     </div>
   );
+}
+
+function Search(props: any) {
+    return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
 }
