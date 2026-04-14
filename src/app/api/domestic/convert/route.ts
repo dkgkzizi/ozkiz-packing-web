@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
+    const type = formData.get('type') as string || 'naeju';
 
     if (!file) return NextResponse.json({ success: false, message: '파일 없음' }, { status: 400 });
     const fileName = file.name.toLowerCase();
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
             }
         });
     } 
-    // --- CASE 2: IMAGE OR PDF (AI RESTORED) ---
+    // --- CASE 2: IMAGE OR PDF (AI RECOVERY) ---
     else {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
@@ -72,22 +73,34 @@ export async function POST(req: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
         const base64Data = buffer.toString('base64');
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        
+        // FIX: Using 'gemini-1.5-flash-latest' which is more stable in v1beta
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        
+        const promptNaeju = `이 이미지에서 [상품명, 색상, 사이즈, 수량]을 아주 정확히 추출해 주세요. '하와이포켓(기모치랭스)' 같은 이름 전체를 가져오고 수량은 숫자만 추출하세요. JSON {items: [...], detectedSeason}`;
         
         const aiRes = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts: [
-                { text: `이 전표에서 [상품명, 색상, 사이즈, 수량]을 추출하고 연도가 보이면 detectedSeason에 넣으세요. JSON {items: [...], detectedSeason: "26"}` }, 
+                { text: promptNaeju }, 
                 { inline_data: { mime_type: file.type, data: base64Data } }
             ] }],
-            generationConfig: { response_mime_type: "application/json" }
+            generationConfig: { 
+                response_mime_type: "application/json",
+                temperature: 0.1
+            }
           })
         });
 
         const aiData = await aiRes.json();
-        if (!aiData.candidates?.[0]) throw new Error('AI 분석 실패: ' + JSON.stringify(aiData.error || 'Unknown Error'));
+        
+        if (aiData.error) {
+            throw new Error(`Gemini API Error: ${aiData.error.message} (${aiData.error.code})`);
+        }
+        
+        if (!aiData.candidates?.[0]) throw new Error('AI 분석 실패: 응답이 비어있습니다.');
         const parsed = JSON.parse(aiData.candidates[0].content.parts[0].text);
         rawItems = parsed.items || [];
         detectedSeason = parsed.detectedSeason || "";
@@ -127,7 +140,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ success: true, items: finalItems });
   } catch (err: any) {
-    console.error(err);
-    return NextResponse.json({ success: false, message: '매칭 처리 오류: ' + err.message }, { status: 500 });
+    console.error('CONVERT_ERROR:', err);
+    return NextResponse.json({ success: false, message: '분석 처리 중 오류가 발생했습니다: ' + err.message }, { status: 500 });
   }
 }
