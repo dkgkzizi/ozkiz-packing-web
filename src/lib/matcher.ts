@@ -9,7 +9,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// 영문 색상을 한국어 DB 옵션과 연결하기 위한 맵 확장
 const COLOR_MAP: Record<string, string[]> = {
     'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
     'WHITE': ['화이트', '아이보리', '백아이보리', '흰색'],
@@ -38,6 +37,9 @@ function normalizeStr(s: any) {
     return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase();
 }
 
+/**
+ * 정밀 매칭 스코어링 (품질 가중치 적용)
+ */
 function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number {
     const s = normalizeStr(style);
     if (!s) return 0;
@@ -48,7 +50,7 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number
         if (!val) continue;
 
         let currentScore = 0;
-        if (val === s) currentScore = 100;
+        if (val === s) currentScore = 150; // 기본점수 상향
         else if (val.startsWith(s)) currentScore = 90;
         else if (val.includes(s)) currentScore = 70;
         else {
@@ -89,8 +91,8 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
     try {
         const tableInfo = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'products'");
         const allCols = tableInfo.rows.map(r => r.column_name);
-        barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드'].some(k => c.toLowerCase().includes(k)));
-        if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명'].filter(c => allCols.includes(c));
+        barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k)));
+        if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
         const result = await client.query('SELECT * FROM products');
         dbRows = result.rows;
     } finally {
@@ -102,30 +104,32 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         let bestMatch: any = null, bestScore = -1;
 
         for (let row of dbRows) {
-            const score = getMatchScore(ex.styleNo, row, barcodeCols);
-            
-            let colorBonus = 0;
-            const opt = (row["옵션"] || "").toString().toUpperCase();
+            const baseScore = getMatchScore(ex.styleNo, row, barcodeCols);
+            if (baseScore <= 0) continue;
+
+            // --- 품질 가산점 시스템 ---
+            let qualityBonus = 0;
+            const dbName = (row["상품명"] || row["name"] || "").toString();
+            const dbCode = (row["상품코드"] || row["code"] || "").toString();
+            const dbOpt = (row["옵션"] || "").toString().toUpperCase();
             const exColor = ex.color.toUpperCase().trim();
-            
-            // 색상 매칭 가중치 로직 개선
+
+            // 1. 진짜 이름 보너스 (압도적 가산점)
+            if (dbName && dbName !== dbCode && dbName.length > 3) {
+                qualityBonus += 100;
+            }
+
+            // 2. 색상 일치 보너스
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
                 if (exColor.includes(group) || synonyms.some(s => exColor.includes(s))) {
-                    if ([group, ...synonyms].some(t => opt.includes(t))) {
-                        colorBonus = 30; // 가중치 상향
+                    if ([group, ...synonyms].some(t => dbOpt.includes(t))) {
+                        qualityBonus += 50; 
                         break;
                     }
                 }
             }
 
-            // 상품명 품질 보너스 (코드가 아닌 진짜 이름이 있으면 가점)
-            let nameBonus = 0;
-            const dbName = (row["상품명"] || row["name"] || "").toString();
-            if (dbName && dbName !== row["상품코드"] && dbName.length > 3) {
-                nameBonus = 10;
-            }
-
-            const totalScore = score + colorBonus + nameBonus;
+            const totalScore = baseScore + qualityBonus;
             if (totalScore > bestScore) {
                 bestScore = totalScore;
                 bestMatch = row;
@@ -134,7 +138,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
 
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
         
-        if (bestMatch && bestScore >= 50) { // 매칭 문턱값 소폭 조정하여 성공률 제고
+        if (bestMatch && bestScore >= 60) {
             let korColor = ex.color;
             const optVal = (bestMatch["옵션"] || "").toString();
             const optParts = optVal.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
@@ -153,7 +157,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
                 }
             }
 
-            // 매칭된 상품의 이름이 코드와 같다면 PDF의 원본 상품명을 사용
+            // 최종 이름 결정: DB 이름이 부실하면 PDF 원본 이름을 사용
             let finalName = bestMatch["상품명"] || bestMatch["name"] || '상품명누락';
             if (finalName === bestMatch["상품코드"] || finalName.length < 2) {
                 finalName = ex.pdfName;
@@ -235,3 +239,5 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
 
     return outWb;
 }
+
+// Elite Quality Fix: 1776137975219
