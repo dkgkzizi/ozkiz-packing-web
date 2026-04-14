@@ -10,7 +10,9 @@ import {
   Trash2,
   Table,
   Search,
-  CheckCircle2
+  CheckCircle2,
+  Calendar,
+  FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -23,6 +25,7 @@ type PackingItem = {
   qty: number;
   matchedCode: string;
   matchedName: string;
+  season: string;
 };
 
 const TYPES = [
@@ -37,20 +40,32 @@ export default function DomesticPacking() {
   const [type, setType] = useState('naeju');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PackingItem[] | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (f: File) => {
+    setFile(f);
+    if (f.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setPreview(ev.target?.result as string);
+      reader.readAsDataURL(f);
+    } else {
+      setPreview(null);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) {
-      setFile(f);
-      if (f.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (ev) => setPreview(ev.target?.result as string);
-        reader.readAsDataURL(f);
-      } else {
-        setPreview(null);
-      }
-    }
+    if (f) handleFile(f);
+  };
+
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const onDragLeave = () => { setIsDragging(false); };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) handleFile(f);
   };
 
   const handleProcess = async () => {
@@ -69,9 +84,9 @@ export default function DomesticPacking() {
       } else {
         alert(data.message);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('분석 및 매칭 중 오류가 발생했습니다.');
+      alert('분석 및 매칭 중 오류가 발생했습니다: ' + e.message);
     } finally {
       setLoading(false);
     }
@@ -85,25 +100,23 @@ export default function DomesticPacking() {
     worksheet.columns = [
       { header: '상품코드', key: 'matchedCode', width: 20 },
       { header: '표준상품명', key: 'matchedName', width: 40 },
-      { header: '인식상품명', key: 'productName', width: 30 },
+      { header: '시즌', key: 'season', width: 12 },
       { header: '색상', key: 'color', width: 12 },
       { header: '사이즈', key: 'size', width: 10 },
       { header: '수량', key: 'qty', width: 10 }
     ];
 
-    const header = worksheet.getRow(1);
-    header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED8936' } }; // Orange
+    const hRow = worksheet.getRow(1);
+    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFED8936' } };
 
     results.forEach(item => worksheet.addRow(item));
-    
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), `국내매칭_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-700">
-      {/* Header Area */}
       <header className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <div className="px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[10px] font-bold uppercase tracking-widest">
@@ -111,30 +124,29 @@ export default function DomesticPacking() {
           </div>
           <ChevronRight className="w-4 h-4 text-slate-600" />
           <div className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
-            <Search className="w-3 h-3" />
-            <span>Supabase Live Sync Ready</span>
+            <Calendar className="w-3 h-3 text-orange-400" />
+            <span>Robust Matcher Active</span>
           </div>
         </div>
         <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase mb-4">
-          Domestic <span className="text-orange-500">Master</span>
+          Domestic <span className="text-orange-500">Elite</span>
         </h1>
         <p className="text-slate-500 font-bold max-w-2xl leading-relaxed">
-          AI 분석 즉시 수파베이스 DB와 6단계 정밀 대조를 시작합니다. <br />
-          더 빠르고 정확하게 정식 상품코드를 찾아내어 엑셀로 변환합니다.
+          이미지 분석 및 정교한 엑셀 매칭을 동시에 지원합니다. <br />
+          유사도 80% 이상의 최신 시즌 상품을 수파베이스에서 즉시 찾아냅니다.
         </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left: Control Panel */}
         <div className="lg:col-span-12 xl:col-span-5 space-y-6">
           <div className="bg-slate-900/50 border border-white/5 rounded-3xl p-8 backdrop-blur-3xl shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                <Search className="w-32 h-32 text-white" />
+                <FileSpreadsheet className="w-32 h-32 text-orange-500" />
             </div>
-            
+
             <h3 className="text-xs font-black text-white uppercase tracking-widest mb-8 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-orange-500" />
-              Real-time DB Matcher
+              Analyze Configuration
             </h3>
 
             <div className="grid grid-cols-3 gap-3 mb-8">
@@ -142,71 +154,58 @@ export default function DomesticPacking() {
                 <button
                   key={t.id}
                   onClick={() => setType(t.id)}
-                  className={`text-center p-3 rounded-2xl border transition-all duration-300 ${
-                    type === t.id 
-                    ? 'bg-orange-600/10 border-orange-500/50 text-white ring-1 ring-orange-500/20' 
-                    : 'bg-white/2 border-transparent text-slate-500 hover:bg-white/5'
+                  className={`text-center p-4 rounded-2xl border transition-all duration-300 ${
+                    type === t.id ? 'bg-orange-600/10 border-orange-500/50 text-white shadow-[0_0_20px_rgba(239,104,15,0.1)]' : 'bg-white/2 border-transparent text-slate-500 hover:bg-white/5'
                   }`}
                 >
-                  <div className="font-black text-[11px] mb-1">{t.name.split(' ')[0]}</div>
+                  <div className="font-black text-[12px] mb-1">{t.name.split(' ')[0]}</div>
                   <div className="text-[8px] opacity-40 font-bold uppercase tracking-widest leading-none">{t.desc.split(' ')[0]}</div>
                 </button>
               ))}
             </div>
 
             <div 
-              onClick={() => fileInputRef.current?.click()}
-              className={`relative h-64 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center transition-all duration-300 cursor-pointer overflow-hidden ${
-                file ? 'border-orange-500/50 bg-orange-500/5' : 'border-slate-800 hover:border-slate-700 bg-slate-900/80 shadow-inner'
-              }`}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                onClick={() => fileInputRef.current?.click()} 
+                className={`relative h-64 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center transition-all duration-300 cursor-pointer ${
+                    isDragging ? 'border-orange-500 bg-orange-500/10 scale-[1.02]' : 
+                    file ? 'border-orange-500/50 bg-orange-500/5' : 'border-slate-800 hover:border-slate-700 bg-slate-900/80 shadow-inner'
+                }`}
             >
-              <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileChange} accept="image/*,application/pdf" />
+              <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileChange} accept="image/*,application/pdf,.xlsx,.xls,.csv" />
               {preview && <img src={preview} className="absolute inset-0 w-full h-full object-cover opacity-20" alt="Preview" />}
-
+              
               <div className="relative z-10 flex flex-col items-center">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all duration-500 ${
                   file ? 'bg-orange-500 text-white shadow-xl shadow-orange-500/40' : 'bg-slate-800 text-slate-500'
                 }`}>
                   <FileUp className="w-8 h-8" />
                 </div>
-                <p className="text-white font-black text-sm tracking-tight mb-1">{file ? file.name : 'DROP INVOICE'}</p>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">JPG, PNG OR PDF</p>
+                <p className="text-white font-black text-sm tracking-tight">{file ? file.name : 'DROP FILE HERE'}</p>
+                <p className="text-[9px] font-black text-slate-600 mt-2 uppercase tracking-widest">Image, PDF, or Excel</p>
               </div>
             </div>
 
-            <div className="flex gap-4 mt-8">
-              <button 
-                onClick={handleProcess}
-                disabled={!file || loading}
-                className="flex-1 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                <span>{loading ? 'SYNCING...' : 'RUN ANALYTICS'}</span>
-              </button>
-              {file && (
-                <button 
-                  onClick={() => {setFile(null); setPreview(null); setResults(null);}}
-                  className="w-16 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-500 rounded-2xl flex items-center justify-center transition-all border border-white/5"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              )}
-            </div>
+            <button onClick={handleProcess} disabled={!file || loading} className="w-full mt-8 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black py-5 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95">
+              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : (file?.name.match(/\.(xlsx|xls|csv)$/i) ? <FileSpreadsheet className="w-6 h-6" /> : <Search className="w-6 h-6" />)}
+              <span className="text-lg tracking-tighter">{file?.name.match(/\.(xlsx|xls|csv)$/i) ? '매칭 프로세스 실행' : '분석 및 시즌 매칭 시작'}</span>
+            </button>
           </div>
         </div>
 
-        {/* Right: Results Table */}
         <div className="lg:col-span-12 xl:col-span-7">
           <div className="bg-slate-900/50 border border-white/5 rounded-3xl h-full flex flex-col backdrop-blur-3xl shadow-2xl overflow-hidden min-h-[600px]">
-            <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/2">
+            <div className="p-8 border-b border-white/5 flex items-center justify-between">
               <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
                 <Table className="w-4 h-4 text-orange-500" />
-                Consolidated Data
+                Matching Preview
               </h3>
               {results && (
-                <button onClick={handleDownload} className="bg-orange-500 hover:bg-orange-400 text-white text-[10px] font-black uppercase tracking-widest py-2 px-6 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-orange-500/20">
-                  <Download className="w-3 h-3" />
-                  EXPORT SYNCED DATA
+                <button onClick={handleDownload} className="bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase tracking-widest py-2 px-6 rounded-xl flex items-center gap-2 transition-all border border-white/10">
+                  <Download className="w-3 h-3 text-orange-400" />
+                  Download XLSX
                 </button>
               )}
             </div>
@@ -214,19 +213,18 @@ export default function DomesticPacking() {
             <div className="flex-1 overflow-auto custom-scrollbar">
                <AnimatePresence mode="wait">
                  {loading ? (
-                   <div className="h-full flex flex-col items-center justify-center p-12 text-center">
+                   <div className="h-full flex flex-col items-center justify-center p-12 text-center text-glow-orange">
                      <div className="w-24 h-24 border-b-2 border-orange-500 rounded-full animate-spin mb-6" />
-                     <p className="text-xl font-black text-white italic tracking-tighter mb-2">CROSS-REFERENCING DB...</p>
-                     <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">수파베이스 글로벌 마스터와 대조 중</p>
+                     <p className="text-xl font-black text-white italic tracking-tighter mb-2 animate-pulse">CROSS-REFERENCING MASTER DB...</p>
                    </div>
                  ) : results ? (
                    <table className="w-full text-left border-collapse">
-                     <thead className="sticky top-0 z-10">
-                       <tr className="bg-slate-900 border-b border-white/5">
-                         <th className="p-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Master Code</th>
+                     <thead>
+                       <tr className="bg-slate-900/50 border-b border-white/5">
+                         <th className="p-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Code</th>
                          <th className="p-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Matched Name</th>
+                         <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Season</th>
                          <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Qty</th>
-                         <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-white/5">
@@ -234,7 +232,7 @@ export default function DomesticPacking() {
                          <tr key={idx} className="hover:bg-white/2 transition-colors">
                            <td className="p-6">
                              <span className={`text-[11px] font-black tracking-widest px-3 py-1.5 rounded-lg ${
-                               item.matchedCode === '미매칭' ? 'bg-red-500/10 text-red-500' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                               item.matchedCode === '미매칭' ? 'bg-red-500/10 text-red-500' : 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
                              }`}>
                                {item.matchedCode}
                              </span>
@@ -242,31 +240,21 @@ export default function DomesticPacking() {
                            <td className="p-6">
                              <div className="flex flex-col">
                                <span className="text-sm font-bold text-white tracking-tight leading-none mb-1.5">{item.matchedName}</span>
-                               <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest leading-none">OCR: {item.productName} ({item.color}/{item.size})</span>
+                               <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Source: {item.productName} ({item.color}/{item.size})</span>
                              </div>
                            </td>
+                           <td className="p-4 text-center text-[10px] font-bold text-slate-500">{item.season}</td>
                            <td className="p-4 text-center">
                              <span className="text-sm font-black text-orange-400">{item.qty}</span>
-                           </td>
-                           <td className="p-4 text-center">
-                             {item.matchedCode !== '미매칭' ? (
-                               <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center mx-auto">
-                                 <CheckCircle2 className="w-3 h-3 text-green-500" />
-                               </div>
-                             ) : (
-                               <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center mx-auto">
-                                 <AlertCircle className="w-3 h-3 text-red-500" />
-                               </div>
-                             )}
                            </td>
                          </tr>
                        ))}
                      </tbody>
                    </table>
                  ) : (
-                   <div className="h-full flex flex-col items-center justify-center p-12 text-center opacity-20">
-                     <Search className="w-20 h-20 text-slate-600 mb-6" />
-                     <p className="text-sm font-black text-slate-600 uppercase tracking-widest italic">Waiting for Input</p>
+                   <div className="h-full flex flex-col items-center justify-center p-12 text-center opacity-10">
+                     <Search className="w-20 h-20 mb-6" />
+                     <p className="text-sm font-black uppercase tracking-widest italic">Waiting for analysis</p>
                    </div>
                  )}
                </AnimatePresence>
@@ -276,8 +264,4 @@ export default function DomesticPacking() {
       </div>
     </div>
   );
-}
-
-function AlertCircle(props: any) {
-    return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
 }
