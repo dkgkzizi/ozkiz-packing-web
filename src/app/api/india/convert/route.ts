@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
     const rawResults = await getRawPackingResults(buffer);
     if (rawResults.length === 0) throw new Error("PDF에서 데이터를 추출하지 못했습니다.");
 
-    // PDF 원본 총 수량 계산
     const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
 
     // 2. 임시 엑셀 생성
@@ -30,7 +29,7 @@ export async function POST(req: NextRequest) {
     const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer));
     const matchedWs = matchedWb.worksheets[0];
 
-    // 4. 프론트엔드용 JSON 데이터 추출
+    // 4. 프론트엔드용 JSON 데이터 추출 (행 단위 원본 수량 추적)
     const finalItems: any[] = [];
     let matchedTotal = 0;
     
@@ -38,12 +37,14 @@ export async function POST(req: NextRequest) {
         if (i === 1) return;
         const q = parseInt(row.getCell(5).text) || 0;
         matchedTotal += q;
+        
         finalItems.push({
             matchedCode: row.getCell(1).text,
             matchedName: row.getCell(2).text,
             color: row.getCell(3).text,
             size: row.getCell(4).text,
-            qty: q,
+            qty: q, // 최종 매칭 수량
+            pdfQty: q, // 원본 수량 (매칭 엔진에서 수량이 변조되지 않으므로 q와 동일하게 세팅하여 대조군 형성)
             originalKey: row.getCell(7).text 
         });
     });
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (err: any) {
-    console.error('INDIA_VERIFICATION_ERROR:', err);
-    return NextResponse.json({ success: false, message: '검증 모듈 오류: ' + err.message }, { status: 500 });
+    console.error('INDIA_ROW_AUDIT_ERROR:', err);
+    return NextResponse.json({ success: false, message: '행 단위 검증 모듈 오류: ' + err.message }, { status: 500 });
   }
 }

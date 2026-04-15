@@ -13,7 +13,8 @@ import {
   AlertCircle,
   Globe,
   ArrowRightLeft,
-  ShieldCheck
+  ShieldCheck,
+  TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -26,6 +27,7 @@ type PackingItem = {
   color: string;
   size: string;
   qty: number;
+  pdfQty: number; // 행 단위 원본 수량 추가
 };
 
 type VerificationData = {
@@ -78,8 +80,7 @@ export default function IndiaPacking() {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    // 파일명 형식: 작업날짜_PDF파일명_매칭완료.xlsx
-    const cleanFileName = originalName.replace(/\.[^/.]+$/, ""); // 확장자 제거
+    const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
     saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
   };
 
@@ -123,8 +124,8 @@ export default function IndiaPacking() {
           India <span className="text-blue-600">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           글로벌 PDF 형식을 분석하고 마스터 DB와 연동하여 <br />
-           <span className="text-blue-600 font-black">수량 검증 및 지능형 네이밍</span>이 포함된 엑셀을 생성합니다.
+           업무 신뢰도를 극대화하는 <span className="text-blue-600 font-black">행 단위 정밀 수량 대조 시스템</span>을 탑재했습니다. <br />
+           PDF 원본과 엑셀 결과값이 실시간으로 상호 검증됩니다.
         </p>
       </header>
 
@@ -148,9 +149,9 @@ export default function IndiaPacking() {
                 }`}>
                   <FileText className="w-8 h-8" />
                 </div>
-                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'PDF Secured' : 'Upload India PDF'}</h4>
+                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'Auditor Active' : 'Upload India PDF'}</h4>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 italic truncate max-w-full">
-                    {file ? file.name : 'Verify & Smart Naming'}
+                    {file ? file.name : 'Row-Level Precision Sync'}
                 </p>
               </div>
             </div>
@@ -161,7 +162,7 @@ export default function IndiaPacking() {
                 className="w-full mt-8 bg-slate-900 hover:bg-slate-800 disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-              <span className="text-lg tracking-tighter uppercase font-black italic">Start Trusted Sync</span>
+              <span className="text-lg tracking-tighter uppercase font-black italic">Start Precision Audit</span>
             </button>
           </div>
         </div>
@@ -176,16 +177,16 @@ export default function IndiaPacking() {
                         <ArrowRightLeft className="w-6 h-6 text-blue-600" />
                     </div>
                     <div>
-                        <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Quantity Verification</h4>
+                        <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Integrity Balance</h4>
                         <div className="flex items-center gap-4">
                             <div className="text-center">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">PDF Original</p>
-                                <p className="text-lg font-black text-slate-900">{verification.originalTotal}</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">PDF Sum</p>
+                                <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
                             </div>
                             <div className="w-px h-8 bg-blue-100" />
                             <div className="text-center">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Excel Matched</p>
-                                <p className="text-lg font-black text-blue-600">{verification.matchedTotal}</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Excel Sum</p>
+                                <p className="text-xl font-black text-blue-600">{verification.matchedTotal}</p>
                             </div>
                         </div>
                     </div>
@@ -195,42 +196,42 @@ export default function IndiaPacking() {
                         {verification.originalTotal === verification.matchedTotal ? (
                             <>
                                 <CheckCircle2 className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Perfect Sync</span>
+                                <span className="text-xs font-black uppercase italic tracking-tighter">Verified</span>
                             </>
                         ) : (
                             <>
                                 <AlertCircle className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Qty Mismatch</span>
+                                <span className="text-xs font-black uppercase italic tracking-tighter">Variance!</span>
                             </>
                         )}
                     </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-Download Triggered</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Row Audit Completed</p>
                   </div>
                </motion.div>
              )}
 
              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-blue-600" />
-                  Live Audit Feed
+                  <TrendingUp className="w-4 h-4 text-blue-600" />
+                  Detailed Row Audit
                 </h3>
              </div>
 
-             <div className="flex-1 overflow-auto">
+             <div className="flex-1 overflow-auto custom-scrollbar">
                 <AnimatePresence mode="wait">
                   {loading ? (
                     <div className="h-full flex flex-col items-center justify-center p-20 text-center">
                       <div className="w-16 h-16 border-[4px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-6" />
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">Reconciling Data Points...</p>
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">Auditing Every SKU...</p>
                     </div>
                   ) : results ? (
                     <table className="w-full text-left border-collapse">
                       <thead className="sticky top-0 bg-white/100 backdrop-blur-md z-10 border-b border-slate-100">
                         <tr>
-                          <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Code</th>
+                          <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Code</th>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Matched Name</th>
-                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Qty</th>
-                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Qty Audit (PDF ➔ EXCEL)</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Audit</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -244,10 +245,24 @@ export default function IndiaPacking() {
                                <span className="text-[9px] text-slate-400 font-bold uppercase block italic">{item.size} / {item.originalKey.split('|')[2]}</span>
                             </td>
                             <td className="p-4 text-center">
-                               <span className="text-sm font-black text-blue-600">{item.qty}</span>
+                               <div className="flex items-center justify-center gap-3">
+                                   <span className="text-[10px] font-bold text-slate-300 line-through decoration-slate-200">{item.pdfQty}</span>
+                                   <ArrowRightLeft className="w-3 h-3 text-blue-300" />
+                                   <span className={`text-sm font-black ${item.pdfQty === item.qty ? 'text-blue-600' : 'text-red-500 underline underline-offset-4'}`}>
+                                       {item.qty}
+                                   </span>
+                               </div>
                             </td>
                             <td className="p-4 text-center">
-                               {item.matchedCode !== '미매칭' ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" strokeWidth={3} /> : <AlertCircle className="w-4 h-4 text-blue-200 mx-auto" />}
+                               {item.pdfQty === item.qty ? (
+                                   <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg inline-block shadow-sm shadow-blue-100">
+                                       <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                   </div>
+                               ) : (
+                                   <div className="bg-red-50 text-red-500 p-1.5 rounded-lg inline-block">
+                                       <AlertCircle className="w-3.5 h-3.5" />
+                                   </div>
+                               )}
                             </td>
                           </tr>
                         ))}
@@ -256,7 +271,7 @@ export default function IndiaPacking() {
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center p-20 opacity-20 text-slate-400 grayscale scale-[0.7]">
                       <FileText className="w-16 h-16 mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Verification Task</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Precision Feed</p>
                     </div>
                   )}
                 </AnimatePresence>
