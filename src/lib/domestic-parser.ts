@@ -1,5 +1,5 @@
 import PDFParser from 'pdf2json';
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 
 export interface PackingResult {
   style: string;
@@ -10,40 +10,42 @@ export interface PackingResult {
 }
 
 /**
- * 국내 패킹리스트 범용 파서 (PDF & Excel 지원)
+ * 국내 패킹리스트 범용 지능형 파서 (XLS, XLSX, PDF 지원)
  */
 export async function getDomesticPackingResults(buffer: Buffer): Promise<PackingResult[]> {
-  // 1. 엑셀 파일 처리 시도
+  // 1. 엑셀 파일 처리 시도 (구형 .XLS 지원)
   try {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
     
     let results: PackingResult[] = [];
-    const worksheet = workbook.worksheets[0];
-
-    worksheet.eachRow((row, rowNum) => {
-        if (rowNum === 1) return;
-        
-        // 국내 스타일 번호 (S로 시작하거나 길이 6자 이상)
-        let style = row.getCell(1).text?.trim() || "";
-        let qty = parseInt(row.getCell(5).text) || parseInt(row.getCell(4).text) || 0;
-        
-        if (style && style.length >= 3 && qty > 0) {
-            results.push({
-                style: style,
-                name: row.getCell(2).text?.trim() || "국내 상품",
-                color: row.getCell(3).text?.trim() || "기본",
-                size: "FREE",
-                qty: qty
-            });
-        }
-    });
-    if (results.length > 0) return results;
+    
+    if (jsonData.length > 0) {
+        jsonData.forEach((row, idx) => {
+            if (idx === 0) return;
+            
+            let style = String(row[0] || "").trim();
+            let qty = parseInt(String(row[4] || row[3] || 0));
+            
+            if (style && style.length >= 3 && qty > 0) {
+                results.push({
+                    style: style,
+                    name: String(row[1] || "국내 상품").trim(),
+                    color: String(row[2] || "기본").trim(),
+                    size: "FREE",
+                    qty: qty
+                });
+            }
+        });
+        if (results.length > 0) return results;
+    }
   } catch (e) {
-    console.log("Not an Excel file, falling back to PDF...");
+    console.log("Not a recognizable Excel (XLS/XLSX) file, falling back to PDF...");
   }
 
-  // 2. PDF/Image 처리 로직
+  // 2. PDF/Image 처리 로직 (Fallback)
   return new Promise((resolve, reject) => {
     const pdfParser = new (PDFParser as any)();
     pdfParser.on('pdfParser_dataError', (errData: any) => reject(errData.parserError));

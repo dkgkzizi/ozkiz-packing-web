@@ -1,5 +1,5 @@
 import PDFParser from 'pdf2json';
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 
 export interface PackingResult {
   style: string;
@@ -10,42 +10,44 @@ export interface PackingResult {
 }
 
 /**
- * 중국 패킹리스트 범용 파서 (PDF & Excel 지원)
+ * 중국 패킹리스트 범용 지능형 파서 (XLS, XLSX, PDF 지원)
  */
 export async function getChinaPackingResults(buffer: Buffer): Promise<PackingResult[]> {
-  // 1. 엑셀 파일인지 먼저 확인 (파일 매직 넘버 또는 구조 확인)
+  // 1. 엑셀 파일 처리 시도 (구형 .XLS 포함)
   try {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
     
-    // 엑셀 파싱 성공 시 엑셀 로직 실행
     let results: PackingResult[] = [];
-    const worksheet = workbook.worksheets[0];
-
-    worksheet.eachRow((row, rowNum) => {
-        if (rowNum === 1) return; // 헤더 스킵
-        
-        let style = row.getCell(1).text?.trim() || "";
-        let qty = parseInt(row.getCell(5).text) || parseInt(row.getCell(4).text) || 0;
-        
-        if (style && style.length >= 3 && qty > 0) {
-            results.push({
-                style: style,
-                name: row.getCell(2).text?.trim() || "CHINA PRODUCT",
-                color: row.getCell(3).text?.trim() || "VARIOUS",
-                size: "FREE",
-                qty: qty
-            });
-        }
-    });
     
-    if (results.length > 0) return results;
+    if (jsonData.length > 0) {
+        // 중국 제작사 엑셀 헤더 패턴 분석 및 데이터 추출
+        jsonData.forEach((row, idx) => {
+            if (idx === 0) return; // 헤더 스킵
+            
+            let style = String(row[0] || "").trim(); // 첫 번째 컬럼: 종종 스타일 번호
+            let qty = parseInt(String(row[4] || row[3] || 0)); // 수량 컬럼 (D 또는 E)
+            
+            if (style && style.length >= 3 && qty > 0) {
+                results.push({
+                    style: style,
+                    name: String(row[1] || "CHINA PRODUCT").trim(),
+                    color: String(row[2] || "VARIOUS").trim(),
+                    size: "FREE",
+                    qty: qty
+                });
+            }
+        });
+        
+        if (results.length > 0) return results;
+    }
   } catch (e) {
-    // 엑셀이 아니면 PDF 파싱으로 넘어감
-    console.log("Not an Excel file, trying PDF parser...");
+    console.log("Not a recognizable Excel (XLS/XLSX) file, trying PDF fallback...");
   }
 
-  // 2. PDF 파싱 로직 (기존 로직 유지 및 강화)
+  // 2. PDF/Image 파싱 로직 (Fallback)
   return new Promise((resolve, reject) => {
     const pdfParser = new (PDFParser as any)();
     pdfParser.on('pdfParser_dataError', (errData: any) => reject(errData.parserError));
