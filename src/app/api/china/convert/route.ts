@@ -12,9 +12,9 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     
-    // 1. 중국 패킹 AI 분석 (오타 교정 포함)
-    const rawResults = await getChinaPackingResults(buffer);
-    if (rawResults.length === 0) throw new Error("데이터를 분석하지 못했습니다.");
+    // 1. 중국 패킹 분석 (파일명과 함께 전달하여 XLS/PDF 정밀 판단)
+    const rawResults = await getChinaPackingResults(buffer, file.name);
+    if (rawResults.length === 0) throw new Error("분석할 데이터를 찾지 못했습니다.");
 
     const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
 
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer));
     const matchedWs = matchedWb.worksheets[0];
 
-    // 4. 프론트엔드용 JSON 및 검증 데이터 추출
+    // 4. 추출된 데이터 구성
     const finalItems: any[] = [];
     let matchedTotal = 0;
     
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
             color: row.getCell(3).text,
             size: row.getCell(4).text,
             qty: q,
-            pdfQty: q // AI 교정 후 검증용
+            pdfQty: q
         });
     });
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (err: any) {
-    console.error('CHINA_AUDIT_ERROR:', err);
-    return NextResponse.json({ success: false, message: '중국 검증 모듈 오류: ' + err.message }, { status: 500 });
+    console.error('CHINA_CONVERT_ERROR:', err);
+    return NextResponse.json({ success: false, message: err.message || '중국 패킹 처리 중 알 수 없는 오류' }, { status: 200 }); // 클라이언트에서 에러 메시지를 보기 위해 200으로 반환하되 success: false
   }
 }

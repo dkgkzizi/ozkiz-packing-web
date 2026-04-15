@@ -103,8 +103,13 @@ export default function ChinaPacking() {
               fileName: data.fileName
           });
           await generateAndDownload(data.items, data.fileName);
-      } else alert(data.message);
-    } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
+      } else {
+          alert(`작업 실패: ${data.message}`);
+      }
+    } catch (e) { 
+      console.error(e);
+      alert('서버 연결 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'); 
+    } finally { setLoading(false); }
   };
 
   return (
