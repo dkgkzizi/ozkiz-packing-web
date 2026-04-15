@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pg from 'pg';
-import ExcelJS from 'exceljs';
 
 const { Pool } = pg;
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
@@ -35,39 +34,54 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
+    const apiKey = process.env.GEMINI_API_KEY;
 
     if (!file) return NextResponse.json({ success: false, message: '파일 없음' }, { status: 400 });
-    
-    // EXCEL PARSING (Targeting 2nd Tab)
+    if (!apiKey) return NextResponse.json({ success: false, message: 'AI 분석용 GEMINI_API_KEY가 없습니다.' }, { status: 403 });
+
+    // --- AI ANALYSIS (Direct Excel Processing) ---
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const base64Data = buffer.toString('base64');
     
-    // 0-indexed, so index 1 is the 2nd sheet
-    const worksheet = workbook.worksheets[1] || workbook.worksheets[0];
+    // Using Gemini 1.5 Flash to look at the Excel file directly (Doc comprehension)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     
-    const rawItems: any[] = [];
-    worksheet.eachRow((row, i) => {
-        if (i === 1) return; // Skip Header
-        
-        // 중국 패킹리스트 엑셀 구조에 따라 열 번호를 조정해야 할 수 있습니다.
-        // 우선 일반적인 구조(1:상품명, 2:색상, 3:사이즈, 4:수량)로 가정하되 유연하게 처리합니다.
-        const pName = row.getCell(1).text || row.getCell(2).text;
-        if (pName && !pName.includes('합계') && !pName.includes('TOTAL')) {
-            rawItems.push({
-                productName: pName,
-                color: row.getCell(3).text || "", 
-                size: row.getCell(4).text || "",
-                qty: Math.abs(parseInt(row.getCell(5).text)) || 0
-            });
-        }
+    const prompt = `
+당신은 물류 전문가입니다. 첨부된 중국 패킹리스트 엑셀 파일을 분석하세요.
+핵심 요구사항:
+1. 엑셀의 **두 번째 탭(Sheet 2)**을 분석하세요.
+2. 표에는 '제작사진', '품명', '칼라', '사이스별 수량(90~FREE)'이 매트릭스 형태로 되어 있습니다.
+3. **이미지와 품명을 함께 고려하세요.** 중국인들이 작성하여 오타가 많습니다 (예: '드림리본'을 '드리미리본'으로 작성 등). 이미지를 보고 실제 한국 상품명으로 유추하여 정정하세요.
+4. 각 상품의 [원래 이름, 색상, 사이즈, 수량]을 개별 행으로 추출하세요. 수량이 있는 칸만 추출합니다.
+
+출력 형식 (유효한 JSON만):
+{
+  "items": [
+    { "productName": "정제된상품명", "color": "색상", "size": "사이즈", "qty": 10 },
+    ...
+  ]
+}
+`;
+
+    const aiRes = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { text: prompt },
+          { inline_data: { mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data: base64Data } }
+        ] }],
+        generationConfig: { response_mime_type: "application/json", temperature: 0.1 }
+      })
     });
 
-    if (rawItems.length === 0) {
-        return NextResponse.json({ success: false, message: '두 번째 탭에서 데이터를 찾을 수 없습니다.' });
-    }
+    const aiData = await aiRes.json();
+    if (!aiData.candidates?.[0]) throw new Error('AI 분석 실패: ' + JSON.stringify(aiData.error || 'Empty response'));
+    
+    const parsed = JSON.parse(aiData.candidates[0].content.parts[0].text);
+    const rawItems = parsed.items || [];
 
-    // SUPABASE MATCHING
+    // --- SUPABASE MASTER MATCHING ---
     const client = await pool.connect();
     let finalItems = [];
     try {
@@ -111,7 +125,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, items: finalItems });
 
   } catch (err: any) {
-    console.error('CHINA_MATCH_ERROR:', err);
-    return NextResponse.json({ success: false, message: '중국 패킹 매칭 중 오류 발생' }, { status: 500 });
+    console.error('CHINA_INTEL_SYNC_ERROR:', err);
+    return NextResponse.json({ success: false, message: '중국 지능형 매칭 중 오류 발생: ' + err.message }, { status: 500 });
   }
 }
