@@ -33,7 +33,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
                 if (!txt) return;
                 let y = t.y;
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.45);
+                // 세로 오차 범위를 0.45에서 0.25로 줄여 위아래로 나뉜 색상을 별도 행으로 인식하게 합니다.
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.25);
                 if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
                 else rowsRaw[y] = [{ x: t.x, text: txt }];
             });
