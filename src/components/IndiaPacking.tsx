@@ -11,7 +11,9 @@ import {
   CheckCircle2,
   FileText,
   AlertCircle,
-  Globe
+  Globe,
+  ArrowRightLeft,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -26,10 +28,17 @@ type PackingItem = {
   qty: number;
 };
 
+type VerificationData = {
+  originalTotal: number;
+  matchedTotal: number;
+  fileName: string;
+};
+
 export default function IndiaPacking() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PackingItem[] | null>(null);
+  const [verification, setVerification] = useState<VerificationData | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -41,11 +50,10 @@ export default function IndiaPacking() {
     if (f) setFile(f);
   };
 
-  // Excel 생성 및 다운로드 함수를 별도로 분리
-  const generateAndDownload = async (items: PackingItem[]) => {
+  const generateAndDownload = async (items: PackingItem[], originalName: string) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('인도매칭결과');
-    const memoDate = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     
     worksheet.columns = [
       { header: '상품코드', key: 'matchedCode', width: 20 },
@@ -60,9 +68,8 @@ export default function IndiaPacking() {
     hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
 
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${memoDate}_인도 수입` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_인도 수입` }));
     
-    // 스타일링 (Border & Alignment)
     worksheet.eachRow(row => {
         row.eachCell(cell => {
             cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
@@ -71,30 +78,33 @@ export default function IndiaPacking() {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `인도매칭_${memoDate}.xlsx`);
+    // 파일명 형식: 작업날짜_PDF파일명_매칭완료.xlsx
+    const cleanFileName = originalName.replace(/\.[^/.]+$/, ""); // 확장자 제거
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
   };
 
   const handleProcess = async () => {
     if (!file) return;
     setLoading(true);
     setResults(null);
+    setVerification(null);
+
     try {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch('/api/india/convert', { method: 'POST', body: formData });
       const data = await res.json();
+      
       if (data.success) {
           setResults(data.items);
-          // 매칭 완료 즉시 자동 다운로드 실행
-          await generateAndDownload(data.items);
-      } else {
-          alert(data.message);
-      }
-    } catch (e) { 
-        alert('처리 중 오류'); 
-    } finally { 
-        setLoading(false); 
-    }
+          setVerification({
+              originalTotal: data.originalTotal,
+              matchedTotal: data.matchedTotal,
+              fileName: data.fileName
+          });
+          await generateAndDownload(data.items, data.fileName);
+      } else alert(data.message);
+    } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
   };
 
   return (
@@ -113,8 +123,8 @@ export default function IndiaPacking() {
           India <span className="text-blue-600">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           글로벌 PDF 패킹리스트를 분석하여 한글 마스터 데이터와 연동합니다. <br />
-           자동으로 표준 양식이 생성되어 다운로드됩니다.
+           글로벌 PDF 형식을 분석하고 마스터 DB와 연동하여 <br />
+           <span className="text-blue-600 font-black">수량 검증 및 지능형 네이밍</span>이 포함된 엑셀을 생성합니다.
         </p>
       </header>
 
@@ -138,9 +148,9 @@ export default function IndiaPacking() {
                 }`}>
                   <FileText className="w-8 h-8" />
                 </div>
-                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'PDF Loaded' : 'Upload India PDF'}</h4>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-full italic px-4">
-                    {file ? file.name : 'One-click Auto Sync'}
+                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'PDF Secured' : 'Upload India PDF'}</h4>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 italic truncate max-w-full">
+                    {file ? file.name : 'Verify & Smart Naming'}
                 </p>
               </div>
             </div>
@@ -150,25 +160,60 @@ export default function IndiaPacking() {
                 disabled={!file || loading} 
                 className="w-full mt-8 bg-slate-900 hover:bg-slate-800 disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-              <span className="text-lg tracking-tighter uppercase font-black italic">Auto-Generate & Download</span>
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+              <span className="text-lg tracking-tighter uppercase font-black italic">Start Trusted Sync</span>
             </button>
           </div>
         </div>
 
         <div className="lg:col-span-8">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden min-h-[500px]">
+             {/*Verification Summary Card*/}
+             {verification && (
+               <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-blue-50 rounded-[2rem] border border-blue-100 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-6">
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-blue-50">
+                        <ArrowRightLeft className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                        <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Quantity Verification</h4>
+                        <div className="flex items-center gap-4">
+                            <div className="text-center">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">PDF Original</p>
+                                <p className="text-lg font-black text-slate-900">{verification.originalTotal}</p>
+                            </div>
+                            <div className="w-px h-8 bg-blue-100" />
+                            <div className="text-center">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Excel Matched</p>
+                                <p className="text-lg font-black text-blue-600">{verification.matchedTotal}</p>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-red-500'}`}>
+                        {verification.originalTotal === verification.matchedTotal ? (
+                            <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span className="text-xs font-black uppercase italic tracking-tighter">Perfect Sync</span>
+                            </>
+                        ) : (
+                            <>
+                                <AlertCircle className="w-4 h-4" />
+                                <span className="text-xs font-black uppercase italic tracking-tighter">Qty Mismatch</span>
+                            </>
+                        )}
+                    </div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Auto-Download Triggered</p>
+                  </div>
+               </motion.div>
+             )}
+
              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                   <Globe className="w-4 h-4 text-blue-600" />
-                  Live Sync Summary
+                  Live Audit Feed
                 </h3>
-                {results && (
-                  <div className="flex items-center gap-2 text-[10px] font-black text-green-600 bg-green-50 px-4 py-2 rounded-full border border-green-100 animate-bounce">
-                    <CheckCircle2 className="w-3 h-3" />
-                    자동 다운로드 완료
-                  </div>
-                )}
              </div>
 
              <div className="flex-1 overflow-auto">
@@ -176,11 +221,11 @@ export default function IndiaPacking() {
                   {loading ? (
                     <div className="h-full flex flex-col items-center justify-center p-20 text-center">
                       <div className="w-16 h-16 border-[4px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-6" />
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">Auto-Matching Engine...</p>
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">Reconciling Data Points...</p>
                     </div>
                   ) : results ? (
                     <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-white/80 backdrop-blur-md z-10 border-b border-slate-100">
+                      <thead className="sticky top-0 bg-white/100 backdrop-blur-md z-10 border-b border-slate-100">
                         <tr>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Code</th>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Matched Name</th>
@@ -211,7 +256,7 @@ export default function IndiaPacking() {
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center p-20 opacity-20 text-slate-400 grayscale scale-[0.7]">
                       <FileText className="w-16 h-16 mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Feed PDF for Auto-Match</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Verification Task</p>
                     </div>
                   )}
                 </AnimatePresence>

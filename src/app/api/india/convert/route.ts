@@ -14,9 +14,12 @@ export async function POST(req: NextRequest) {
     
     // 1. PDF에서 RAW 데이터 추출
     const rawResults = await getRawPackingResults(buffer);
-    if (rawResults.length === 0) throw new Error("PDF에서 데이터를 추출하지 못했습니다. 형식을 확인해주세요.");
+    if (rawResults.length === 0) throw new Error("PDF에서 데이터를 추출하지 못했습니다.");
 
-    // 2. 임시 엑셀 생성 (매칭 엔진에 넣기 위함)
+    // PDF 원본 총 수량 계산
+    const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
+
+    // 2. 임시 엑셀 생성
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
     tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY']);
@@ -29,22 +32,32 @@ export async function POST(req: NextRequest) {
 
     // 4. 프론트엔드용 JSON 데이터 추출
     const finalItems: any[] = [];
+    let matchedTotal = 0;
+    
     matchedWs.eachRow((row, i) => {
         if (i === 1) return;
+        const q = parseInt(row.getCell(5).text) || 0;
+        matchedTotal += q;
         finalItems.push({
             matchedCode: row.getCell(1).text,
             matchedName: row.getCell(2).text,
             color: row.getCell(3).text,
             size: row.getCell(4).text,
-            qty: parseInt(row.getCell(5).text) || 0,
-            originalKey: row.getCell(7).text // 식별키 (Hidden)
+            qty: q,
+            originalKey: row.getCell(7).text 
         });
     });
 
-    return NextResponse.json({ success: true, items: finalItems });
+    return NextResponse.json({ 
+        success: true, 
+        items: finalItems,
+        originalTotal,
+        matchedTotal,
+        fileName: file.name
+    });
 
   } catch (err: any) {
-    console.error('INDIA_RESTORATION_ERROR:', err);
-    return NextResponse.json({ success: false, message: '인도 패킹 복구 중 오류: ' + err.message }, { status: 500 });
+    console.error('INDIA_VERIFICATION_ERROR:', err);
+    return NextResponse.json({ success: false, message: '검증 모듈 오류: ' + err.message }, { status: 500 });
   }
 }
