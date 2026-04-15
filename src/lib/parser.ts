@@ -73,7 +73,23 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 if (isDataRow && !isMetaRow) {
                     if (styleInZone) curS = styleInZone.text;
                     
-                    // 상품명/색상 추출 (좌표 범위 확장)
+                    // --- 박스 수 자동 계산 시스템 (Fix: Total Boxes) ---
+                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 6.0 && /^[0-9]+$/.test(c.text))
+                                     .map(c => parseInt(c.text))
+                                     .sort((a, b) => a - b);
+                    
+                    if (ctnNums.length >= 2) curBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
+                    else if (ctnNums.length === 1) curBoxes = 1;
+                    
+                    // TOTAL CTNS 컬럼 (x: 35~42) 우선 인식
+                    let directBoxCount = cols.find(c => c.x >= 35.0 && c.x < 42.0 && /^[0-9]+$/.test(c.text));
+                    if (directBoxCount) {
+                        const dbVal = parseInt(directBoxCount.text);
+                        if (dbVal > 0 && dbVal < 500) curBoxes = dbVal;
+                    }
+                    if (curBoxes <= 0) curBoxes = 1;
+
+                    // --- 상품명 및 색상 지능형 추출 (Restored) ---
                     let dataCand = cols.find(c => c.x >= 6.0 && c.x < 15.0 && c.text.length > 3);
                     if (dataCand) {
                         let r = dataCand.text;
@@ -92,11 +108,6 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                         }
                     }
                     
-                    if (ctnF && ctnT) {
-                        let vF = parseInt(ctnF.text) || 0, vT = parseInt(ctnT.text) || 0;
-                        curBoxes = (vT - vF + 1); if (curBoxes <= 0) curBoxes = 1;
-                    }
-
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
                         let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.2); // 허용 오차 1.2로 확대
