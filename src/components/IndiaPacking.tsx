@@ -167,8 +167,8 @@ export default function IndiaPacking() {
           </div>
         </div>
 
-        <div className="lg:col-span-8">
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden min-h-[500px]">
+        <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
+          <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
              {/*Verification Summary Card*/}
              {verification && (
                <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-blue-50 rounded-[2rem] border border-blue-100 flex items-center justify-between shadow-sm">
