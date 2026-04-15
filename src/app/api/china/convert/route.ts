@@ -5,18 +5,13 @@ import ExcelJS from 'exceljs';
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const { items: rawResults, fileName } = await req.json();
     
-    if (!file) return NextResponse.json({ success: false, message: '파일 없음' }, { status: 400 });
+    if (!rawResults || rawResults.length === 0) {
+        return NextResponse.json({ success: false, message: '데이터 없음' }, { status: 400 });
+    }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    
-    // 1. 중국 패킹 분석 (OZ/OH 전용 로직 가동)
-    const rawResults = await getChinaPackingResults(buffer, file.name);
-    if (rawResults.length === 0) throw new Error("OZ/OH 탭에서 분석할 데이터를 찾지 못했습니다.");
-
-    const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
+    const originalTotal = rawResults.reduce((acc: number, cur: any) => acc + (cur.qty || 0), 0);
 
     // 2. 임시 엑셀 생성 (매칭 엔진 입력용)
     const tempWb = new ExcelJS.Workbook();

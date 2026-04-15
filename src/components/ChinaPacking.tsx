@@ -90,17 +90,68 @@ export default function ChinaPacking() {
     setVerification(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/china/convert', { method: 'POST', body: formData });
+      // 1. 브라우저에서 직접 엑셀 읽기 (용량 다이어트 및 OZ/OH 정밀 스캔)
+      const buffer = await file.arrayBuffer();
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      
+      let clientExtractedData: any[] = [];
+      const targetSheets = workbook.SheetNames.filter(name => 
+          name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치')
+      );
+      const sheetsToProcess = targetSheets.length > 0 ? targetSheets : workbook.SheetNames;
+
+      sheetsToProcess.forEach(sheetName => {
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          if (jsonData.length === 0) return;
+
+          jsonData.forEach((row, rowIdx) => {
+              if (!Array.isArray(row)) return;
+              for (let i = 0; i < Math.min(row.length, 15); i++) {
+                  const cellText = String(row[i] || "").trim();
+                  if (cellText.length >= 2 && !/^[0-9]+$/.test(cellText) && 
+                      !['품명','칼라','합계','사이즈','비고','제품사진','제조사진'].includes(cellText)) {
+                      
+                      const nextCell = String(row[i+1] || "").trim();
+                      const qtyCell = row[i+2];
+                      const finalQty = parseInt(String(qtyCell || "0").replace(/[^0-9]/g, ''));
+                      
+                      if (finalQty > 0 && nextCell.length >= 1) {
+                          let foundSizes = false;
+                          for (let sIdx = i + 3; sIdx < row.length; sIdx++) {
+                              const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                              if (sVal > 0) {
+                                  const sHeader = String(jsonData[1]?.[sIdx] || jsonData[2]?.[sIdx] || "FREE").trim();
+                                  clientExtractedData.push({ style: cellText, name: cellText, color: nextCell, size: sHeader, qty: sVal });
+                                  foundSizes = true;
+                              }
+                          }
+                          if (!foundSizes) {
+                            clientExtractedData.push({ style: cellText, name: cellText, color: nextCell, size: "FREE", qty: finalQty });
+                          }
+                      }
+                  }
+              }
+          });
+      });
+
+      if (clientExtractedData.length === 0) {
+          throw new Error("엑셀 파일의 OZ/OH 탭에서 유효한 매칭 데이터를 찾지 못했습니다.");
+      }
+
+      const res = await fetch('/api/china/convert', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: clientExtractedData, fileName: file.name })
+      });
       
       let data;
       const text = await res.text();
       try {
           data = JSON.parse(text);
       } catch (e) {
-          console.error("Non-JSON Response:", text);
-          throw new Error(`서버 응답 오류 (Status: ${res.status}). 파일 용량이 너무 크거나 서버가 응답하지 않습니다.`);
+          throw new Error(`서버 응답 오류 (Status: ${res.status}). 데이터가 너무 방대하거나 서버가 응답하지 않습니다.`);
       }
       
       if (data.success) {
@@ -116,7 +167,7 @@ export default function ChinaPacking() {
       }
     } catch (e: any) { 
       console.error(e);
-      alert(e.message || '서버 연결 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'); 
+      alert(e.message || '처리 중 오류가 발생했습니다.'); 
     } finally { setLoading(false); }
   };
 
