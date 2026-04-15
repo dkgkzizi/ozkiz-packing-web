@@ -41,22 +41,8 @@ export default function IndiaPacking() {
     if (f) setFile(f);
   };
 
-  const handleProcess = async () => {
-    if (!file) return;
-    setLoading(true);
-    setResults(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/india/convert', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.success) setResults(data.items);
-      else alert(data.message);
-    } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
-  };
-
-  const handleDownload = async () => {
-    if (!results) return;
+  // Excel 생성 및 다운로드 함수를 별도로 분리
+  const generateAndDownload = async (items: PackingItem[]) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('인도매칭결과');
     const memoDate = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -74,9 +60,41 @@ export default function IndiaPacking() {
     hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
 
-    results.forEach(item => worksheet.addRow({ ...item, memo: `${memoDate}_인도 수입` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${memoDate}_인도 수입` }));
+    
+    // 스타일링 (Border & Alignment)
+    worksheet.eachRow(row => {
+        row.eachCell(cell => {
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+    });
+
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), `인도매칭_${memoDate}.xlsx`);
+  };
+
+  const handleProcess = async () => {
+    if (!file) return;
+    setLoading(true);
+    setResults(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/india/convert', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.success) {
+          setResults(data.items);
+          // 매칭 완료 즉시 자동 다운로드 실행
+          await generateAndDownload(data.items);
+      } else {
+          alert(data.message);
+      }
+    } catch (e) { 
+        alert('처리 중 오류'); 
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   return (
@@ -96,7 +114,7 @@ export default function IndiaPacking() {
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            글로벌 PDF 패킹리스트를 분석하여 한글 마스터 데이터와 연동합니다. <br />
-           복잡한 다중 페이지 데이터도 누락 없이 정교하게 추출합니다.
+           자동으로 표준 양식이 생성되어 다운로드됩니다.
         </p>
       </header>
 
@@ -121,8 +139,9 @@ export default function IndiaPacking() {
                   <FileText className="w-8 h-8" />
                 </div>
                 <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'PDF Loaded' : 'Upload India PDF'}</h4>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Global PDF Format</p>
-                {file && <p className="mt-3 text-[10px] text-blue-600 font-black italic truncate max-w-full px-4">{file.name}</p>}
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-full italic px-4">
+                    {file ? file.name : 'One-click Auto Sync'}
+                </p>
               </div>
             </div>
 
@@ -131,8 +150,8 @@ export default function IndiaPacking() {
                 disabled={!file || loading} 
                 className="w-full mt-8 bg-slate-900 hover:bg-slate-800 disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-              <span className="text-lg tracking-tighter uppercase font-black italic">Extract Global Data</span>
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+              <span className="text-lg tracking-tighter uppercase font-black italic">Auto-Generate & Download</span>
             </button>
           </div>
         </div>
@@ -142,12 +161,13 @@ export default function IndiaPacking() {
              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                   <Globe className="w-4 h-4 text-blue-600" />
-                  Global Master Stream
+                  Live Sync Summary
                 </h3>
                 {results && (
-                  <button onClick={handleDownload} className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase py-2 px-8 rounded-full transition-all shadow-md active:scale-95">
-                    India Standard Export
-                  </button>
+                  <div className="flex items-center gap-2 text-[10px] font-black text-green-600 bg-green-50 px-4 py-2 rounded-full border border-green-100 animate-bounce">
+                    <CheckCircle2 className="w-3 h-3" />
+                    자동 다운로드 완료
+                  </div>
                 )}
              </div>
 
@@ -156,7 +176,7 @@ export default function IndiaPacking() {
                   {loading ? (
                     <div className="h-full flex flex-col items-center justify-center p-20 text-center">
                       <div className="w-16 h-16 border-[4px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-6" />
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">Parsing PDF Geometry...</p>
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">Auto-Matching Engine...</p>
                     </div>
                   ) : results ? (
                     <table className="w-full text-left border-collapse">
@@ -176,13 +196,13 @@ export default function IndiaPacking() {
                             </td>
                             <td className="p-6">
                                <span className="text-sm font-bold text-slate-800 block mb-1">{item.matchedName}</span>
-                               <span className="text-[9px] text-slate-400 font-bold uppercase block italic">{item.color} / {item.size}</span>
+                               <span className="text-[9px] text-slate-400 font-bold uppercase block italic">{item.size} / {item.originalKey.split('|')[2]}</span>
                             </td>
                             <td className="p-4 text-center">
                                <span className="text-sm font-black text-blue-600">{item.qty}</span>
                             </td>
                             <td className="p-4 text-center">
-                               {item.matchedCode !== '미매칭' ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" /> : <AlertCircle className="w-4 h-4 text-blue-200 mx-auto" />}
+                               {item.matchedCode !== '미매칭' ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" strokeWidth={3} /> : <AlertCircle className="w-4 h-4 text-blue-200 mx-auto" />}
                             </td>
                           </tr>
                         ))}
@@ -191,7 +211,7 @@ export default function IndiaPacking() {
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center p-20 opacity-20 text-slate-400 grayscale scale-[0.7]">
                       <FileText className="w-16 h-16 mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting India PDF</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest">Feed PDF for Auto-Match</p>
                     </div>
                   )}
                 </AnimatePresence>
