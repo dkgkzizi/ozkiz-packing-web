@@ -1,202 +1,138 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
 import { 
+  Box, 
   Globe, 
-  Home, 
-  Zap, 
-  Menu, 
-  X,
-  Settings,
-  Database,
+  Cpu, 
+  LayoutDashboard,
+  ChevronRight,
   Package,
-  Boxes,
-  Loader2
+  Truck,
+  Zap,
+  Container
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import IndiaPacking from '@/components/IndiaPacking';
+import DomesticPacking from '@/components/DomesticPacking';
+import ChinaPacking from '@/components/ChinaPacking';
+import EasyChainAutomation from '@/components/EasyChainAutomation';
 
-// Dynamic imports with SSR disabled to prevent Prerender Errors on Vercel
-const IndiaPacking = dynamic(() => import('@/components/IndiaPacking'), { 
-  ssr: false,
-  loading: () => <LoadingPlaceholder label="인도 패킹 모듈 로드 중..." />
-});
+export default function Home() {
+  const [activeCategory, setActiveCategory] = useState<number>(1);
 
-const DomesticPacking = dynamic(() => import('@/components/DomesticPacking'), { 
-  ssr: false,
-  loading: () => <LoadingPlaceholder label="국내 패킹 모듈 로드 중..." />
-});
+  const categories = [
+    { 
+      id: 1, 
+      name: 'Domestic Packing', 
+      label: '국내 패킹리스트', 
+      icon: <Package className="w-5 h-5" />, 
+      desc: 'Local Logistics Hub',
+      color: 'from-orange-500 to-amber-500' 
+    },
+    { 
+      id: 2, 
+      name: 'China Packing', 
+      label: '중국 패킹리스트', 
+      icon: <Truck className="w-5 h-5" />, 
+      desc: 'China Branch Stream',
+      color: 'from-red-600 to-rose-500' 
+    },
+    { 
+      id: 3, 
+      name: 'India Packing', 
+      label: '인도 패킹리스트', 
+      icon: <Globe className="w-5 h-5" />, 
+      desc: 'Global Transit Matcher',
+      color: 'from-blue-600 to-cyan-500' 
+    },
+    { 
+      id: 4, 
+      name: 'EasyChain Auto', 
+      label: '이지체인 자동화', 
+      icon: <Zap className="w-5 h-5" />, 
+      desc: 'Inventory Auto-Pilot',
+      color: 'from-yellow-500 to-orange-400' 
+    }
+  ];
 
-function LoadingPlaceholder({ label }: { label: string }) {
-  return (
-    <div className="h-[60vh] flex flex-col items-center justify-center text-center">
-      <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-      <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">{label}</p>
-    </div>
-  );
-}
-
-function ComingSoon() {
-  return (
-    <div className="h-[60vh] flex flex-col items-center justify-center text-center">
-      <div className="w-24 h-24 bg-slate-800/50 rounded-[2rem] flex items-center justify-center mb-8 shadow-inner border border-white/5">
-        <Boxes className="w-10 h-10 text-slate-500 animate-pulse" />
-      </div>
-      <h2 className="text-4xl font-black text-white italic tracking-tighter mb-4 uppercase">Coming Soon</h2>
-      <p className="text-slate-500 max-w-sm leading-relaxed font-bold">
-        더 나은 물류 자동화 환경을 위해 새로운 기능을 준비 중입니다. <br />
-        곧 업데이트될 예정입니다.
-      </p>
-    </div>
-  );
-}
-
-const CATEGORIES = [
-  { id: 'india', name: '인도 패킹리스트', sub: 'Category 1', icon: Globe, component: IndiaPacking, color: 'indigo' },
-  { id: 'domestic', name: '국내 패킹리스트', sub: 'Category 2', icon: Home, component: DomesticPacking, color: 'orange' },
-  { id: 'future1', name: '이지체인 자동화', sub: 'Category 3', icon: Zap, component: ComingSoon, color: 'cyan' },
-  { id: 'future2', name: '재고 분석 센터', sub: 'Category 4', icon: Database, component: ComingSoon, color: 'purple' },
-  { id: 'settings', name: '시스템 설정', sub: 'Category 5', icon: Settings, component: ComingSoon, color: 'slate' },
-];
-
-export default function DashboardManager() {
-  const [mounted, setMounted] = useState(false);
-  const [activeCategory, setActiveCategory] = useState('india');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  // Prevent hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return <div className="min-h-screen bg-[#020617]" />;
-
-  const currentCategory = CATEGORIES.find(c => c.id === activeCategory) || CATEGORIES[0];
-  const CurrentComponent = currentCategory.component;
+  const renderContent = () => {
+    switch (activeCategory) {
+      case 1: return <DomesticPacking />;
+      case 2: return <ChinaPacking />;
+      case 3: return <IndiaPacking />;
+      case 4: return <EasyChainAutomation />;
+      default: return <DomesticPacking />;
+    }
+  };
 
   return (
-    <div className="flex min-h-screen bg-[#020617] text-slate-200 selection:bg-indigo-500/30 font-sans overflow-hidden">
-      {/* Background Orbs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/10 blur-[150px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[150px] rounded-full" />
+    <main className="min-h-screen bg-[#020617] text-slate-200 font-sans selection:bg-orange-500/30 overflow-x-hidden">
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-500/10 blur-[150px] rounded-full animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[150px] rounded-full animate-pulse delay-700" />
       </div>
 
-      {/* Sidebar */}
-      <motion.aside 
-        initial={false}
-        animate={{ width: sidebarOpen ? 300 : 80 }}
-        className="relative z-20 bg-slate-900/40 border-r border-white/5 backdrop-blur-3xl flex flex-col transition-all duration-300 shadow-2xl"
-      >
-        <div className="p-6 flex items-center justify-between">
-          <AnimatePresence mode="wait">
-            {sidebarOpen ? (
-              <motion.div 
-                key="logo"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center gap-3"
-              >
-                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                  <Package className="text-white w-6 h-6" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-black tracking-tighter text-white uppercase leading-none">Antigravity</span>
-                  <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mt-1">Logistics Hub</span>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div 
-                key="mini-logo"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center mx-auto"
-              >
-                <Package className="text-white w-6 h-6" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+      <div className="relative z-10 flex min-h-screen">
+        {/* Sidebar Nav */}
+        <nav className="w-80 border-r border-white/5 sticky top-0 h-screen p-10 flex flex-col bg-slate-950/20 backdrop-blur-xl">
+          <div className="mb-16">
+            <div className="flex items-center gap-3 mb-2 px-2">
+              <div className="w-10 h-10 bg-gradient-to-tr from-orange-500 to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20 ring-1 ring-white/20">
+                <Box className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-xl font-black tracking-tighter italic text-white uppercase">
+                Antigravity <span className="text-orange-500">Hub</span>
+              </h1>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] px-2 opacity-50">Logistics Control OS</p>
+          </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto custom-scrollbar">
-          {CATEGORIES.map((cat) => {
-             const Icon = cat.icon;
-             return (
+          <div className="flex-1 space-y-3">
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-6 px-2">Main Functions</p>
+            {categories.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={cn(
-                  "w-full flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group relative text-left outline-hidden",
+                className={`w-full group flex flex-col p-5 rounded-[2rem] transition-all duration-500 relative overflow-hidden ${
                   activeCategory === cat.id 
-                    ? `bg-white/5 text-white border border-white/10 shadow-lg` 
-                    : "text-slate-500 hover:text-slate-300 hover:bg-white/5 border border-transparent"
-                )}
+                  ? 'bg-white/5 border border-white/10 shadow-2xl scale-[1.02]' 
+                  : 'hover:bg-white/2 border border-transparent opacity-40 hover:opacity-80'
+                }`}
               >
-                <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 shrink-0",
-                  activeCategory === cat.id ? "bg-indigo-600 text-white" : "bg-slate-800/50 group-hover:bg-slate-800"
-                )}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                
-                {sidebarOpen && (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex flex-col items-start flex-1"
-                  >
-                    <span className="text-xs font-black tracking-tighter leading-none">{cat.name}</span>
-                    <span className="text-[9px] font-bold opacity-50 uppercase tracking-widest mt-1">{cat.sub}</span>
-                  </motion.div>
-                )}
-
                 {activeCategory === cat.id && (
-                  <motion.div layoutId="nav-glow" className="absolute inset-0 rounded-2xl ring-1 ring-white/10" />
+                  <div className={`absolute left-0 top-0 w-1 h-full bg-gradient-to-b ${cat.color}`} />
                 )}
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-inner ${
+                    activeCategory === cat.id ? `bg-gradient-to-tr ${cat.color} text-white shadow-lg` : 'bg-slate-900 text-slate-500'
+                  }`}>
+                    {cat.icon}
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className={`text-[10px] font-black uppercase tracking-widest mb-1 ${activeCategory === cat.id ? 'text-orange-500' : 'text-slate-600'}`}>
+                      Category {cat.id}
+                    </span>
+                    <span className="text-sm font-black text-white tracking-tight">{cat.label}</span>
+                  </div>
+                </div>
               </button>
-             );
-          })}
+            ))}
+          </div>
+
+          <div className="mt-auto px-4 py-8 bg-white/2 rounded-3xl border border-white/5">
+             <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Systems Online</span>
+             </div>
+          </div>
         </nav>
 
-        <div className="p-4">
-          <button 
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-full flex items-center justify-center p-3 rounded-xl bg-slate-900 border border-white/5 text-slate-500 hover:text-white transition-colors shadow-2xl"
-          >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
-      </motion.aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 relative overflow-y-auto custom-scrollbar">
-        <div className="px-6 py-12 md:px-12 md:py-16 max-w-6xl mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeCategory}
-              initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, y: -10 }}
-              transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-            >
-              <CurrentComponent />
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </main>
-
-      <style jsx global>{`
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { 
-          background: rgba(255, 255, 255, 0.05); 
-          border-radius: 10px; 
-        }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.1); }
-      `}</style>
-    </div>
+        {/* Content Area */}
+        <section className="flex-1 p-16 max-w-7xl mx-auto">
+           {renderContent()}
+        </section>
+      </div>
+    </main>
   );
 }
