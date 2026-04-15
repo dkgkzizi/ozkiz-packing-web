@@ -70,7 +70,7 @@ export default function IndiaPacking() {
     hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
 
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_인도 수입` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_인도 입고` }));
     
     worksheet.eachRow(row => {
         row.eachCell(cell => {
