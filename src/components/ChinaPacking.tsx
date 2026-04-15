@@ -93,7 +93,15 @@ export default function ChinaPacking() {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch('/api/china/convert', { method: 'POST', body: formData });
-      const data = await res.json();
+      
+      let data;
+      const text = await res.text();
+      try {
+          data = JSON.parse(text);
+      } catch (e) {
+          console.error("Non-JSON Response:", text);
+          throw new Error(`서버 응답 오류 (Status: ${res.status}). 파일 용량이 너무 크거나 서버가 응답하지 않습니다.`);
+      }
       
       if (data.success) {
           setResults(data.items);
@@ -106,9 +114,9 @@ export default function ChinaPacking() {
       } else {
           alert(`작업 실패: ${data.message}`);
       }
-    } catch (e) { 
+    } catch (e: any) { 
       console.error(e);
-      alert('서버 연결 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'); 
+      alert(e.message || '서버 연결 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'); 
     } finally { setLoading(false); }
   };
 
