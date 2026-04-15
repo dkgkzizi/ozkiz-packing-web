@@ -1,4 +1,5 @@
 import PDFParser from 'pdf2json';
+import ExcelJS from 'exceljs';
 
 export interface PackingResult {
   style: string;
@@ -9,17 +10,49 @@ export interface PackingResult {
 }
 
 /**
- * 중국 패킹리스트 지능형 파서입니다.
- * 제작 사진의 오타 교정 및 멀티 색상 레이아웃을 지원합니다.
+ * 중국 패킹리스트 범용 파서 (PDF & Excel 지원)
  */
 export async function getChinaPackingResults(buffer: Buffer): Promise<PackingResult[]> {
+  // 1. 엑셀 파일인지 먼저 확인 (파일 매직 넘버 또는 구조 확인)
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    
+    // 엑셀 파싱 성공 시 엑셀 로직 실행
+    let results: PackingResult[] = [];
+    const worksheet = workbook.worksheets[0];
+
+    worksheet.eachRow((row, rowNum) => {
+        if (rowNum === 1) return; // 헤더 스킵
+        
+        let style = row.getCell(1).text?.trim() || "";
+        let qty = parseInt(row.getCell(5).text) || parseInt(row.getCell(4).text) || 0;
+        
+        if (style && style.length >= 3 && qty > 0) {
+            results.push({
+                style: style,
+                name: row.getCell(2).text?.trim() || "CHINA PRODUCT",
+                color: row.getCell(3).text?.trim() || "VARIOUS",
+                size: "FREE",
+                qty: qty
+            });
+        }
+    });
+    
+    if (results.length > 0) return results;
+  } catch (e) {
+    // 엑셀이 아니면 PDF 파싱으로 넘어감
+    console.log("Not an Excel file, trying PDF parser...");
+  }
+
+  // 2. PDF 파싱 로직 (기존 로직 유지 및 강화)
   return new Promise((resolve, reject) => {
     const pdfParser = new (PDFParser as any)();
     pdfParser.on('pdfParser_dataError', (errData: any) => reject(errData.parserError));
     pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
       try {
         let results: PackingResult[] = [];
-        let curS = "", curN = "", curC = "";
+        let curS = "";
         
         pdfData.Pages.forEach((page: any) => {
             let rowsRaw: Record<string, any[]> = {};
@@ -27,31 +60,23 @@ export async function getChinaPackingResults(buffer: Buffer): Promise<PackingRes
                 let txt = "";
                 try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
                 if (!txt) return;
-                let y = t.y;
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.25);
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - t.y) < 0.25);
                 if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
-                else rowsRaw[y] = [{ x: t.x, text: txt }];
+                else rowsRaw[t.y] = [{ x: t.x, text: txt }];
             });
 
-            let sortedY = Object.keys(rowsRaw).sort((a:any,b:any)=>Number(a)-Number(b));
-            sortedY.forEach(ry => {
-                let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
-                let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
-                
-                // 중국 스타일 번호 및 색상 오타 교정 후보 탐색
-                let styleCand = cols.find(c => /^[A-Z0-9]{4,10}$/.test(c.text) && c.x < 10.0);
+            Object.keys(rowsRaw).sort((a,b)=>Number(a)-Number(b)).forEach(ry => {
+                let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
+                let styleCand = cols.find(c => /^[A-Z0-9]{4,15}$/.test(c.text) && c.x < 10.0);
                 if (styleCand) curS = styleCand.text;
-
-                // 중국어/영어 혼용 이름 및 색상 추출 (예: 黑色 XL 10)
                 let qtyCol = cols.find(c => c.x > 20.0 && /^[0-9]+$/.test(c.text));
                 if (qtyCol && curS) {
-                    let q = parseInt(qtyCol.text);
                     results.push({
                         style: curS,
                         name: "CHINA PRODUCT",
                         color: "VARIOUS",
-                        size: "XL",
-                        qty: q
+                        size: "FREE",
+                        qty: parseInt(qtyCol.text)
                     });
                 }
             });
