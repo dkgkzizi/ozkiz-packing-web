@@ -12,24 +12,24 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     
-    // 1. 중국 패킹 분석 (파일명과 함께 전달하여 XLS/PDF 정밀 판단)
+    // 1. 중국 패킹 분석 (OZ/OH 전용 로직 가동)
     const rawResults = await getChinaPackingResults(buffer, file.name);
-    if (rawResults.length === 0) throw new Error("분석할 데이터를 찾지 못했습니다.");
+    if (rawResults.length === 0) throw new Error("OZ/OH 탭에서 분석할 데이터를 찾지 못했습니다.");
 
     const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
 
-    // 2. 임시 엑셀 생성
+    // 2. 임시 엑셀 생성 (매칭 엔진 입력용)
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
     tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY']);
     rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty]));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
-    // 3. 마스터 매칭
+    // 3. 마스터 매칭 (Supabase 연동)
     const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer));
     const matchedWs = matchedWb.worksheets[0];
 
-    // 4. 추출된 데이터 구성
+    // 4. 최종 데이터 구성 (이미지 URL 포함)
     const finalItems: any[] = [];
     let matchedTotal = 0;
     
@@ -37,13 +37,18 @@ export async function POST(req: NextRequest) {
         if (i === 1) return;
         const q = parseInt(row.getCell(5).text) || 0;
         matchedTotal += q;
+        
+        // 매칭된 원본 데이터(Supabase)에서 이미지 URL 추출 시도
+        // matcher.ts가 저장한 데이터를 기반으로 구성
         finalItems.push({
             matchedCode: row.getCell(1).text,
             matchedName: row.getCell(2).text,
             color: row.getCell(3).text,
             size: row.getCell(4).text,
             qty: q,
-            pdfQty: q
+            pdfQty: q,
+            // 힌트: Supabase 매칭 결과가 있다면 이미지 URL을 UI에 전달
+            imageUrl: null // matcher에서 수정을 통해 확장 가능하나, 현재는 디자인상 아이콘 위주로 먼저 배치
         });
     });
 
@@ -56,7 +61,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (err: any) {
-    console.error('CHINA_CONVERT_ERROR:', err);
-    return NextResponse.json({ success: false, message: err.message || '중국 패킹 처리 중 알 수 없는 오류' }, { status: 200 }); // 클라이언트에서 에러 메시지를 보기 위해 200으로 반환하되 success: false
+    console.error('CHINA_OZ_ERROR:', err);
+    return NextResponse.json({ success: false, message: err.message || '중국 패킹 처리 중 오류' }, { status: 200 });
   }
 }
