@@ -34,7 +34,30 @@ const COLOR_MAP: Record<string, string[]> = {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    return s.toString().replace(/[^0-9A-Z가-힣]/gi, '').toUpperCase();
+    // 특수문자 제거하되 공백은 한 개로 표준화 (한글 포함)
+    return s.toString().replace(/[^0-9A-Z가-힣]/gi, ' ').replace(/\s+/g, '').toUpperCase();
+}
+
+function getLevenshteinDistance(s1: string, s2: string): number {
+    const m = s1.length;
+    const n = s2.length;
+    const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+    }
+    return dp[m][n];
+}
+
+function getSimilarity(s1: string, s2: string): number {
+    const distance = getLevenshteinDistance(s1, s2);
+    const maxLen = Math.max(s1.length, s2.length);
+    if (maxLen === 0) return 1;
+    return 1 - distance / maxLen;
 }
 
 function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: string = 'india'): number {
@@ -42,22 +65,24 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    const threshold = type === 'china' ? 0.7 : 0.8;
+    const threshold = type === 'china' ? 0.6 : 0.8;
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
 
         let currentScore = 0;
-        if (val === s) currentScore = 150;
-        else if (val.startsWith(s)) currentScore = 120; // 90 -> 120
-        else if (val.includes(s) || s.includes(val)) currentScore = 100; // 70 -> 100
-        else {
-            let matches = 0;
-            const minLen = Math.min(s.length, val.length);
-            for(let i=0; i<minLen; i++) if(s[i] === val[i]) matches++;
-            const ratio = matches / Math.max(s.length, val.length);
-            if (ratio >= threshold) currentScore = (ratio * 90);
+        if (val === s) currentScore = 500; // 완전 일치 가산점 대폭 상향
+        else if (val.includes(s) || s.includes(val)) {
+            // 포함 관계일 경우 유사도 기반 가중치
+            const ratio = Math.min(s.length, val.length) / Math.max(s.length, val.length);
+            currentScore = 150 + (ratio * 100);
+        } else {
+            // Levenshtein 유사도 사용
+            const similarity = getSimilarity(s, val);
+            if (similarity >= threshold) {
+                currentScore = similarity * 200;
+            }
         }
         if (currentScore > maxScore) maxScore = currentScore;
     }
