@@ -205,16 +205,16 @@ export default function ChinaPacking() {
                     file ? 'border-red-200 bg-red-50/30' : 'border-slate-100 bg-slate-50 hover:bg-slate-100/50'
                 }`}
             >
-              <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} accept="image/*,application/pdf" />
+              <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} accept=".xlsx, .xls" />
               <div className="flex flex-col items-center text-center p-6">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-all duration-500 ${
                   file ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-white border border-slate-100 text-slate-300'
                 }`}>
                   <FileSpreadsheet className="w-8 h-8" />
                 </div>
-                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'Image Secured' : 'Upload China List'}</h4>
+                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'Data Secured' : 'Upload China Excel'}</h4>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 italic truncate max-w-full">
-                    {file ? file.name : 'AI Vision Processing On'}
+                    {file ? file.name : 'OZ/OH Sheet Detection Active'}
                 </p>
               </div>
             </div>

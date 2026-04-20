@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChinaPackingResults } from '@/lib/china-parser';
 import { matchExcelBuffer } from '@/lib/matcher';
 import ExcelJS from 'exceljs';
 
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
         items: finalItems,
         originalTotal,
         matchedTotal,
-        fileName: file.name
+        fileName: fileName
     });
 
   } catch (err: any) {
