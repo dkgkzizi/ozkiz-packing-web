@@ -234,6 +234,14 @@ export default function ChinaPacking() {
               matchedTotal: data.matchedTotal,
               fileName: data.fileName
           });
+
+          // 스마트 로직: 미매칭 상품이 없고 수량이 완벽히 일치하면 자동 다운로드
+          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매칭' || item.matchedCode === '코드누락');
+          const isQuantityMatched = data.originalTotal === data.matchedTotal;
+
+          if (!hasUnmatched && isQuantityMatched) {
+              await generateAndDownload(data.items, data.fileName);
+          }
       } else {
           alert(`작업 실패: ${data.message}`);
       }
