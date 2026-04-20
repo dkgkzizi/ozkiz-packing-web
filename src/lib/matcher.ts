@@ -37,11 +37,13 @@ function normalizeStr(s: any) {
     return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase();
 }
 
-function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number {
+function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: string = 'india'): number {
     const s = normalizeStr(style);
     if (!s) return 0;
 
     let maxScore = 0;
+    const threshold = type === 'china' ? 0.9 : 0.8;
+
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
@@ -55,14 +57,36 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number
             const minLen = Math.min(s.length, val.length);
             for(let i=0; i<minLen; i++) if(s[i] === val[i]) matches++;
             const ratio = matches / Math.max(s.length, val.length);
-            if (ratio >= 0.8) currentScore = (ratio * 85);
+            if (ratio >= threshold) currentScore = (ratio * 85);
         }
         if (currentScore > maxScore) maxScore = currentScore;
     }
     return maxScore;
 }
 
-export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
+function getSeasonalScore(dbName: string): number {
+    const now = new Date();
+    const month = now.getMonth() + 1; // 1-12
+    const year = now.getFullYear().toString().slice(-2); // "24"
+    
+    let score = 0;
+    const n = dbName.toUpperCase();
+    
+    // 연도 매칭 (현재 연도 포함 시 가점)
+    if (n.includes(year)) score += 30;
+    if (n.includes(String(parseInt(year) - 1))) score += 10; // 작년 제품도 약간의 가점
+
+    // 시즌 매칭 (SS/FW)
+    const isSS = month >= 2 && month <= 7; // 봄/여름 시즌 작업 기간
+    const isFW = month >= 8 || month <= 1; // 가을/겨울 시즌 작업 기간
+    
+    if (isSS && (n.includes('SS') || n.includes('S/S') || n.includes('여름') || n.includes('봄'))) score += 20;
+    if (isFW && (n.includes('FW') || n.includes('F/W') || n.includes('겨울') || n.includes('가을'))) score += 20;
+    
+    return score;
+}
+
+export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): Promise<ExcelJS.Workbook> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as any);
     const sheet = workbook.worksheets[0];
@@ -104,7 +128,7 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
         const normalizedExColor = ex.color.toUpperCase().trim();
 
         for (let row of dbRows) {
-            const baseScore = getMatchScore(ex.styleNo, row, barcodeCols);
+            const baseScore = getMatchScore(ex.styleNo, row, barcodeCols, type);
             if (baseScore <= 0) continue;
 
             let colorScore = 0;
@@ -120,8 +144,11 @@ export async function matchExcelBuffer(buffer: Buffer): Promise<ExcelJS.Workbook
             const dbName = (row["상품명"] || row["name"] || "").toString();
             const dbCode = (row["상품코드"] || row["code"] || "").toString();
             let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 200 : 0;
+            
+            // 중국일 경우 시즌 가산점 추가
+            let seasonalScore = type === 'china' ? getSeasonalScore(dbName) : 0;
 
-            candidates.push({ row, score: baseScore + colorScore + qualityScore, nameScore: qualityScore });
+            candidates.push({ row, score: baseScore + colorScore + qualityScore + seasonalScore, nameScore: qualityScore });
         }
 
         candidates.sort((a, b) => b.score - a.score);

@@ -97,9 +97,11 @@ export default function ChinaPacking() {
       
       let clientExtractedData: any[] = [];
       const targetSheets = workbook.SheetNames.filter(name => 
-          name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치')
+          name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치') || name.includes('매칭')
       );
-      const sheetsToProcess = targetSheets.length > 0 ? targetSheets : workbook.SheetNames;
+      // 만약 타겟 시트가 없으면 2번째 시트(Index 1)를 우선순위로 두고, 그것도 없으면 전체 시트 처리
+      const sheetsToProcess = targetSheets.length > 0 ? targetSheets : 
+                             (workbook.SheetNames.length >= 2 ? [workbook.SheetNames[1]] : workbook.SheetNames);
 
       sheetsToProcess.forEach(sheetName => {
           const worksheet = workbook.Sheets[sheetName];
@@ -114,21 +116,35 @@ export default function ChinaPacking() {
                       !['품명','칼라','합계','사이즈','비고','제품사진','제조사진'].includes(cellText)) {
                       
                       const nextCell = String(row[i+1] || "").trim();
-                      const qtyCell = row[i+2];
-                      const finalQty = parseInt(String(qtyCell || "0").replace(/[^0-9]/g, ''));
+                      const thirdCell = String(row[i+2] || "").trim();
                       
-                      if (finalQty > 0 && nextCell.length >= 1) {
+                      // 1. 기본 패턴: i(Style/Name) -> i+1(Color) -> i+2(Qty)
+                      let finalQty = parseInt(String(row[i+2] || "0").replace(/[^0-9]/g, ''));
+                      let color = nextCell;
+                      let name = cellText;
+                      let startSizeIdx = i + 3;
+
+                      // 2. 확장 패턴 (오른쪽 이미지/상품명 구조): i(Style) -> i+1(Name) -> i+2(Color) -> i+3(Qty)
+                      const altQty = parseInt(String(row[i+3] || "0").replace(/[^0-9]/g, ''));
+                      if (altQty > 0 && isNaN(finalQty)) {
+                          finalQty = altQty;
+                          name = nextCell;
+                          color = thirdCell;
+                          startSizeIdx = i + 4;
+                      }
+
+                      if (finalQty > 0 && color.length >= 1) {
                           let foundSizes = false;
-                          for (let sIdx = i + 3; sIdx < row.length; sIdx++) {
+                          for (let sIdx = startSizeIdx; sIdx < row.length; sIdx++) {
                               const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                               if (sVal > 0) {
                                   const sHeader = String(jsonData[1]?.[sIdx] || jsonData[2]?.[sIdx] || "FREE").trim();
-                                  clientExtractedData.push({ style: cellText, name: cellText, color: nextCell, size: sHeader, qty: sVal });
+                                  clientExtractedData.push({ style: cellText, name: name, color: color, size: sHeader, qty: sVal });
                                   foundSizes = true;
                               }
                           }
                           if (!foundSizes) {
-                            clientExtractedData.push({ style: cellText, name: cellText, color: nextCell, size: "FREE", qty: finalQty });
+                            clientExtractedData.push({ style: cellText, name: name, color: color, size: "FREE", qty: finalQty });
                           }
                       }
                   }
