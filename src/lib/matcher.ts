@@ -32,6 +32,23 @@ const COLOR_MAP: Record<string, string[]> = {
     'ORANGE': ['오렌지', '주황']
 };
 
+function decomposeHangul(str: string): string {
+    const CHOSUNG = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+    const JUNGSUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
+    const JONGSUNG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+    let result = "";
+    for (const char of str) {
+        const code = char.charCodeAt(0) - 44032;
+        if (code > -1 && code < 11172) {
+            const cho = Math.floor(code / 588);
+            const jung = Math.floor((code - (cho * 588)) / 28);
+            const jong = code % 28;
+            result += CHOSUNG[cho] + JUNGSUNG[jung] + JONGSUNG[jong];
+        } else { result += char; }
+    }
+    return result;
+}
+
 function normalizeStr(s: any) {
     if (!s) return "";
     // 특수문자 제거하되 공백은 한 개로 표준화 (한글 포함)
