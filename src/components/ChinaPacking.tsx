@@ -126,7 +126,7 @@ export default function ChinaPacking() {
                   // 사이즈 수량 시작 위치가 명시되지 않은 경우 합계 다음 컬럼부터 탐색
                   if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
                   
-                  if (nameCol !== -1) {
+                  if (nameCol !== -1 && nameCol > 5) { // 인도/국내와 섞이지 않도록 오른쪽 도표(index > 5)만 타겟팅
                       headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol });
                   }
               }
@@ -135,21 +135,25 @@ export default function ChinaPacking() {
           // 2. 각 헤더 아래 데이터 추출
           headerRows.forEach(header => {
               let lastName = "";
-              // 헤더 바로 다음 행부터 데이터 시작
-              for (let rIdx = header.rowIdx + 1; rIdx < jsonData.length; rIdx++) {
+              
+              // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
+              const nextRow = jsonData[header.rowIdx + 1];
+              const isTwoStepHeader = nextRow && nextRow.some(c => !isNaN(parseInt(String(c))));
+              const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
+              const dataStartRowIdx = isTwoStepHeader ? header.rowIdx + 2 : header.rowIdx + 1;
+
+              for (let rIdx = dataStartRowIdx; rIdx < jsonData.length; rIdx++) {
                   const row = jsonData[rIdx];
-                  if (!row || !Array.isArray(row) || row.length === 0) continue;
+                  if (!row || !Array.isArray(row)) break;
                   
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건 (비고, 합계 등)
+                  // 섹션 종료 조건 (비고, 합계, 혹은 완전히 빈 행)
                   if (currentName.includes('비고') || currentName === '합계' || currentName === 'TOTAL') break;
-                  
-                  // 데이터가 전혀 없는 행이면 건너뜀 (단, 사이즈 수량이 있는지는 체크)
-                  const hasData = row.some((cell, idx) => cell !== undefined && cell !== "" && idx >= header.nameCol);
-                  if (!hasData) continue;
+                  const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
+                  if (!rowStr && !currentName) break; 
 
-                  // 병합된 셀(Merged Cells) 대응: 이름이 비어있으면 이전 행의 이름을 사용
+                  // 병합된 명칭 핸들링
                   if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
@@ -161,14 +165,15 @@ export default function ChinaPacking() {
                   const color = String(row[header.colorCol] || "").trim();
                   const totalQty = parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
                   
-                  if (totalQty > 0 || row[header.sizeStartCol]) {
+                  if (totalQty > 0) {
                       let foundSizes = false;
-                      // 사이즈 구간 탐색 (합계 이후 컬럼들)
                       for (let sIdx = header.sizeStartCol; sIdx < row.length; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                           if (sVal > 0) {
-                              // 헤더 행에서 사이즈 명칭 가져오기
-                              const sHeader = String(jsonData[header.rowIdx]?.[sIdx] || "FREE").trim();
+                              // 올바른 행에서 사이즈 명칭 가져오기
+                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                              if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
+                              
                               clientExtractedData.push({ 
                                   style: currentName, 
                                   name: currentName, 
@@ -180,7 +185,6 @@ export default function ChinaPacking() {
                           }
                       }
                       
-                      // 개별 사이즈 수량이 없고 총계만 있는 경우
                       if (!foundSizes && totalQty > 0) {
                           clientExtractedData.push({ 
                               style: currentName, 
