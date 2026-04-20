@@ -34,7 +34,7 @@ const COLOR_MAP: Record<string, string[]> = {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    return s.toString().replace(/[^0-9A-Z]/gi, '').toUpperCase();
+    return s.toString().replace(/[^0-9A-Z가-힣]/gi, '').toUpperCase();
 }
 
 function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: string = 'india'): number {

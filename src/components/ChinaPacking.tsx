@@ -110,10 +110,18 @@ export default function ChinaPacking() {
 
           jsonData.forEach((row, rowIdx) => {
               if (!Array.isArray(row)) return;
-              for (let i = 0; i < Math.min(row.length, 15); i++) {
+              let foundInRow = false;
+              for (let i = 0; i < Math.min(row.length, 20); i++) {
+                  if (foundInRow) break; // 한 행에서 이미 데이터를 찾았으면 중단 (색상을 상품명으로 오인하는 경우 방지)
+
                   const cellText = String(row[i] || "").trim();
-                  if (cellText.length >= 2 && !/^[0-9]+$/.test(cellText) && 
-                      !['품명','칼라','합계','사이즈','비고','제품사진','제조사진'].includes(cellText)) {
+                  const blacklist = [
+                    '품명','칼라','합계','사이즈','비고','제품사진','제조사진','색상','소계','총계','IMAGE','COLOR','QTY','SIZE','TOTAL',
+                    '블루','아이보리','핑크','그레이','네이비','화이트','블랙','베이지','레드','그린','옐로우','퍼플','차콜','코랄','피치','브라운','라임','오렌지',
+                    '블랙','네이비','체크','스트라이프'
+                  ];
+
+                  if (cellText.length >= 2 && !/^[0-9]+$/.test(cellText) && !blacklist.includes(cellText)) {
                       
                       const nextCell = String(row[i+1] || "").trim();
                       const thirdCell = String(row[i+2] || "").trim();
@@ -133,19 +141,20 @@ export default function ChinaPacking() {
                           startSizeIdx = i + 4;
                       }
 
-                      if (finalQty > 0 && color.length >= 1) {
+                      if (finalQty > 0 && color.length >= 1) { 
                           let foundSizes = false;
                           for (let sIdx = startSizeIdx; sIdx < row.length; sIdx++) {
                               const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                               if (sVal > 0) {
                                   const sHeader = String(jsonData[1]?.[sIdx] || jsonData[2]?.[sIdx] || "FREE").trim();
-                                  clientExtractedData.push({ style: cellText, name: name, color: color, size: sHeader, qty: sVal });
+                                  clientExtractedData.push({ style: name, name: name, color: color, size: sHeader, qty: sVal });
                                   foundSizes = true;
                               }
                           }
                           if (!foundSizes) {
-                            clientExtractedData.push({ style: cellText, name: name, color: color, size: "FREE", qty: finalQty });
+                            clientExtractedData.push({ style: name, name: name, color: color, size: "FREE", qty: finalQty });
                           }
+                          foundInRow = true;
                       }
                   }
               }
