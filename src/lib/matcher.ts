@@ -163,8 +163,9 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
             // 만약 상품명 컬럼이 없으면 폴백
             if (barcodeCols.length === 0) barcodeCols = ['상품명', '상품코드', '옵션'].filter(c => allCols.includes(c));
         } else {
-            barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k)));
-            if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
+            // 인도패킹은 바코드가 중요하지만, 상품명으로도 검색할 수 있어야 함
+            barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'sku', '상품명', 'name'].some(k => c.toLowerCase().includes(k)));
+            if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명'].filter(c => allCols.includes(c));
         }
         
         // 정렬 기준을 'id'에서 '업로드일시'로 변경하여 에러 수정
