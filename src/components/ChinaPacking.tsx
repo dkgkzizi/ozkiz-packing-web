@@ -41,6 +41,7 @@ export default function ChinaPacking() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PackingItem[] | null>(null);
   const [verification, setVerification] = useState<VerificationData | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Manual Selection Modal State
