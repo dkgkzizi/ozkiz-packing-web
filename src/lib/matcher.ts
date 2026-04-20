@@ -83,7 +83,7 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    const threshold = type === 'china' ? 0.5 : 0.8; // 중국은 오타 보정을 위해 0.5 적용
+    const threshold = type === 'china' ? 0.7 : 0.8; // 중국은 오타 보정을 위해 0.7 적용 (0.5는 너무 유연하여 오매칭 발생 가능)
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
@@ -149,8 +149,10 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
         const allCols = tableInfo.rows.map(r => r.column_name);
         
         if (type === 'china') {
-            // 중국은 상품명 매칭이 핵심이므로 상품명을 반드시 포함
-            barcodeCols = allCols.filter(c => ['상품명', '상품코드', '옵션', 'name', 'code'].some(k => c.toLowerCase().includes(k)));
+            // 중국은 상품명 매칭이 핵심이므로 상품명 컬럼만 우선 조회 (옵션/코드로 오매칭되는 것 방지)
+            barcodeCols = allCols.filter(c => ['상품명', 'name'].some(k => c.toLowerCase().includes(k)));
+            // 만약 상품명 컬럼이 없으면 폴백
+            if (barcodeCols.length === 0) barcodeCols = ['상품명', '상품코드', '옵션'].filter(c => allCols.includes(c));
         } else {
             barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k)));
             if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
@@ -170,21 +172,22 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
 
         for (let row of dbRows) {
             const baseScore = getMatchScore(ex.styleNo, row, barcodeCols, type);
-            if (baseScore <= 0) continue;
+            // 베이스 점수(이름 유사도)가 임계치를 넘지 못하면 아예 후보에서 제외
+            if (baseScore < 500) continue; // 최소 0.5 유사도
 
             let colorScore = 0;
             const dbOpt = (row["옵션"] || "").toString().toUpperCase();
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
                 if (normalizedExColor.includes(group) || synonyms.some(s => normalizedExColor.includes(s))) {
                     if ([group, ...synonyms].some(t => dbOpt.includes(t))) {
-                        colorScore = 50; break;
+                        colorScore = 100; break; // 색상 일치 시 가산점
                     }
                 }
             }
 
             const dbName = (row["상품명"] || row["name"] || "").toString();
             const dbCode = (row["상품코드"] || row["code"] || "").toString();
-            let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 200 : 0;
+            let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 50 : 0;
             
             // 중국일 경우 시즌 가산점 추가
             let seasonalScore = type === 'china' ? getSeasonalScore(dbName) : 0;
