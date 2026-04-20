@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pg from 'pg';
-const { Pool } = pg;
-
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
-
-const pool = new Pool({
-  connectionString: connectionString,
-  ssl: { rejectUnauthorized: false }
-});
+import pool from '@/lib/db';
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);

@@ -1,13 +1,5 @@
 import ExcelJS from 'exceljs';
-import pg from 'pg';
-const { Pool } = pg;
-
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
-
-const pool = new Pool({
-  connectionString: connectionString,
-  ssl: { rejectUnauthorized: false }
-});
+import pool from '@/lib/db';
 
 const COLOR_MAP: Record<string, string[]> = {
     'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
