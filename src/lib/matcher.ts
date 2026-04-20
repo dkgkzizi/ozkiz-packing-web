@@ -60,19 +60,16 @@ function getSimilarity(s1: string, s2: string): number {
     // 1. 완전 일치 (정규화 후)
     if (s1 === s2) return 1.0;
     
-    // 2. 포함 관계 (한글 전용)
-    if (s1_h && s2_h) {
+    // 2. 포함 관계 (한글 전용, 최소 3글자 이상인 경우에만 0.95 부여)
+    if (s1_h && s2_h && (s1_h.length >= 3 || s2_h.length >= 3)) {
         if (s1_h.includes(s2_h) || s2_h.includes(s1_h)) return 0.95;
     }
     
-    // 3. 토큰 기반 매칭 (공백/특수문자 기준 분리)
+    // 3. 토큰 기반 매칭 (정확히 일치하는 단어가 있을 때만)
     const tokens1 = s1.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
     const tokens2 = s2.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
     for (const t1 of tokens1) {
-        for (const t2 of tokens2) {
-            if (t1 === t2) return 0.9;
-            if (t1.includes(t2) || t2.includes(t1)) return 0.85;
-        }
+        if (tokens2.includes(t1)) return 0.9;
     }
 
     const distance = getLevenshteinDistance(s1, s2);
@@ -86,24 +83,17 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    const threshold = type === 'china' ? 0.4 : 0.8; // 중국은 매우 유연하게 매칭
+    const threshold = type === 'china' ? 0.5 : 0.8; // 중국은 오타 보정을 위해 0.5 적용
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
 
-        let currentScore = 0;
         const similarity = getSimilarity(s, val);
-        
-        if (similarity >= threshold) {
-            // 완전 일치에 가깝거나 포함 관계면 점수 폭등
-            if (similarity >= 0.95 || val.includes(s) || s.includes(val)) {
-                currentScore = 400 + (similarity * 100);
-            } else {
-                currentScore = similarity * 300; 
-            }
-        }
-        
+        if (similarity < threshold) continue;
+
+        // 이름 점수를 기본으로 하고 크게 비중을 둠
+        let currentScore = similarity * 1000;
         if (currentScore > maxScore) maxScore = currentScore;
     }
     return maxScore;
@@ -206,7 +196,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
         const bestCandidate = candidates[0];
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
         
-        if (bestCandidate && bestCandidate.score >= 50) {
+        if (bestCandidate && bestCandidate.score >= 500) { // 최소 50% 이상의 이름 유사도 보장 (유사도 0.5 * 1000 = 500)
             const bestMatch = bestCandidate.row;
             let korColor = ex.color;
             const optVal = (bestMatch["옵션"] || "").toString();
