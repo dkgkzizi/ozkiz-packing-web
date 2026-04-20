@@ -15,7 +15,9 @@ import {
   TrendingUp,
   X,
   RefreshCcw,
-  Edit2
+  Edit2,
+  ArrowRightLeft,
+  ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
