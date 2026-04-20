@@ -198,6 +198,17 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
             const dbCode = (row["상품코드"] || row["code"] || "").toString();
             let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 50 : 0;
             
+            // 라벨/택 오매칭 방지 로직 (부차적 점수)
+            const labelKeywords = ['라벨', '택', 'LABEL', 'TAG', '보증택'];
+            const inputHasLabel = labelKeywords.some(k => s.includes(k));
+            const dbHasLabel = labelKeywords.some(k => dbName.includes(k));
+            
+            if (inputHasLabel === dbHasLabel) {
+                qualityScore += 50; // 둘 다 라벨이거나 둘 다 아니면 가점
+            } else {
+                qualityScore -= 200; // 한쪽만 라벨이면 강한 감점 (오매칭 방지 핵심)
+            }
+            
             // 중국일 경우 시즌 가산점 추가
             let seasonalScore = type === 'china' ? getSeasonalScore(dbName) : 0;
 
