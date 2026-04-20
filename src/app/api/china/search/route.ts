@@ -22,9 +22,9 @@ export async function GET(req: NextRequest) {
         
         if (tokens.length === 0) return NextResponse.json({ success: true, items: [] });
 
-        // 모든 토큰이 상품명, 옵션, 상품코드 중 어디든 포함되어야 함
-        const whereConditions = tokens.map((_, i) => `("상품명" || ' ' || COALESCE("옵션", '') || ' ' || "상품코드") ILIKE $${i + 1}`).join(' AND ');
-        const params = tokens.map(t => `%${t}%`);
+        // 모든 토큰이 상품명, 옵션, 상품코드 중 어디든 포함되어야 함 (공백 무시 검색)
+        const whereConditions = tokens.map((_, i) => `REPLACE("상품명" || COALESCE("옵션", '') || "상품코드", ' ', '') ILIKE $${i + 1}`).join(' AND ');
+        const params = tokens.map(t => `%${t.replace(/\s+/g, '')}%`);
 
         const res = await client.query(`
             SELECT "상품코드", "상품명", "옵션" 
