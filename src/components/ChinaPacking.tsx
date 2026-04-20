@@ -328,6 +328,9 @@ export default function ChinaPacking() {
                 onClick={handleProcess} 
                 disabled={!file || loading} 
                 className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase font-black"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+              AI Verification Start
             </button>
 
             {results && (
