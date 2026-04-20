@@ -96,7 +96,12 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
         const similarity = getSimilarity(s, val);
         
         if (similarity >= threshold) {
-            currentScore = similarity * 500; // 가중치 부여
+            // 완전 일치에 가깝거나 포함 관계면 점수 폭등
+            if (similarity >= 0.95 || val.includes(s) || s.includes(val)) {
+                currentScore = 400 + (similarity * 100);
+            } else {
+                currentScore = similarity * 300; 
+            }
         }
         
         if (currentScore > maxScore) maxScore = currentScore;
@@ -152,8 +157,14 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
     try {
         const tableInfo = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'products'");
         const allCols = tableInfo.rows.map(r => r.column_name);
-        barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k)));
-        if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
+        
+        if (type === 'china') {
+            // 중국은 상품명 매칭이 핵심이므로 상품명을 반드시 포함
+            barcodeCols = allCols.filter(c => ['상품명', '상품코드', '옵션', 'name', 'code'].some(k => c.toLowerCase().includes(k)));
+        } else {
+            barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'style', 'code', '코드', '관리번호'].some(k => c.toLowerCase().includes(k)));
+            if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명', '옵션'].filter(c => allCols.includes(c));
+        }
         
         // 정렬 기준을 'id'에서 '업로드일시'로 변경하여 에러 수정
         const result = await client.query('SELECT * FROM products ORDER BY "업로드일시" DESC NULLS LAST');
