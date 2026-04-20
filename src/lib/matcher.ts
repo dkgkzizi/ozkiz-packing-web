@@ -200,6 +200,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
             
             // 라벨/택 오매칭 방지 로직 (부차적 점수)
             const labelKeywords = ['라벨', '택', 'LABEL', 'TAG', '보증택'];
+            const s = normalizeStr(ex.styleNo);
             const inputHasLabel = labelKeywords.some(k => s.includes(k));
             const dbHasLabel = labelKeywords.some(k => dbName.includes(k));
             
