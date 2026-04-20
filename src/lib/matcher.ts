@@ -54,6 +54,27 @@ function getLevenshteinDistance(s1: string, s2: string): number {
 }
 
 function getSimilarity(s1: string, s2: string): number {
+    const s1_h = s1.replace(/[^가-힣]/g, '');
+    const s2_h = s2.replace(/[^가-힣]/g, '');
+    
+    // 1. 완전 일치 (정규화 후)
+    if (s1 === s2) return 1.0;
+    
+    // 2. 포함 관계 (한글 전용)
+    if (s1_h && s2_h) {
+        if (s1_h.includes(s2_h) || s2_h.includes(s1_h)) return 0.95;
+    }
+    
+    // 3. 토큰 기반 매칭 (공백/특수문자 기준 분리)
+    const tokens1 = s1.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
+    const tokens2 = s2.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
+    for (const t1 of tokens1) {
+        for (const t2 of tokens2) {
+            if (t1 === t2) return 0.9;
+            if (t1.includes(t2) || t2.includes(t1)) return 0.85;
+        }
+    }
+
     const distance = getLevenshteinDistance(s1, s2);
     const maxLen = Math.max(s1.length, s2.length);
     if (maxLen === 0) return 1;
@@ -65,25 +86,19 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    const threshold = type === 'china' ? 0.6 : 0.8;
+    const threshold = type === 'china' ? 0.4 : 0.8; // 중국은 매우 유연하게 매칭
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
 
         let currentScore = 0;
-        if (val === s) currentScore = 500; // 완전 일치 가산점 대폭 상향
-        else if (val.includes(s) || s.includes(val)) {
-            // 포함 관계일 경우 유사도 기반 가중치
-            const ratio = Math.min(s.length, val.length) / Math.max(s.length, val.length);
-            currentScore = 150 + (ratio * 100);
-        } else {
-            // Levenshtein 유사도 사용
-            const similarity = getSimilarity(s, val);
-            if (similarity >= threshold) {
-                currentScore = similarity * 200;
-            }
+        const similarity = getSimilarity(s, val);
+        
+        if (similarity >= threshold) {
+            currentScore = similarity * 500; // 가중치 부여
         }
+        
         if (currentScore > maxScore) maxScore = currentScore;
     }
     return maxScore;
