@@ -469,7 +469,6 @@ export default function ChinaPacking() {
           </div>
         </div>
       </div>
-      </div>
 
       {/* Manual Selection Modal */}
       <AnimatePresence>
