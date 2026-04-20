@@ -42,7 +42,7 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    const threshold = type === 'china' ? 0.9 : 0.8;
+    const threshold = type === 'china' ? 0.7 : 0.8;
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
@@ -50,14 +50,14 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
 
         let currentScore = 0;
         if (val === s) currentScore = 150;
-        else if (val.startsWith(s)) currentScore = 90;
-        else if (val.includes(s)) currentScore = 70;
+        else if (val.startsWith(s)) currentScore = 120; // 90 -> 120
+        else if (val.includes(s) || s.includes(val)) currentScore = 100; // 70 -> 100
         else {
             let matches = 0;
             const minLen = Math.min(s.length, val.length);
             for(let i=0; i<minLen; i++) if(s[i] === val[i]) matches++;
             const ratio = matches / Math.max(s.length, val.length);
-            if (ratio >= threshold) currentScore = (ratio * 85);
+            if (ratio >= threshold) currentScore = (ratio * 90);
         }
         if (currentScore > maxScore) maxScore = currentScore;
     }

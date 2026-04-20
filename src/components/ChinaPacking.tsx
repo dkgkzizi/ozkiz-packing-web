@@ -108,53 +108,87 @@ export default function ChinaPacking() {
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
           if (jsonData.length === 0) return;
 
-          jsonData.forEach((row, rowIdx) => {
+          // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
+          const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number }[] = [];
+          
+          jsonData.forEach((row, idx) => {
               if (!Array.isArray(row)) return;
-              let foundInRow = false;
-              for (let i = 0; i < Math.min(row.length, 20); i++) {
-                  if (foundInRow) break; // 한 행에서 이미 데이터를 찾았으면 중단 (색상을 상품명으로 오인하는 경우 방지)
+              const rowStr = row.join('|');
+              if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
+                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1;
+                  row.forEach((cell, cellIdx) => {
+                      const c = String(cell || "").trim();
+                      if (c === '품명') nameCol = cellIdx;
+                      else if (c === '칼라' || c === '색상') colorCol = cellIdx;
+                      else if (c === '합계' || c === '소계' || c === '총계') totalCol = cellIdx;
+                      else if (c.includes('사이즈') && c.includes('수량')) sizeStartCol = cellIdx;
+                  });
+                  // 사이즈 수량 시작 위치가 명시되지 않은 경우 합계 다음 컬럼부터 탐색
+                  if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
+                  
+                  if (nameCol !== -1) {
+                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol });
+                  }
+              }
+          });
 
-                  const cellText = String(row[i] || "").trim();
-                  const blacklist = [
-                    '품명','칼라','합계','사이즈','비고','제품사진','제조사진','색상','소계','총계','IMAGE','COLOR','QTY','SIZE','TOTAL',
-                    '블루','아이보리','핑크','그레이','네이비','화이트','블랙','베이지','레드','그린','옐로우','퍼플','차콜','코랄','피치','브라운','라임','오렌지',
-                    '블랙','네이비','체크','스트라이프'
-                  ];
+          // 2. 각 헤더 아래 데이터 추출
+          headerRows.forEach(header => {
+              let lastName = "";
+              // 헤더 바로 다음 행부터 데이터 시작
+              for (let rIdx = header.rowIdx + 1; rIdx < jsonData.length; rIdx++) {
+                  const row = jsonData[rIdx];
+                  if (!row || !Array.isArray(row) || row.length === 0) continue;
+                  
+                  let currentName = String(row[header.nameCol] || "").trim();
+                  
+                  // 섹션 종료 조건 (비고, 합계 등)
+                  if (currentName.includes('비고') || currentName === '합계' || currentName === 'TOTAL') break;
+                  
+                  // 데이터가 전혀 없는 행이면 건너뜀 (단, 사이즈 수량이 있는지는 체크)
+                  const hasData = row.some((cell, idx) => cell !== undefined && cell !== "" && idx >= header.nameCol);
+                  if (!hasData) continue;
 
-                  if (cellText.length >= 2 && !/^[0-9]+$/.test(cellText) && !blacklist.includes(cellText)) {
-                      
-                      const nextCell = String(row[i+1] || "").trim();
-                      const thirdCell = String(row[i+2] || "").trim();
-                      
-                      // 1. 기본 패턴: i(Style/Name) -> i+1(Color) -> i+2(Qty)
-                      let finalQty = parseInt(String(row[i+2] || "0").replace(/[^0-9]/g, ''));
-                      let color = nextCell;
-                      let name = cellText;
-                      let startSizeIdx = i + 3;
+                  // 병합된 셀(Merged Cells) 대응: 이름이 비어있으면 이전 행의 이름을 사용
+                  if (!currentName && lastName) {
+                      currentName = lastName;
+                  } else if (currentName) {
+                      lastName = currentName;
+                  }
 
-                      // 2. 확장 패턴 (오른쪽 이미지/상품명 구조): i(Style) -> i+1(Name) -> i+2(Color) -> i+3(Qty)
-                      const altQty = parseInt(String(row[i+3] || "0").replace(/[^0-9]/g, ''));
-                      if (altQty > 0 && isNaN(finalQty)) {
-                          finalQty = altQty;
-                          name = nextCell;
-                          color = thirdCell;
-                          startSizeIdx = i + 4;
+                  if (!currentName) continue;
+                  
+                  const color = String(row[header.colorCol] || "").trim();
+                  const totalQty = parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
+                  
+                  if (totalQty > 0 || row[header.sizeStartCol]) {
+                      let foundSizes = false;
+                      // 사이즈 구간 탐색 (합계 이후 컬럼들)
+                      for (let sIdx = header.sizeStartCol; sIdx < row.length; sIdx++) {
+                          const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                          if (sVal > 0) {
+                              // 헤더 행에서 사이즈 명칭 가져오기
+                              const sHeader = String(jsonData[header.rowIdx]?.[sIdx] || "FREE").trim();
+                              clientExtractedData.push({ 
+                                  style: currentName, 
+                                  name: currentName, 
+                                  color: color, 
+                                  size: sHeader, 
+                                  qty: sVal 
+                              });
+                              foundSizes = true;
+                          }
                       }
-
-                      if (finalQty > 0 && color.length >= 1) { 
-                          let foundSizes = false;
-                          for (let sIdx = startSizeIdx; sIdx < row.length; sIdx++) {
-                              const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                              if (sVal > 0) {
-                                  const sHeader = String(jsonData[1]?.[sIdx] || jsonData[2]?.[sIdx] || "FREE").trim();
-                                  clientExtractedData.push({ style: name, name: name, color: color, size: sHeader, qty: sVal });
-                                  foundSizes = true;
-                              }
-                          }
-                          if (!foundSizes) {
-                            clientExtractedData.push({ style: name, name: name, color: color, size: "FREE", qty: finalQty });
-                          }
-                          foundInRow = true;
+                      
+                      // 개별 사이즈 수량이 없고 총계만 있는 경우
+                      if (!foundSizes && totalQty > 0) {
+                          clientExtractedData.push({ 
+                              style: currentName, 
+                              name: currentName, 
+                              color: color, 
+                              size: "FREE", 
+                              qty: totalQty 
+                          });
                       }
                   }
               }
