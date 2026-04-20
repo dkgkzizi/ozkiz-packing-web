@@ -63,15 +63,15 @@ function getLevenshteinDistance(s1: string, s2: string): number {
 }
 
 function getSimilarity(s1: string, s2: string): number {
-    const s1_h = s1.replace(/[^가-힣]/g, '');
-    const s2_h = s2.replace(/[^가-힣]/g, '');
+    const s1_clean = s1.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
+    const s2_clean = s2.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
     
     // 1. 완전 일치 (정규화 후)
-    if (s1 === s2) return 1.0;
+    if (s1 === s2 || s1_clean === s2_clean) return 1.0;
     
-    // 2. 포함 관계 (한글 전용, 최소 3글자 이상인 경우에만 0.95 부여)
-    if (s1_h && s2_h && (s1_h.length >= 3 || s2_h.length >= 3)) {
-        if (s1_h.includes(s2_h) || s2_h.includes(s1_h)) return 0.95;
+    // 2. 포함 관계 (한글/영문 모두 포함, 최소 3글자 이상인 경우 0.95 부여)
+    if (s1_clean && s2_clean && (s1_clean.length >= 3 || s2_clean.length >= 3)) {
+        if (s1_clean.includes(s2_clean) || s2_clean.includes(s1_clean)) return 0.95;
     }
     
     // 3. 토큰 기반 매칭 (정확히 일치하는 단어가 있을 때만)
@@ -80,7 +80,7 @@ function getSimilarity(s1: string, s2: string): number {
     for (const t1 of tokens1) {
         if (tokens2.includes(t1)) return 0.9;
     }
-
+    
     const distance = getLevenshteinDistance(s1, s2);
     const maxLen = Math.max(s1.length, s2.length);
     if (maxLen === 0) return 1;
@@ -92,7 +92,8 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    const threshold = type === 'china' ? 0.7 : 0.8; // 중국은 오타 보정을 위해 0.7 적용 (0.5는 너무 유연하여 오매칭 발생 가능)
+    // 인도와 중국 모두 이름 기반 매칭이므로 0.7로 완화하여 오타/누락 대응
+    const threshold = 0.7; 
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
