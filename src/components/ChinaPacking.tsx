@@ -265,11 +265,24 @@ export default function ChinaPacking() {
 
   const selectProduct = (item: any) => {
     if (editingIndex === null || !results) return;
+    
+    // 옵션 문자열 파싱 (예: ":화이트, :XS")
+    const optionRaw = item.option || "";
+    const parts = optionRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
+    
+    // 대략적으로 첫 번째가 색상, 두 번째가 사이즈라고 가정 (인벤토리 구조 기준)
+    // 혹은 사이즈 특성(XS, S, M, L, XL, FREE)이 포함된 쪽을 사이즈로 판단
+    const sizeMarkers = ['XS', 'S', 'M', 'L', 'XL', 'FREE', '1', '2', '3'];
+    let detectedSize = parts.find((p: string) => sizeMarkers.some(m => p.toUpperCase() === m)) || parts[1] || results[editingIndex].size;
+    let detectedColor = parts.find((p: string) => !sizeMarkers.some(m => p.toUpperCase() === m)) || parts[0] || results[editingIndex].color;
+
     const newResults = [...results];
     newResults[editingIndex] = {
       ...newResults[editingIndex],
       matchedCode: item.productCode,
-      matchedName: item.matchedName
+      matchedName: item.matchedName,
+      color: detectedColor,
+      size: detectedSize
     };
     setResults(newResults);
     setIsModalOpen(false);
