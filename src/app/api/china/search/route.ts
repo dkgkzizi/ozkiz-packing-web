@@ -17,16 +17,22 @@ export async function GET(req: NextRequest) {
 
     const client = await pool.connect();
     try {
-        // 검색어 정규화 (한글/영문/숫자만)
-        const cleanQuery = query.replace(/[^0-9A-Z가-힣]/gi, '%');
+        // 검색어 토큰화 (공백 기준)
+        const tokens = query.trim().split(/\s+/).filter(t => t.length > 0);
         
+        if (tokens.length === 0) return NextResponse.json({ success: true, items: [] });
+
+        // 모든 토큰이 상품명, 옵션, 상품코드 중 어디든 포함되어야 함
+        const whereConditions = tokens.map((_, i) => `("상품명" || ' ' || COALESCE("옵션", '') || ' ' || "상품코드") ILIKE $${i + 1}`).join(' AND ');
+        const params = tokens.map(t => `%${t}%`);
+
         const res = await client.query(`
             SELECT "상품코드", "상품명", "옵션" 
             FROM products 
-            WHERE "상품명" ILIKE $1 OR "상품코드" ILIKE $1 
+            WHERE ${whereConditions}
             ORDER BY "업로드일시" DESC NULLS LAST
             LIMIT 50
-        `, [`%${cleanQuery}%`]);
+        `, params);
 
         return NextResponse.json({ 
             success: true, 

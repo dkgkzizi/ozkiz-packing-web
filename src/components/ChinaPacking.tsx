@@ -421,10 +421,11 @@ export default function ChinaPacking() {
                           <tr 
                             key={idx} 
                             onClick={() => {
+                              const initialSearch = `${item.matchedName} ${item.color}`;
                               setEditingIndex(idx);
-                              setSearchTerm(item.matchedName);
+                              setSearchTerm(initialSearch);
                               setIsModalOpen(true);
-                              handleSearch(item.matchedName);
+                              handleSearch(initialSearch);
                             }}
                             className="group hover:bg-red-50/50 transition-colors cursor-pointer"
                           >
