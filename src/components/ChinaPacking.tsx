@@ -297,13 +297,14 @@ export default function ChinaPacking() {
   const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. 현재 수정하려는 행 정보 (스타일 정규화)
-    const targetStyleNormalized = results[editingIndex].style.replace(/\s/g, '').toUpperCase();
+    // 1. 현재 수정하려는 행 정보 (스타일 초정규화)
+    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
+    const targetStyleNormalized = normalize(results[editingIndex].style);
     const newResults = [...results];
 
     // 2. 같은 스타일을 공유하는 모든 행을 스마트하게 연쇄 교정
     newResults.forEach((resItem, idx) => {
-      const currentStyleNormalized = resItem.style.replace(/\s/g, '').toUpperCase();
+      const currentStyleNormalized = normalize(resItem.style);
       
       if (currentStyleNormalized === targetStyleNormalized) {
         if (idx === editingIndex) {
@@ -507,6 +508,9 @@ export default function ChinaPacking() {
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
                                 <td className="p-6">
+                                   <div className="mb-1.5 flex items-center gap-2">
+                                       <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
+                                   </div>
                                    <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-600 transition-colors">{item.matchedName}</span>
                                    <span className="text-[9px] text-red-400 font-bold uppercase block italic">{item.size} / {item.color}</span>
                                 </td>
