@@ -324,47 +324,56 @@ export default function DomesticPacking() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {results.map((item, idx) => (
-                          <tr 
-                            key={idx} 
-                            onClick={() => {
-                                setEditingIndex(idx);
-                                setSearchTerm('');
-                                setIsModalOpen(true);
-                                setSearchResults([]);
-                            }}
-                            className="group hover:bg-orange-50/50 transition-colors cursor-pointer"
-                          >
-                            <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-orange-600 transition-colors flex items-center gap-2">
-                               {item.matchedCode}
-                               <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </td>
-                            <td className="p-6">
-                               <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-orange-900 transition-colors">{item.matchedName}</span>
-                               <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-orange-400">{item.size} / {item.color}</span>
-                            </td>
-                            <td className="p-4 text-center">
-                               <div className="flex items-center justify-center gap-3">
-                                   <span className="text-[10px] font-bold text-slate-200 line-through">{item.pdfQty}</span>
-                                   <ArrowRightLeft className="w-3 h-3 text-slate-300" />
-                                   <span className={`text-sm font-black ${item.pdfQty === item.qty ? 'text-slate-900' : 'text-slate-500 underline'}`}>
-                                       {item.qty}
-                                   </span>
-                               </div>
-                            </td>
-                            <td className="p-4 text-center">
-                               {item.pdfQty === item.qty ? (
-                                   <div className="bg-slate-50 text-slate-900 p-1.5 rounded-lg inline-block shadow-sm">
-                                       <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                        {results.map((item, idx) => {
+                          const isNewGroup = idx > 0 && item.style !== results[idx - 1].style;
+                          return (
+                            <React.Fragment key={idx}>
+                              {isNewGroup && (
+                                <tr className="bg-slate-50/30">
+                                  <td colSpan={4} className="h-2 border-t border-slate-100"></td>
+                                </tr>
+                              )}
+                              <tr 
+                                onClick={() => {
+                                    setEditingIndex(idx);
+                                    setSearchTerm('');
+                                    setIsModalOpen(true);
+                                    setSearchResults([]);
+                                }}
+                                className={`group hover:bg-orange-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
+                              >
+                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-orange-600 transition-colors flex items-center gap-2">
+                                   {item.matchedCode}
+                                   <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </td>
+                                <td className="p-6">
+                                   <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-orange-900 transition-colors">{item.matchedName}</span>
+                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-orange-400">{item.size} / {item.color}</span>
+                                </td>
+                                <td className="p-4 text-center">
+                                   <div className="flex items-center justify-center gap-3">
+                                       <span className="text-[10px] font-bold text-slate-200 line-through">{item.pdfQty}</span>
+                                       <ArrowRightLeft className="w-3 h-3 text-slate-300" />
+                                       <span className={`text-sm font-black ${item.pdfQty === item.qty ? 'text-slate-900' : 'text-slate-500 underline'}`}>
+                                           {item.qty}
+                                       </span>
                                    </div>
-                               ) : (
-                                   <div className="bg-slate-50 text-slate-400 p-1.5 rounded-lg inline-block">
-                                       <AlertCircle className="w-3.5 h-3.5" />
-                                   </div>
-                               )}
-                            </td>
-                          </tr>
-                        ))}
+                                </td>
+                                <td className="p-4 text-center">
+                                   {item.pdfQty === item.qty ? (
+                                       <div className="bg-slate-50 text-slate-900 p-1.5 rounded-lg inline-block shadow-sm">
+                                           <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                       </div>
+                                   ) : (
+                                       <div className="bg-slate-50 text-slate-400 p-1.5 rounded-lg inline-block">
+                                           <AlertCircle className="w-3.5 h-3.5" />
+                                       </div>
+                                   )}
+                                </td>
+                              </tr>
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   ) : (
