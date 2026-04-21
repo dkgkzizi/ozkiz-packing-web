@@ -2,7 +2,6 @@
 
 import React, { useState, useRef } from 'react';
 import { 
-  FileUp, 
   ChevronRight, 
   Download, 
   Loader2,
@@ -14,7 +13,10 @@ import {
   Flag,
   ArrowRightLeft,
   ShieldCheck,
-  TrendingUp
+  TrendingUp,
+  X,
+  RefreshCcw,
+  Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -35,12 +37,84 @@ type VerificationData = {
   fileName: string;
 };
 
+export default function DomesticPacking() {
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<PackingItem[] | null>(null);
+  const [verification, setVerification] = useState<VerificationData | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Manual Selection Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+  const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) setFile(f);
+  };
+
+  const generateAndDownload = async (items: PackingItem[], originalName: string) => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('국내매칭결과');
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+    
+    worksheet.columns = [
+      { header: '상품코드', key: 'matchedCode', width: 20 },
+      { header: '상품명', key: 'matchedName', width: 40 },
+      { header: '색상', key: 'color', width: 15 },
+      { header: '사이즈', key: 'size', width: 12 },
+      { header: '작업수량', key: 'qty', width: 15 },
+      { header: '메모', key: 'memo', width: 25 }
+    ];
+
+    const hRow = worksheet.getRow(1);
+    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3748' } }; 
+
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_국내 입고` }));
+    
+    worksheet.eachRow(row => {
+        row.eachCell(cell => {
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
+  };
+
+  const handleProcess = async () => {
+    if (!file) return;
+    setLoading(true);
+    setResults(null);
+    setVerification(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/domestic/convert', { method: 'POST', body: formData });
+      const data = await res.json();
+      
+      if (data.success) {
+          setResults(data.items);
+          setVerification({
+              originalTotal: data.originalTotal,
+              matchedTotal: data.matchedTotal,
+              fileName: data.fileName
+          });
+          await generateAndDownload(data.items, data.fileName);
+      } else alert(data.message);
+    } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
+  };
 
   const handleSearch = async (val: string) => {
     setSearchTerm(val);
@@ -65,11 +139,9 @@ type VerificationData = {
   const selectProduct = (item: any) => {
     if (editingIndex === null || !results) return;
     
-    // 옵션 문자열 파싱 (예: ":화이트, :100")
     const optionRaw = item.option || "";
     const parts = optionRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
     
-    // 사이즈 감지 (숫자나 특정 마커 포함된 쪽)
     const sizeMarkers = ['XS', 'S', 'M', 'L', 'XL', 'FREE', '100', '110', '120', '130', '140', '150', '160'];
     let detectedSize = parts.find((p: string) => sizeMarkers.some(m => p.toUpperCase() === m)) || parts[1] || results[editingIndex].size;
     let detectedColor = parts.find((p: string) => !sizeMarkers.some(m => p.toUpperCase() === m)) || parts[0] || results[editingIndex].color;
@@ -162,7 +234,6 @@ type VerificationData = {
 
         <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
-             {/*Verification Summary Card*/}
              {verification && (
                <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between shadow-sm">
                   <div className="flex items-center gap-6">
@@ -283,7 +354,6 @@ type VerificationData = {
         </div>
       </div>
 
-       {/* Manual Selection Modal */}
        <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
