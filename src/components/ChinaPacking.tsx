@@ -80,6 +80,19 @@ export default function ChinaPacking() {
 
     const finalMemo = `${dateStr}_${filePart} 중국 패킹 입고`;
 
+    worksheet.columns = [
+      { header: '상품코드', key: 'matchedCode', width: 20 },
+      { header: '상품명', key: 'matchedName', width: 40 },
+      { header: '색상', key: 'color', width: 15 },
+      { header: '사이즈', key: 'size', width: 12 },
+      { header: '작업수량', key: 'qty', width: 15 },
+      { header: '메모', key: 'memo', width: 25 }
+    ];
+
+    const hRow = worksheet.getRow(1);
+    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; // Signature China Red
+
     items.forEach(item => worksheet.addRow({ ...item, memo: finalMemo }));
     
     worksheet.eachRow(row => {
