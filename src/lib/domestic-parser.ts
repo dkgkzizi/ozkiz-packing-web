@@ -69,24 +69,15 @@ export async function getDomesticPackingResults(buffer: Buffer, fileName: string
 당신은 한국 패킹리스트 전문 분석가입니다. 제공된 이미지는 '내주', '민주', '세종' 등 서로 다른 업체의 수기 입고 리스트입니다. 
 각 업체의 고유한 작성 방식을 파악하여 [상품명, 색상, 사이즈, 수량]을 아주 정밀하게 JSON으로 추출해 주세요.
 
+필수 요구사항:
+1. 상품명 정제: 상품명에 색상 정보(예: (블랙), (옐로우))가 포함되어 있다면 이를 제외하고 순수 상품명만 추출하세요.
+   - 예: '구미 베어 (블랙)' -> '구미 베어'
+2. 색상 분리: 가로로 나열된 사이즈 아래의 숫자를 수량으로 매칭하며, 상품명과 별도로 색상을 정확히 기입하세요.
+
 업체별 분석 가이드:
-1. 내주 (Naeju):
-   - 방식: 상품명이 좌측 상단에 크게 적히고, 그 아래로 [사이즈]와 [수량]이 세로로 나열됩니다.
-   - 예: '구미베어 (블랙)' 아래에 100/20, 110/21 등이 있으면 모두 '구미베어 (블랙)' 상품으로 처리하세요.
-
-2. 민주 (Minju):
-   - 방식: 표 상단 헤더에 '100, 110, 120, 130, 140' 등 사이즈가 가로로 나열되어 있습니다. 
-   - 데이터: 행(row)에는 '화이트', '멜란지' 같은 색상이 적혀 있고, 각 사이즈 열(column) 아래에 적힌 숫자가 해당 사이즈의 수량입니다.
-   - 주의: 'X' 표시된 곳은 수량이 0입니다.
-
-3. 세종 (Sejong):
-   - 방식: '품목' 칸에 상품명이 있고, 그 아래 '규격' 칸에 '핑크 150', '핑크 160' 처럼 색상과 사이즈가 함께 적힐 수 있습니다.
-   - 수량: 우측 '수량' 열에 적힌 숫자를 매칭하세요.
-
-공통 필수 규칙:
-- 상품명: 괄호나 하이픈을 포함한 전체 이름을 가져오세요.
-- 수량: 오직 숫자(Integer)만 추출하세요.
-- 비고/합계: 실제 상품 데이터가 아닌 계산된 합계 수치는 제외하세요.
+1. 내주 (Naeju): 상품명 아래에 (색상)이 적힌 경우, 상품명만 가져오고 색상은 따로 추출하세요.
+2. 민주 (Minju): 헤더의 사이즈(100~140)별 수량을 행별 색상과 조합하세요.
+3. 세종 (Sejong): 규격 칸의 색상과 사이즈를 각각 분리하세요.
 
 출력 형식 (반드시 유효한 JSON):
 {
@@ -119,11 +110,15 @@ export async function getDomesticPackingResults(buffer: Buffer, fileName: string
   const content = JSON.parse(data.candidates[0].content.parts[0].text);
   const items = content.items || [];
 
-  return items.map((item: any) => ({
-      style: item.productName || "",
-      name: item.productName || "국내 상품",
-      color: item.color || "기본",
-      size: item.size || "FREE",
-      qty: Number(item.qty) || 0
-  }));
+  return items.map((item: any) => {
+      // 상품명에서 괄호 및 그 안의 내용 제거 (최종 정제)
+      const cleanName = (item.productName || "").replace(/\(.*\)/g, '').trim();
+      return {
+          style: cleanName,
+          name: cleanName || "국내 상품",
+          color: item.color || "기본",
+          size: item.size || "FREE",
+          qty: Number(item.qty) || 0
+      };
+  });
 }

@@ -217,8 +217,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
                 qualityScore += 100;
             }
             
-            // 중국일 경우 시즌 가산점 추가
-            let seasonalScore = type === 'china' ? getSeasonalScore(dbName) : 0;
+            // 중국 및 국내일 경우 시즌 가산점 추가
+            let seasonalScore = (type === 'china' || type === 'domestic') ? getSeasonalScore(dbName) : 0;
 
             candidates.push({ row, score: baseScore + colorScore + qualityScore + seasonalScore, nameScore: qualityScore });
         }
