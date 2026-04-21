@@ -275,21 +275,22 @@ export default function ChinaPacking() {
   const selectProduct = (item: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. 현재 수정하려는 행 정보 (중복 매칭을 방지하기 위해 원본 스타일 기준 그룹핑)
-    const targetStyle = results[editingIndex].style;
+    // 1. 현재 수정하려는 행 정보 (스타일 정규화)
+    const targetStyleNormalized = results[editingIndex].style.replace(/\s/g, '').toUpperCase();
     const newResults = [...results];
 
-    // 2. 검색 결과 리스트(searchResults)에서 각 행의 사이즈/색상에 맞는 적절한 SKU를 찾아 연쇄 업데이트
+    // 2. 같은 스타일을 공유하는 모든 행을 스마트하게 연쇄 교정
     newResults.forEach((resItem, idx) => {
-      if (resItem.style === targetStyle) {
-        // 이 행의 사이즈와 일치하는 옵션을 검색 결과에서 찾기
+      const currentStyleNormalized = resItem.style.replace(/\s/g, '').toUpperCase();
+      
+      if (currentStyleNormalized === targetStyleNormalized) {
+        const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
+        
+        // 3. 검색 결과(searchResults)에서 해당 행의 사이즈와 가장 잘 맞는 옵션 매칭
         const bestMatchOption = searchResults.find(opt => {
-          const optRaw = opt.option || "";
-          const optParts = optRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
-          
-          // 중국 패킹 리스트의 사이즈(XS, S, M, L, XL 등) 매칭
-          const isSizeMatch = optParts.some(p => p.toUpperCase() === resItem.size.toUpperCase());
-          return isSizeMatch;
+          const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
+          // 사이즈 매칭 (XS, S, M, L, XL 등)
+          return optRaw.includes(resSize);
         });
 
         if (bestMatchOption) {
@@ -299,7 +300,6 @@ export default function ChinaPacking() {
             matchedName: bestMatchOption.matchedName
           };
         } else if (idx === editingIndex) {
-          // 직접 선택한 행인데도 사이즈 매칭이 안 된 경우, 선택한 구체적인 하나로라도 업데이트
           newResults[idx] = {
             ...resItem,
             matchedCode: item.productCode,

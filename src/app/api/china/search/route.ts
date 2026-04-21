@@ -23,9 +23,17 @@ export async function GET(req: NextRequest) {
             SELECT "상품코드", "상품명", "옵션" 
             FROM products 
             WHERE ${whereConditions}
-            ORDER BY "업로드일시" DESC NULLS LAST
+            ORDER BY 
+                (CASE 
+                    WHEN "상품명" = $${tokens.length + 1} THEN 0
+                    WHEN "상품명" ILIKE $${tokens.length + 1} THEN 1
+                    WHEN "상품코드" = $${tokens.length + 1} THEN 0
+                    ELSE 2 
+                END),
+                LENGTH("상품명") ASC,
+                "업로드일시" DESC NULLS LAST
             LIMIT 50
-        `, params);
+        `, [...params, query]);
 
         return NextResponse.json({ 
             success: true, 
