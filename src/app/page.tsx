@@ -75,25 +75,6 @@ export default function Home() {
   };
 
   const renderContent = () => {
-    if (isLocked) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-in fade-in duration-700">
-                <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mb-8 border-4 border-white shadow-2xl shadow-red-200">
-                    <Lock className="w-10 h-10 text-red-600" />
-                </div>
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-4 uppercase italic">Systems Locked</h2>
-                <p className="text-slate-500 font-medium mb-8 max-w-sm">관리자 승인 없이 시스템 접근이 제한되었습니다.<br />업데이트 및 작업 진행을 위해 언락이 필요합니다.</p>
-                <button 
-                    onClick={() => setShowUnlockModal(true)}
-                    className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold tracking-widest uppercase text-xs hover:bg-red-600 transition-all shadow-xl shadow-slate-200 flex items-center gap-3 active:scale-95"
-                >
-                    <Unlock className="w-4 h-4" />
-                    Authorize System Unlock
-                </button>
-            </div>
-        );
-    }
-
     switch (activeCategory) {
       case 1: return <DomesticPacking />;
       case 2: return <ChinaPacking />;
@@ -133,11 +114,10 @@ export default function Home() {
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                disabled={isLocked && cat.id !== activeCategory}
                 className={`w-full group flex items-center gap-4 p-4 rounded-2xl transition-all duration-400 relative overflow-hidden ${
                   activeCategory === cat.id 
                   ? `${cat.bg} border border-slate-200 shadow-sm scale-[1.02]` 
-                  : (isLocked ? 'opacity-20 cursor-not-allowed' : 'hover:bg-slate-100/50 border border-transparent opacity-60 hover:opacity-100')
+                  : 'hover:bg-slate-100/50 border border-transparent opacity-60 hover:opacity-100'
                 }`}
               >
                 <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-400 shadow-sm ${
@@ -159,27 +139,30 @@ export default function Home() {
           </div>
 
           <div className="mt-auto space-y-4">
-            {!isLocked && (
-                <button 
-                    onClick={() => setIsLocked(true)}
-                    className="w-full flex items-center gap-3 p-4 rounded-2xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 transition-all font-bold text-xs uppercase tracking-widest mb-2"
-                >
-                    <Lock className="w-4 h-4" />
-                    Lock System
-                </button>
-            )}
+             {/* 관리자 업데이트 락 상태 버튼 */}
+             <button 
+                onClick={() => isLocked ? setShowUnlockModal(true) : setIsLocked(true)}
+                className={`w-full flex items-center gap-3 p-4 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-[0.2em] ${
+                    isLocked 
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200' 
+                    : 'bg-orange-50 text-orange-600 border-orange-100 animate-pulse'
+                }`}
+            >
+                {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                {isLocked ? 'Update Locked' : 'Update Mode On'}
+            </button>
 
             <div className="p-6 bg-slate-950 rounded-3xl shadow-xl shadow-slate-200 border border-white/10 group cursor-pointer overflow-hidden relative">
-                <div className={`absolute inset-0 bg-gradient-to-br transition-opacity ${isLocked ? 'from-red-500/20' : 'from-green-500/20'} to-transparent opacity-0 group-hover:opacity-100`} />
+                <div className={`absolute inset-0 bg-gradient-to-br transition-opacity ${isLocked ? 'from-green-500/10' : 'from-orange-500/20'} to-transparent opacity-0 group-hover:opacity-100`} />
                 <div className="relative z-10 flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.5)] ${isLocked ? 'bg-red-500' : 'bg-green-500'}`} />
+                    <div className={`w-3 h-3 rounded-full ${isLocked ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]'}`} />
                     <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-white uppercase tracking-widest leading-none mb-1">
-                        Status: {isLocked ? 'Locked' : 'Active'}
-                    </span>
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                        {isLocked ? 'Encryption Key Required' : 'Authorization Verified'}
-                    </span>
+                        <span className="text-[10px] font-black text-white uppercase tracking-widest leading-none mb-1">
+                            {isLocked ? 'Production: Active' : 'Maintenance: Active'}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                            {isLocked ? 'Code Integrity Secured' : 'System Update Available'}
+                        </span>
                     </div>
                 </div>
             </div>
