@@ -200,16 +200,21 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
             const dbCode = (row["상품코드"] || row["code"] || "").toString();
             let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 50 : 0;
             
-            // 라벨/택 오매칭 방지 로직 (부차적 점수)
-            const labelKeywords = ['라벨', '택', 'LABEL', 'TAG', '보증택'];
+            // 라벨/부자재(부수자재) 오매칭 방지 로직 (강력한 필터링)
+            const subItemKeywords = ['라벨', '택', 'LABEL', 'TAG', '보증택', '고리', '옷걸이', '봉투', '박스', '비닐', '폴리백', '사은품'];
             const s = normalizeStr(ex.styleNo);
-            const inputHasLabel = labelKeywords.some(k => s.includes(k));
-            const dbHasLabel = labelKeywords.some(k => dbName.includes(k));
+            const s_upper = s.toUpperCase();
+            const dbName_upper = dbName.toUpperCase();
             
-            if (inputHasLabel === dbHasLabel) {
-                qualityScore += 50; // 둘 다 라벨이거나 둘 다 아니면 가점
-            } else {
-                qualityScore -= 200; // 한쪽만 라벨이면 강한 감점 (오매칭 방지 핵심)
+            const inputIsSubItem = subItemKeywords.some(k => s_upper.includes(k));
+            const dbIsSubItem = subItemKeywords.some(k => dbName_upper.includes(k));
+            
+            if (inputIsSubItem !== dbIsSubItem) {
+                // 한쪽만 부자재일 경우, 점수를 대폭 삭감하여 아예 매칭되지 않도록 함 (중복 방지 정책)
+                qualityScore -= 500; 
+            } else if (inputIsSubItem && dbIsSubItem) {
+                // 둘 다 부자재일 경우 가산점
+                qualityScore += 100;
             }
             
             // 중국일 경우 시즌 가산점 추가
