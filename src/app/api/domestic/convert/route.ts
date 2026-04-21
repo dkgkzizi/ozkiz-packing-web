@@ -37,13 +37,17 @@ export async function POST(req: NextRequest) {
         if (i === 1) return;
         const q = parseInt(row.getCell(5).text) || 0;
         matchedTotal += q;
+        const originalKey = row.getCell(7).text || "";
+        const styleName = originalKey.split('|')[0] || row.getCell(2).text;
+
         finalItems.push({
             matchedCode: row.getCell(1).text,
             matchedName: row.getCell(2).text,
             color: row.getCell(3).text,
             size: row.getCell(4).text,
             qty: q,
-            pdfQty: q // 마스터 결과와 대조
+            pdfQty: q,
+            style: styleName
         });
     });
 

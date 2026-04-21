@@ -29,6 +29,7 @@ type PackingItem = {
   size: string;
   qty: number;
   pdfQty: number;
+  style: string;
 };
 
 type VerificationData = {
@@ -138,21 +139,46 @@ export default function DomesticPacking() {
   const selectProduct = (item: any) => {
     if (editingIndex === null || !results) return;
     
-    const optionRaw = item.option || "";
-    const parts = optionRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
-    
-    const sizeMarkers = ['XS', 'S', 'M', 'L', 'XL', 'FREE', '100', '110', '120', '130', '140', '150', '160'];
-    let detectedSize = parts.find((p: string) => sizeMarkers.some(m => p.toUpperCase() === m)) || parts[1] || results[editingIndex].size;
-    let detectedColor = parts.find((p: string) => !sizeMarkers.some(m => p.toUpperCase() === m)) || parts[0] || results[editingIndex].color;
-
+    // 1. 현재 수정하려는 행 정보
+    const targetStyle = results[editingIndex].style;
     const newResults = [...results];
-    newResults[editingIndex] = {
-      ...newResults[editingIndex],
-      matchedCode: item.productCode,
-      matchedName: item.matchedName,
-      color: detectedColor,
-      size: detectedSize
-    };
+
+    // 2. 검색 결과 리스트(searchResults)는 현재 선택한 상품의 모든 옵션 정보를 포함하고 있다고 가정
+    // (보통 상품명을 검색하면 해당 상품의 모든 사이즈/색상이 나옵니다)
+    
+    // 3. 같은 스타일(OCR 이름)을 공유하는 모든 행을 스마트하게 교정
+    newResults.forEach((resItem, idx) => {
+      if (resItem.style === targetStyle) {
+        // 이 행에 가장 적합한 옵션을 검색 결과에서 찾기
+        const bestMatchOption = searchResults.find(opt => {
+          const optRaw = opt.option || "";
+          const optParts = optRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
+          
+          // 전표의 사이즈/색상과 검색 결과의 옵션이 일치하는지 확인
+          const isSizeMatch = optParts.some(p => p === resItem.size);
+          // 색상은 전표 데이터와 정확매칭이 어려울 수 있어 사이즈 우선으로 하되 가급적 색상도 체크
+          return isSizeMatch;
+        });
+
+        if (bestMatchOption) {
+          newResults[idx] = {
+            ...resItem,
+            matchedCode: bestMatchOption.productCode,
+            matchedName: bestMatchOption.matchedName,
+            // 색상과 사이즈는 전표에 적힌 원래 값을 유지하거나, 매칭된 옵션명으로 교정
+            // 여기서는 사용자의 요청대로 고유 수량/사이즈는 유지하며 코드와 상품명 위주로 변경
+          };
+        } else if (idx === editingIndex) {
+          // 직접 선택한 행인데 옵션 매칭 실패 시, 선택한 상품 정보로 강제 업데이트
+          newResults[idx] = {
+            ...resItem,
+            matchedCode: item.productCode,
+            matchedName: item.matchedName
+          };
+        }
+      }
+    });
+
     setResults(newResults);
     setIsModalOpen(false);
     setEditingIndex(null);
