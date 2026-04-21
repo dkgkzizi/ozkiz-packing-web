@@ -1,4 +1,3 @@
-import PDFParser from 'pdf2json';
 import * as XLSX from 'xlsx';
 
 export interface PackingResult {
@@ -10,12 +9,12 @@ export interface PackingResult {
 }
 
 /**
- * 국내 패킹리스트 범용 지능형 파서 (XLS, XLSX, PDF 지원)
+ * 국내 패킹리스트 범용 지능형 파서 (XLS, XLSX, Gemini AI OCR 지원)
  */
 export async function getDomesticPackingResults(buffer: Buffer, fileName: string = ""): Promise<PackingResult[]> {
   const isExcel = fileName.toLowerCase().endsWith('.xls') || fileName.toLowerCase().endsWith('.xlsx');
 
-  // 1. 엑셀 파일 처리 (구형 .XLS 포함)
+  // 1. 엑셀 파일 처리 (기존 로직 유지 - 속도가 빠름)
   if (isExcel || buffer.slice(0, 4).toString('hex') === '504b0304' || buffer.slice(0, 8).toString('hex') === 'd0cf11e0a1b11ae1') {
     try {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -24,11 +23,9 @@ export async function getDomesticPackingResults(buffer: Buffer, fileName: string
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
       
       let results: PackingResult[] = [];
-      
       if (jsonData.length > 0) {
           jsonData.forEach((row) => {
               if (!Array.isArray(row)) return;
-
               let style = "";
               let foundStyleIdx = -1;
               for (let i = 0; i < Math.min(row.length, 5); i++) {
@@ -39,7 +36,6 @@ export async function getDomesticPackingResults(buffer: Buffer, fileName: string
                       break;
                   }
               }
-
               if (style) {
                   for (let i = foundStyleIdx + 1; i < row.length; i++) {
                       const val = parseInt(String(row[i] || "").replace(/[^0-9]/g, ''));
@@ -58,52 +54,76 @@ export async function getDomesticPackingResults(buffer: Buffer, fileName: string
           });
           if (results.length > 0) return results;
       }
-    } catch (e) {
-      if (isExcel) throw new Error("국내 엑셀 분석 실패: " + (e as Error).message);
-    }
+    } catch (e) {}
   }
 
-  if (isExcel) throw new Error("업로드된 엑셀 파일에서 유효한 스타일/수량 데이터를 찾을 수 없습니다.");
+  // 2. 이미지/PDF 처리 (Google Gemini 1.5 API 사용)
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
 
-  // 2. PDF 처리 로직 (Fallback)
-  return new Promise((resolve, reject) => {
-    const pdfParser = new (PDFParser as any)();
-    pdfParser.on('pdfParser_dataError', (errData: any) => reject(new Error("PDF 분석 오류")));
-    pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
-      try {
-        let results: PackingResult[] = [];
-        let curS = "";
-        
-        pdfData.Pages.forEach((page: any) => {
-            let rowsRaw: Record<string, any[]> = {};
-            page.Texts.forEach((t: any) => {
-                let txt = "";
-                try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
-                if (!txt) return;
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - t.y) < 0.3);
-                if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
-                else rowsRaw[t.y] = [{ x: t.x, text: txt }];
-            });
+  const isPDF = buffer.slice(0, 4).toString('hex') === '25504446'; // %PDF
+  const mimeType = isPDF ? 'application/pdf' : 'image/jpeg';
+  const base64Data = buffer.toString('base64');
 
-            Object.keys(rowsRaw).sort((a,b)=>Number(a)-Number(b)).forEach(ry => {
-                let cols = rowsRaw[ry].sort((a,b) => a.x - b.x);
-                let styleCand = cols.find(c => /^[A-Z][0-9]{5,7}$/.test(c.text) || (c.text.length >= 6 && c.text.startsWith('S')));
-                if (styleCand) curS = styleCand.text;
-                let qtyCol = cols.find(c => c.x > 15.0 && /^[0-9]{1,4}$/.test(c.text));
-                if (qtyCol && curS) {
-                    results.push({
-                        style: curS,
-                        name: "국내 상품",
-                        color: "기본",
-                        size: "FREE",
-                        qty: parseInt(qtyCol.text)
-                    });
-                }
-            });
-        });
-        resolve(results);
-      } catch(e) { reject(e); }
-    });
-    pdfParser.parseBuffer(buffer);
+  const prompt = `
+당신은 한국 패킹리스트 전문 분석가입니다. 제공된 이미지는 '내주', '민주', '세종' 등 서로 다른 업체의 수기 입고 리스트입니다. 
+각 업체의 고유한 작성 방식을 파악하여 [상품명, 색상, 사이즈, 수량]을 아주 정밀하게 JSON으로 추출해 주세요.
+
+업체별 분석 가이드:
+1. 내주 (Naeju):
+   - 방식: 상품명이 좌측 상단에 크게 적히고, 그 아래로 [사이즈]와 [수량]이 세로로 나열됩니다.
+   - 예: '구미베어 (블랙)' 아래에 100/20, 110/21 등이 있으면 모두 '구미베어 (블랙)' 상품으로 처리하세요.
+
+2. 민주 (Minju):
+   - 방식: 표 상단 헤더에 '100, 110, 120, 130, 140' 등 사이즈가 가로로 나열되어 있습니다. 
+   - 데이터: 행(row)에는 '화이트', '멜란지' 같은 색상이 적혀 있고, 각 사이즈 열(column) 아래에 적힌 숫자가 해당 사이즈의 수량입니다.
+   - 주의: 'X' 표시된 곳은 수량이 0입니다.
+
+3. 세종 (Sejong):
+   - 방식: '품목' 칸에 상품명이 있고, 그 아래 '규격' 칸에 '핑크 150', '핑크 160' 처럼 색상과 사이즈가 함께 적힐 수 있습니다.
+   - 수량: 우측 '수량' 열에 적힌 숫자를 매칭하세요.
+
+공통 필수 규칙:
+- 상품명: 괄호나 하이픈을 포함한 전체 이름을 가져오세요.
+- 수량: 오직 숫자(Integer)만 추출하세요.
+- 비고/합계: 실제 상품 데이터가 아닌 계산된 합계 수치는 제외하세요.
+
+출력 형식 (반드시 유효한 JSON):
+{
+  "items": [
+    { "productName": "...", "color": "...", "size": "...", "qty": 10 },
+    ...
+  ]
+}
+`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+  const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+          contents: [{
+              parts: [
+                  { text: prompt },
+                  { inline_data: { mime_type: mimeType, data: base64Data } }
+              ]
+          }],
+          generationConfig: { response_mime_type: "application/json" }
+      })
   });
+
+  const data = await response.json();
+  if (data.error) throw new Error(`Gemini API Error: ${data.error.message}`);
+  if (!data.candidates?.[0]?.content?.parts?.[0]?.text) throw new Error("Gemini로부터 결과를 받지 못했습니다.");
+
+  const content = JSON.parse(data.candidates[0].content.parts[0].text);
+  const items = content.items || [];
+
+  return items.map((item: any) => ({
+      style: item.productName || "",
+      name: item.productName || "국내 상품",
+      color: item.color || "기본",
+      size: item.size || "FREE",
+      qty: Number(item.qty) || 0
+  }));
 }

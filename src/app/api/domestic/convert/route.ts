@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     
-    // 1. 국내 패킹 이미지/PDF 분석
-    const rawResults = await getDomesticPackingResults(buffer);
+    // 1. 국내 패킹 이미지/PDF 분석 (Gemini AI 활용)
+    const rawResults = await getDomesticPackingResults(buffer, file.name);
     if (rawResults.length === 0) throw new Error("분석할 데이터를 찾지 못했습니다.");
 
     const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty]));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
-    // 3. 마스터 매칭
+    // 3. 마스터 매칭 (Supabase 연동)
     const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer));
     const matchedWs = matchedWb.worksheets[0];
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
             color: row.getCell(3).text,
             size: row.getCell(4).text,
             qty: q,
-            pdfQty: q // 대조용 원본 수계
+            pdfQty: q // 마스터 결과와 대조
         });
     });
 
