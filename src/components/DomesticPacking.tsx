@@ -63,23 +63,23 @@ export default function DomesticPacking() {
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('국내매칭결과');
+    const worksheet = workbook.addWorksheet('�?��매칭결과');
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     
     worksheet.columns = [
-      { header: '상품코드', key: 'matchedCode', width: 20 },
-      { header: '상품명', key: 'matchedName', width: 40 },
-      { header: '색상', key: 'color', width: 15 },
-      { header: '사이즈', key: 'size', width: 12 },
-      { header: '작업수량', key: 'qty', width: 15 },
+      { header: '?�품코드', key: 'matchedCode', width: 20 },
+      { header: '?�품�?, key: 'matchedName', width: 40 },
+      { header: '?�상', key: 'color', width: 15 },
+      { header: '?�이�?, key: 'size', width: 12 },
+      { header: '?�업?�량', key: 'qty', width: 15 },
       { header: '메모', key: 'memo', width: 25 }
     ];
 
     const hRow = worksheet.getRow(1);
     hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3748' } }; 
+    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; 
 
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_국내 입고` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_�?�� ?�고` }));
     
     worksheet.eachRow(row => {
         row.eachCell(cell => {
@@ -90,7 +90,7 @@ export default function DomesticPacking() {
 
     const buffer = await workbook.xlsx.writeBuffer();
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭?�료.xlsx`);
   };
 
   const handleProcess = async () => {
@@ -118,7 +118,7 @@ export default function DomesticPacking() {
               fileName: data.fileName
           });
       } else alert(data.message);
-    } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
+    } catch (e) { alert('처리 �??�류'); } finally { setLoading(false); }
   };
 
   const getSizeScore = (sizeStr: string) => {
@@ -146,16 +146,15 @@ export default function DomesticPacking() {
       if (data.success) {
         let items = data.items;
         
-        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
+        // **강력???�론?�엔???�터�?*: ?�용?��? 명시??모든 ?�어가 ?�함??것만 ?�출
         const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length > 0) {
           items = items.filter((it: any) => {
             const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
-            // 모든 토큰이 포함되어야 함
-            return tokens.every(token => {
+            // 모든 ?�큰???�함?�어????            return tokens.every(token => {
               const t = token.replace(/\s/g, '');
-              // 만약 토큰이 100~200 사이의 숫자라면(사이즈일 확률 높음), 
-              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
+              // 만약 ?�큰??100~200 ?�이???�자?�면(?�이즈일 ?�률 ?�음), 
+              // ?�순 ?�함???�니???�션 ?�드???�당 ?�자가 ?�는지 ???�격?�게 체크
               if (/^[0-9]{3}$/.test(t)) {
                 const opt = (it.option || "").toUpperCase();
                 return opt.includes(t);
@@ -180,27 +179,27 @@ export default function DomesticPacking() {
   const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. 현재 수정하려는 행 정보 (스타일 초정규화: 특수문자/공백 제거 및 대문자화)
-    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
+    // 1. ?�재 ?�정?�려?????�보 (?��???초정규화: ?�수문자/공백 ?�거 �??�문자??
+    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-??/g, '').toUpperCase();
     const targetStyleNormalized = normalize(results[editingIndex].style);
     const newResults = [...results];
 
-    // 2. 같은 스타일 그룹을 공유하는 행들을 연쇄 교정
+    // 2. 같�? ?��???그룹??공유?�는 ?�들???�쇄 교정
     newResults.forEach((resItem, idx) => {
       const currentStyleNormalized = normalize(resItem.style);
       
       if (currentStyleNormalized === targetStyleNormalized) {
         if (idx === editingIndex) {
-          // **핵심**: 지금 클릭한 바로 그 행은 사용자가 선택한 아이템(selectedItem)으로 무조건 정확히 업데이트
+          // **?�심**: 지�??�릭??바로 �??��? ?�용?��? ?�택???�이??selectedItem)?�로 무조�??�확???�데?�트
           newResults[idx] = {
             ...resItem,
             matchedCode: selectedItem.productCode,
             matchedName: selectedItem.matchedName
-            // 수동 선택 시 사이즈/색상은 인벤토리 정보가 더 정확하므로 여기서 교정 가능하나, 
-            // 현재 요구사항은 수량/사이즈 유지이므로 코드와 상품명만 업데이트
+            // ?�동 ?�택 ???�이�??�상?� ?�벤?�리 ?�보가 ???�확?��?�??�기??교정 가?�하?? 
+            // ?�재 ?�구?�항?� ?�량/?�이�??��??��?�?코드?� ?�품명만 ?�데?�트
           };
         } else {
-          // 같은 그룹의 다른 행들은 검색 결과 리스트에서 적절한 사이즈를 찾아 매칭
+          // 같�? 그룹???�른 ?�들?� 검??결과 리스?�에???�절???�이즈�? 찾아 매칭
           const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
           const resColor = resItem.color.replace(/\s/g, '').toUpperCase();
 
@@ -223,7 +222,7 @@ export default function DomesticPacking() {
       }
     });
 
-    // 3. 정렬 상태 유지 (색상 -> 사이즈 순으로 자동 재정렬)
+    // 3. ?�렬 ?�태 ?��? (?�상 -> ?�이�??�으�??�동 ?�정??
     const sortedResults = newResults.sort((a: any, b: any) => {
       if (a.style !== b.style) return a.style.localeCompare(b.style);
       if (a.color !== b.color) return a.color.localeCompare(b.color);
@@ -253,8 +252,8 @@ export default function DomesticPacking() {
           Domestic <span className="text-slate-400">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           국내 표준 양식을 정밀 분석하고 <span className="text-slate-900 font-black">실시간 수량 검증</span> 결과를 제공합니다. <br />
-           <span className="text-slate-900 font-black">수동 교정 시스템</span>을 통해 모호한 수기 데이터도 100% 무결성을 보장합니다.
+           �?�� ?��? ?�식???��? 분석?�고 <span className="text-slate-900 font-black">?�시�??�량 검�?/span> 결과�??�공?�니?? <br />
+           <span className="text-slate-900 font-black">?�동 교정 ?�스??/span>???�해 모호???�기 ?�이?�도 100% 무결?�을 보장?�니??
         </p>
       </header>
 
@@ -298,8 +297,8 @@ export default function DomesticPacking() {
               <motion.button 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results, verification?.fileName || '국내패킹')} 
-                  className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-orange-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                  onClick={() => generateAndDownload(results, verification?.fileName || '�?��?�킹')} 
+                  className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
               >
                 <Download className="w-5 h-5" />
                 Download Final Excel
@@ -391,18 +390,18 @@ export default function DomesticPacking() {
                                     setIsModalOpen(true);
                                     setSearchResults([]);
                                 }}
-                                className={`group hover:bg-orange-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
+                                className={`group hover:bg-red-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
                               >
-                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-orange-600 transition-colors flex items-center gap-2">
+                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 transition-colors flex items-center gap-2">
                                    {item.matchedCode}
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
                                 <td className="p-6">
                                    <div className="mb-1.5 flex items-center gap-2">
-                                       <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
+                                       <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
                                    </div>
-                                   <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-orange-900 transition-colors">{item.matchedName}</span>
-                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-orange-400">{item.size} / {item.color}</span>
+                                   <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-900 transition-colors">{item.matchedName}</span>
+                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">{item.size} / {item.color}</span>
                                 </td>
                                 <td className="p-4 text-center">
                                    <div className="flex items-center justify-center gap-3">
@@ -462,8 +461,7 @@ export default function DomesticPacking() {
                 <div>
                   <h3 className="text-xl font-black text-slate-900 italic uppercase">Manual Code Correction</h3>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    정확한 상품을 검색하여 수기 데이터를 교정하세요
-                  </p>
+                    ?�확???�품??검?�하???�기 ?�이?��? 교정?�세??                  </p>
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(false)}
@@ -475,17 +473,17 @@ export default function DomesticPacking() {
 
               <div className="p-8">
                 <div className="relative mb-6">
-                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-400" />
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-red-400" />
                   <input 
                     type="text"
                     value={searchTerm}
                     onChange={(e) => handleSearch(e.target.value)}
-                    placeholder="상품명 또는 상품코드를 입력하세요..."
-                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-orange-500/20 transition-all outline-none"
+                    placeholder="?�품�??�는 ?�품코드�??�력?�세??.."
+                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-500/20 transition-all outline-none"
                     autoFocus
                   />
                   {searchLoading && (
-                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-orange-500" />
+                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-red-500" />
                   )}
                 </div>
 
@@ -496,21 +494,21 @@ export default function DomesticPacking() {
                         <button 
                           key={idx}
                           onClick={() => selectProduct(item)}
-                          className="w-full text-left p-5 rounded-2xl border border-slate-100 hover:border-orange-200 hover:bg-orange-50/30 transition-all group relative overflow-hidden"
+                          className="w-full text-left p-5 rounded-2xl border border-slate-100 hover:border-red-200 hover:bg-red-50/30 transition-all group relative overflow-hidden"
                         >
                           <div className="flex items-center justify-between relative z-10">
                             <div>
-                              <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1 italic">
+                              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1 italic">
                                 {item.productCode}
                               </p>
-                              <h4 className="text-sm font-bold text-slate-800 group-hover:text-orange-700 transition-colors">
+                              <h4 className="text-sm font-bold text-slate-800 group-hover:text-red-700 transition-colors">
                                 {item.matchedName}
                               </h4>
                               <p className="text-[11px] text-slate-400 font-bold mt-1">
                                 {item.option}
                               </p>
                             </div>
-                            <RefreshCcw className="w-5 h-5 text-slate-200 group-hover:text-orange-400 group-hover:rotate-180 transition-all duration-500" />
+                            <RefreshCcw className="w-5 h-5 text-slate-200 group-hover:text-red-400 group-hover:rotate-180 transition-all duration-500" />
                           </div>
                         </button>
                       ))}
@@ -518,12 +516,12 @@ export default function DomesticPacking() {
                   ) : searchTerm.length > 1 ? (
                     <div className="text-center py-20">
                       <Search className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">검색 결과가 없습니다.</p>
+                      <p className="text-sm font-bold text-slate-300">검??결과가 ?�습?�다.</p>
                     </div>
                   ) : (
                     <div className="text-center py-20">
                       <AlertCircle className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">검색어를 입력하여 인벤토리를 확인하세요.</p>
+                      <p className="text-sm font-bold text-slate-300">검?�어�??�력?�여 ?�벤?�리�??�인?�세??</p>
                     </div>
                   )}
                 </div>

@@ -35,9 +35,9 @@ export default function Home() {
       label: '국내 패킹리스트', 
       icon: <Package className="w-5 h-5" />, 
       desc: 'Local Hub',
-      color: 'from-orange-500 to-amber-500',
-      activeColor: 'text-orange-600',
-      bg: 'bg-orange-50'
+      color: 'from-red-600 to-rose-500',
+      activeColor: 'text-red-600',
+      bg: 'bg-red-50'
     },
     { 
       id: 2, 
@@ -45,9 +45,9 @@ export default function Home() {
       label: '중국 패킹리스트', 
       icon: <Truck className="w-5 h-5" />, 
       desc: 'China Branch',
-      color: 'from-red-500 to-rose-400',
-      activeColor: 'text-red-600',
-      bg: 'bg-red-50'
+      color: 'from-red-600 to-red-400',
+      activeColor: 'text-red-700',
+      bg: 'bg-red-50/80'
     },
     { 
       id: 3, 
@@ -55,9 +55,9 @@ export default function Home() {
       label: '인도 패킹리스트', 
       icon: <Globe className="w-5 h-5" />, 
       desc: 'Global Matcher',
-      color: 'from-blue-500 to-cyan-500',
-      activeColor: 'text-blue-600',
-      bg: 'bg-blue-50'
+      color: 'from-rose-600 to-red-500',
+      activeColor: 'text-rose-600',
+      bg: 'bg-rose-50'
     }
   ];
 
@@ -84,11 +84,11 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-orange-100 selection:text-orange-900 overflow-x-hidden">
+    <main className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-red-100 selection:text-red-900 overflow-x-hidden">
       {/* Background Soft Gradients */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-orange-200/20 blur-[180px] rounded-full" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-200/20 blur-[180px] rounded-full" />
+        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-red-100/30 blur-[180px] rounded-full" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-rose-200/20 blur-[180px] rounded-full" />
       </div>
 
       <div className="relative z-10 flex min-h-screen">
@@ -96,14 +96,11 @@ export default function Home() {
         <nav className="w-80 border-r border-slate-200 sticky top-0 h-screen p-10 flex flex-col bg-white/70 backdrop-blur-2xl">
           <div className="mb-16">
             <div className="flex items-center gap-3 mb-1 px-1">
-              <div className="w-10 h-10 bg-gradient-to-tr from-slate-800 to-slate-950 rounded-2xl flex items-center justify-center shadow-xl shadow-slate-200 ring-1 ring-white/20">
-                <Box className="w-6 h-6 text-white" />
-              </div>
               <div className="flex flex-col">
-                <h1 className="text-xl font-black tracking-tighter italic text-slate-900 leading-none">
-                  ANTIGRAVITY
+                <h1 className="text-5xl font-black tracking-[-0.05em] text-red-600 leading-none" style={{ fontFamily: 'var(--font-sans)', fontWeight: 900 }}>
+                  ozkiz
                 </h1>
-                <span className="text-[10px] font-black text-slate-400 tracking-[0.3em] uppercase mt-1">HUB SYSTEM</span>
+                <span className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase mt-3 ml-0.5">Logistics Center</span>
               </div>
             </div>
           </div>
@@ -145,7 +142,7 @@ export default function Home() {
                 className={`w-full flex items-center gap-3 p-4 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-[0.2em] ${
                     isLocked 
                     ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200' 
-                    : 'bg-orange-50 text-orange-600 border-orange-100 animate-pulse'
+                    : 'bg-red-50 text-red-600 border-red-100 animate-pulse'
                 }`}
             >
                 {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}

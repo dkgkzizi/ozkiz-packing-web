@@ -68,7 +68,7 @@ export default function ChinaPacking() {
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
     let filePart = "";
-    // 파일명에서 8자리 숫자(날짜) 찾기 (예: 20260418)
+    // ?�일명에??8?�리 ?�자(?�짜) 찾기 (?? 20260418)
     const dateMatch = cleanFileName.match(/[0-9]{8}/);
     if (dateMatch) {
       const fullDate = dateMatch[0];
@@ -78,14 +78,14 @@ export default function ChinaPacking() {
       filePart = cleanFileName;
     }
 
-    const finalMemo = `${dateStr}_${filePart} 중국 패킹 입고`;
+    const finalMemo = `${dateStr}_${filePart} 중국 ?�킹 ?�고`;
 
     worksheet.columns = [
-      { header: '상품코드', key: 'matchedCode', width: 20 },
-      { header: '상품명', key: 'matchedName', width: 40 },
-      { header: '색상', key: 'color', width: 15 },
-      { header: '사이즈', key: 'size', width: 12 },
-      { header: '작업수량', key: 'qty', width: 15 },
+      { header: '?�품코드', key: 'matchedCode', width: 20 },
+      { header: '?�품�?, key: 'matchedName', width: 40 },
+      { header: '?�상', key: 'color', width: 15 },
+      { header: '?�이�?, key: 'size', width: 12 },
+      { header: '?�업?�량', key: 'qty', width: 15 },
       { header: '메모', key: 'memo', width: 25 }
     ];
 
@@ -103,7 +103,7 @@ export default function ChinaPacking() {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭?�료.xlsx`);
   };
 
   const handleProcess = async () => {
@@ -113,16 +113,16 @@ export default function ChinaPacking() {
     setVerification(null);
 
     try {
-      // 1. 브라우저에서 직접 엑셀 읽기 (용량 다이어트 및 OZ/OH 정밀 스캔)
+      // 1. 브라?��??�서 직접 ?��? ?�기 (?�량 ?�이?�트 �?OZ/OH ?��? ?�캔)
       const buffer = await file.arrayBuffer();
       const XLSX = await import('xlsx');
       const workbook = XLSX.read(buffer, { type: 'array' });
       
       let clientExtractedData: any[] = [];
       const targetSheets = workbook.SheetNames.filter(name => 
-          name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치') || name.includes('매칭')
+          name.includes('OZ') || name.includes('OH') || name.includes('?�즈') || name.includes('?�에?�치') || name.includes('매칭')
       );
-      // 만약 타겟 시트가 없으면 2번째 시트(Index 1)를 우선순위로 두고, 그것도 없으면 전체 시트 처리
+      // 만약 ?��??�트가 ?�으�?2번째 ?�트(Index 1)�??�선?�위�??�고, 그것???�으�??�체 ?�트 처리
       const sheetsToProcess = targetSheets.length > 0 ? targetSheets : 
                              (workbook.SheetNames.length >= 2 ? [workbook.SheetNames[1]] : workbook.SheetNames);
 
@@ -131,35 +131,35 @@ export default function ChinaPacking() {
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
           if (jsonData.length === 0) return;
 
-          // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
+          // 1. ?�더 ?�치 찾기 (?�명, 칼라, ?�계 ?�이 ?�함????
           const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number }[] = [];
           
           jsonData.forEach((row, idx) => {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
-              if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
+              if (rowStr.includes('?�명') && (rowStr.includes('?�계') || rowStr.includes('?�량'))) {
                   let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim();
-                      if (c === '품명') nameCol = cellIdx;
-                      else if (c === '칼라' || c === '색상') colorCol = cellIdx;
-                      else if (c === '합계' || c === '소계' || c === '총계') totalCol = cellIdx;
-                      else if (c.includes('사이즈') && c.includes('수량')) sizeStartCol = cellIdx;
+                      if (c === '?�명') nameCol = cellIdx;
+                      else if (c === '칼라' || c === '?�상') colorCol = cellIdx;
+                      else if (c === '?�계' || c === '?�계' || c === '총계') totalCol = cellIdx;
+                      else if (c.includes('?�이�?) && c.includes('?�량')) sizeStartCol = cellIdx;
                   });
-                  // 사이즈 수량 시작 위치가 명시되지 않은 경우 합계 다음 컬럼부터 탐색
+                  // ?�이�??�량 ?�작 ?�치가 명시?��? ?��? 경우 ?�계 ?�음 컬럼부???�색
                   if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
                   
-                  if (nameCol !== -1 && nameCol > 5) { // 인도/국내와 섞이지 않도록 오른쪽 도표(index > 5)만 타겟팅
+                  if (nameCol !== -1 && nameCol > 5) { // ?�도/�?��?� ?�이지 ?�도�??�른�??�표(index > 5)�??�겟팅
                       headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol });
                   }
               }
           });
 
-          // 2. 각 헤더 아래 데이터 추출
+          // 2. �??�더 ?�래 ?�이??추출
           headerRows.forEach(header => {
               let lastName = "";
               
-              // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
+              // ?�이�??�더가 ?�더??바로 ?�래???�는지 ?�인 (병합 ?�이?�웃 ?�??
               const nextRow = jsonData[header.rowIdx + 1];
               const isTwoStepHeader = nextRow && nextRow.some(c => !isNaN(parseInt(String(c))));
               const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
@@ -171,13 +171,12 @@ export default function ChinaPacking() {
                   
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건 (비고, 합계, 혹은 완전히 빈 행)
-                  if (currentName.includes('비고') || currentName === '합계' || currentName === 'TOTAL') break;
+                  // ?�션 종료 조건 (비고, ?�계, ?��? ?�전??�???
+                  if (currentName.includes('비고') || currentName === '?�계' || currentName === 'TOTAL') break;
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
                   if (!rowStr && !currentName) break; 
 
-                  // 병합된 명칭 핸들링
-                  if (!currentName && lastName) {
+                  // 병합??명칭 ?�들�?                  if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
                       lastName = currentName;
@@ -193,9 +192,8 @@ export default function ChinaPacking() {
                       for (let sIdx = header.sizeStartCol; sIdx < row.length; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                           if (sVal > 0) {
-                              // 올바른 행에서 사이즈 명칭 가져오기
-                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
-                              if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
+                              // ?�바�??�에???�이�?명칭 가?�오�?                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                              if (!sHeader || sHeader.includes('?�이�?)) sHeader = "FREE";
                               
                               clientExtractedData.push({ 
                                   style: currentName, 
@@ -223,7 +221,7 @@ export default function ChinaPacking() {
       });
 
       if (clientExtractedData.length === 0) {
-          throw new Error("엑셀 파일의 OZ/OH 탭에서 유효한 매칭 데이터를 찾지 못했습니다.");
+          throw new Error("?��? ?�일??OZ/OH ??��???�효??매칭 ?�이?��? 찾�? 못했?�니??");
       }
 
       const res = await fetch('/api/china/convert', { 
@@ -237,11 +235,11 @@ export default function ChinaPacking() {
       try {
           data = JSON.parse(text);
       } catch (e) {
-          throw new Error(`서버 응답 오류 (Status: ${res.status}). 데이터가 너무 방대하거나 서버가 응답하지 않습니다.`);
+          throw new Error(`?�버 ?�답 ?�류 (Status: ${res.status}). ?�이?��? ?�무 방�??�거???�버가 ?�답?��? ?�습?�다.`);
       }
       
       if (data.success) {
-          // 전체 리스트를 스타일과 사이즈별로 정렬하여 표시
+          // ?�체 리스?��? ?��??�과 ?�이즈별�??�렬?�여 ?�시
           const sortedResults = data.items.sort((a: any, b: any) => {
             if (a.style !== b.style) return a.style.localeCompare(b.style);
             if (a.color !== b.color) return a.color.localeCompare(b.color);
@@ -255,19 +253,19 @@ export default function ChinaPacking() {
               fileName: data.fileName
           });
 
-          // 스마트 로직: 미매칭 상품이 없고 수량이 완벽히 일치하면 자동 다운로드
-          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매칭' || item.matchedCode === '코드누락');
+          // ?�마??로직: 미매�??�품???�고 ?�량???�벽???�치?�면 ?�동 ?�운로드
+          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매�? || item.matchedCode === '코드?�락');
           const isQuantityMatched = data.originalTotal === data.matchedTotal;
 
           if (!hasUnmatched && isQuantityMatched) {
               await generateAndDownload(data.items, data.fileName);
           }
       } else {
-          alert(`작업 실패: ${data.message}`);
+          alert(`?�업 ?�패: ${data.message}`);
       }
     } catch (e: any) { 
       console.error(e);
-      alert(e.message || '처리 중 오류가 발생했습니다.'); 
+      alert(e.message || '처리 �??�류가 발생?�습?�다.'); 
     } finally { setLoading(false); }
   };
 
@@ -296,16 +294,15 @@ export default function ChinaPacking() {
       if (data.success) {
         let items = data.items;
         
-        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
+        // **강력???�론?�엔???�터�?*: ?�용?��? 명시??모든 ?�어가 ?�함??것만 ?�출
         const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length > 0) {
           items = items.filter((it: any) => {
             const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
-            // 모든 토큰이 포함되어야 함
-            return tokens.every(token => {
+            // 모든 ?�큰???�함?�어????            return tokens.every(token => {
               const t = token.replace(/\s/g, '');
-              // 만약 토큰이 100~200 사이의 숫자라면(사이즈일 확률 높음), 
-              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
+              // 만약 ?�큰??100~200 ?�이???�자?�면(?�이즈일 ?�률 ?�음), 
+              // ?�순 ?�함???�니???�션 ?�드???�당 ?�자가 ?�는지 ???�격?�게 체크
               if (/^[0-9]{3}$/.test(t)) {
                 const opt = (it.option || "").toUpperCase();
                 return opt.includes(t);
@@ -330,18 +327,18 @@ export default function ChinaPacking() {
   const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. 현재 수정하려는 행 정보 (스타일 초정규화)
-    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
+    // 1. ?�재 ?�정?�려?????�보 (?��???초정규화)
+    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-??/g, '').toUpperCase();
     const targetStyleNormalized = normalize(results[editingIndex].style);
     const newResults = [...results];
 
-    // 2. 같은 스타일을 공유하는 모든 행을 스마트하게 연쇄 교정
+    // 2. 같�? ?��??�을 공유?�는 모든 ?�을 ?�마?�하�??�쇄 교정
     newResults.forEach((resItem, idx) => {
       const currentStyleNormalized = normalize(resItem.style);
       
       if (currentStyleNormalized === targetStyleNormalized) {
         if (idx === editingIndex) {
-          // **핵심**: 지금 클릭한 행은 무조건 정확히 선택한 아이템으로 업데이트
+          // **?�심**: 지�??�릭???��? 무조�??�확???�택???�이?�으�??�데?�트
           newResults[idx] = {
             ...resItem,
             matchedCode: selectedItem.productCode,
@@ -365,7 +362,7 @@ export default function ChinaPacking() {
       }
     });
 
-    // 3. 정렬 상태 유지
+    // 3. ?�렬 ?�태 ?��?
     const sortedResults = newResults.sort((a: any, b: any) => {
       if (a.style !== b.style) return a.style.localeCompare(b.style);
       if (a.color !== b.color) return a.color.localeCompare(b.color);
@@ -395,8 +392,8 @@ export default function ChinaPacking() {
           China <span className="text-red-600">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           중국 제작 사진의 오타를 AI가 실시간으로 교정하고 <br />
-           <span className="text-red-600 font-black">수량 정합성 검증</span>을 마친 무결점 엑셀 파일을 생성합니다.
+           중국 ?�작 ?�진???��?�?AI가 ?�시간으�?교정?�고 <br />
+           <span className="text-red-600 font-black">?�량 ?�합??검�?/span>??마친 무결???��? ?�일???�성?�니??
         </p>
       </header>
 
@@ -409,7 +406,7 @@ export default function ChinaPacking() {
                 onDrop={onDrop}
                 onClick={() => fileInputRef.current?.click()} 
                 className={`relative h-72 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all duration-300 cursor-pointer ${
-                    isDragging ? 'border-red-500 bg-red-50' : 
+                    isDragging ? 'border-red-600 bg-red-50' : 
                     file ? 'border-red-200 bg-red-50/30' : 'border-slate-100 bg-slate-50 hover:bg-slate-100/50'
                 }`}
             >
@@ -440,7 +437,7 @@ export default function ChinaPacking() {
               <motion.button 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results, verification?.fileName || '중국패킹')} 
+                  onClick={() => generateAndDownload(results, verification?.fileName || '중국?�킹')} 
                   className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
               >
                 <Download className="w-5 h-5" />
@@ -475,7 +472,7 @@ export default function ChinaPacking() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-red-500'}`}>
+                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-red-600'}`}>
                         {verification.originalTotal === verification.matchedTotal ? (
                             <>
                                 <CheckCircle2 className="w-4 h-4" />
@@ -536,7 +533,7 @@ export default function ChinaPacking() {
                                 }}
                                 className={`group hover:bg-red-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
                               >
-                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-500 flex items-center gap-2">
+                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 flex items-center gap-2">
                                    {item.matchedCode}
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
@@ -606,8 +603,7 @@ export default function ChinaPacking() {
                 <div>
                   <h3 className="text-xl font-black text-slate-900 italic uppercase">Manual Product Select</h3>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    정확한 상품명을 검색하여 매칭 정보를 교정하세요
-                  </p>
+                    ?�확???�품명을 검?�하??매칭 ?�보�?교정?�세??                  </p>
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(false)}
@@ -624,12 +620,12 @@ export default function ChinaPacking() {
                     type="text"
                     value={searchTerm}
                     onChange={(e) => handleSearch(e.target.value)}
-                    placeholder="상품명 또는 상품코드를 입력하세요..."
-                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-500/20 transition-all outline-none"
+                    placeholder="?�품�??�는 ?�품코드�??�력?�세??.."
+                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-600/20 transition-all outline-none"
                     autoFocus
                   />
                   {searchLoading && (
-                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-red-500" />
+                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-red-600" />
                   )}
                 </div>
 
@@ -644,7 +640,7 @@ export default function ChinaPacking() {
                         >
                           <div className="flex items-center justify-between relative z-10">
                             <div>
-                              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1 italic">
+                              <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1 italic">
                                 {item.productCode}
                               </p>
                               <h4 className="text-sm font-bold text-slate-800 group-hover:text-red-700 transition-colors">
@@ -662,12 +658,12 @@ export default function ChinaPacking() {
                   ) : searchTerm.length > 1 ? (
                     <div className="text-center py-20">
                       <Search className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">검색 결과가 없습니다.</p>
+                      <p className="text-sm font-bold text-slate-300">검??결과가 ?�습?�다.</p>
                     </div>
                   ) : (
                     <div className="text-center py-20">
                       <AlertCircle className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">검색어를 입력하여 인벤토리를 확인하세요.</p>
+                      <p className="text-sm font-bold text-slate-300">검?�어�??�력?�여 ?�벤?�리�??�인?�세??</p>
                     </div>
                   )}
                 </div>
