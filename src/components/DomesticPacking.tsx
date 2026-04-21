@@ -106,11 +106,12 @@ export default function DomesticPacking() {
       const data = await res.json();
       
       if (data.success) {
-          const sorted = data.items.sort((a: any, b: any) => {
+          const sortedResult = data.items.sort((a: any, b: any) => {
             if (a.style !== b.style) return a.style.localeCompare(b.style);
+            if (a.color !== b.color) return a.color.localeCompare(b.color);
             return getSizeScore(a.size || "") - getSizeScore(b.size || "");
           });
-          setResults(sorted);
+          setResults(sortedResult);
           setVerification({
               originalTotal: data.originalTotal,
               matchedTotal: data.matchedTotal,
@@ -201,7 +202,14 @@ export default function DomesticPacking() {
       }
     });
 
-    setResults(newResults);
+    // 3. 정렬 상태 유지 (색상 -> 사이즈 순으로 자동 재정렬)
+    const sortedResults = newResults.sort((a: any, b: any) => {
+      if (a.style !== b.style) return a.style.localeCompare(b.style);
+      if (a.color !== b.color) return a.color.localeCompare(b.color);
+      return getSizeScore(a.size || "") - getSizeScore(b.size || "");
+    });
+
+    setResults(sortedResults);
     setIsModalOpen(false);
     setEditingIndex(null);
     setSearchTerm('');
