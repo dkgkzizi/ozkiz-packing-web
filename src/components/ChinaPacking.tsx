@@ -90,7 +90,6 @@ export default function ChinaPacking() {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
     saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
   };
 
