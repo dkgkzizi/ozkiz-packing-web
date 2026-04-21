@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import { 
-  Box, 
   Globe, 
   LayoutDashboard,
   Package,
@@ -150,15 +149,15 @@ export default function Home() {
             </button>
 
             <div className="p-6 bg-slate-950 rounded-3xl shadow-xl shadow-slate-200 border border-white/10 group cursor-pointer overflow-hidden relative">
-                <div className={`absolute inset-0 bg-gradient-to-br transition-opacity ${isLocked ? 'from-green-500/10' : 'from-orange-500/20'} to-transparent opacity-0 group-hover:opacity-100`} />
+                <div className={`absolute inset-0 bg-gradient-to-br transition-opacity ${isLocked ? 'from-green-500/10' : 'from-red-600/20'} to-transparent opacity-0 group-hover:opacity-100`} />
                 <div className="relative z-10 flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${isLocked ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]'}`} />
+                    <div className={`w-3 h-3 rounded-full ${isLocked ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]'}`} />
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-white uppercase tracking-widest leading-none mb-1">
                             {isLocked ? 'Production: Active' : 'Maintenance: Active'}
                         </span>
                         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                            {isLocked ? 'Code Integrity Secured' : 'System Update Available'}
+                            {isLocked ? 'OZ-Integrity Secured' : 'System Update Available'}
                         </span>
                     </div>
                 </div>
