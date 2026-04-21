@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef } from 'react';
 import { 
@@ -27,7 +27,7 @@ type PackingItem = {
   color: string;
   size: string;
   qty: number;
-  pdfQty: number; // ???�위 ?�본 ?�량 추�?
+  pdfQty: number; // ???⑥쐞 ?먮낯 ?섎웾 異붽?
 };
 
 type VerificationData = {
@@ -54,23 +54,23 @@ export default function IndiaPacking() {
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('?�도매칭결과');
+    const worksheet = workbook.addWorksheet('?몃룄留ㅼ묶寃곌낵');
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     
     worksheet.columns = [
-      { header: '?�품코드', key: 'matchedCode', width: 20 },
-      { header: '?�품�?, key: 'matchedName', width: 40 },
-      { header: '?�상', key: 'color', width: 15 },
-      { header: '?�이�?, key: 'size', width: 12 },
-      { header: '?�업?�량', key: 'qty', width: 15 },
-      { header: '메모', key: 'memo', width: 25 }
+      { header: '?곹뭹肄붾뱶', key: 'matchedCode', width: 20 },
+      { header: '?곹뭹紐?, key: 'matchedName', width: 40 },
+      { header: '?됱긽', key: 'color', width: 15 },
+      { header: '?ъ씠利?, key: 'size', width: 12 },
+      { header: '?묒뾽?섎웾', key: 'qty', width: 15 },
+      { header: '硫붾え', key: 'memo', width: 25 }
     ];
 
     const hRow = worksheet.getRow(1);
     hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } };
 
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_?�도 ?�고` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_?몃룄 ?낃퀬` }));
     
     worksheet.eachRow(row => {
         row.eachCell(cell => {
@@ -81,7 +81,7 @@ export default function IndiaPacking() {
 
     const buffer = await workbook.xlsx.writeBuffer();
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭?�료.xlsx`);
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_留ㅼ묶?꾨즺.xlsx`);
   };
 
   const handleProcess = async () => {
@@ -105,7 +105,7 @@ export default function IndiaPacking() {
           });
           await generateAndDownload(data.items, data.fileName);
       } else alert(data.message);
-    } catch (e) { alert('처리 �??�류'); } finally { setLoading(false); }
+    } catch (e) { alert('泥섎━ 以??ㅻ쪟'); } finally { setLoading(false); }
   };
 
   return (
@@ -124,8 +124,8 @@ export default function IndiaPacking() {
           India <span className="text-rose-600">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           ?�무 ?�뢰?��? 극�??�하??<span className="text-rose-600 font-black">???�위 ?��? ?�량 ?��??�스??/span>???�재?�습?�다. <br />
-           PDF ?�본�??��? 결과값이 ?�시간으�??�호 검증됩?�다.
+           ?낅Т ?좊ː?꾨? 洹밸??뷀븯??<span className="text-rose-600 font-black">???⑥쐞 ?뺣? ?섎웾 ?議??쒖뒪??/span>???묒옱?덉뒿?덈떎. <br />
+           PDF ?먮낯怨??묒? 寃곌낵媛믪씠 ?ㅼ떆媛꾩쑝濡??곹샇 寃利앸맗?덈떎.
         </p>
       </header>
 

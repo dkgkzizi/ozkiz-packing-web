@@ -1,33 +1,33 @@
-import ExcelJS from 'exceljs';
+﻿import ExcelJS from 'exceljs';
 import pool from '@/lib/db';
 
 const COLOR_MAP: Record<string, string[]> = {
-    'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
-    'WHITE': ['화이트', '아이보리', '백아이보리', '흰색'],
-    'BLACK': ['블랙', '검정', '검정색'],
-    'PINK': ['핑크', '분홍', '핫핑크', '연핑크'],
-    'YELLOW': ['옐로우', '노랑'],
-    'MELANGE': ['멜란지', '회색', '그레이', 'G MEL', 'MEL', 'GMEL'],
-    'GRAY': ['그레이', '회색', '멜란지'],
-    'GREY': ['그레이', '회색', '멜란지'],
-    'BEIGE': ['베이지', '오트밀'],
-    'BLUE': ['블루', '파랑', '민트', '소라', 'S BLUE', 'SKY BLUE'],
-    'NAVY': ['네이비', '남색'],
-    'RED': ['레드', '빨강', '와인'],
-    'GREEN': ['그린', '초록'],
-    'PURPLE': ['퍼플', '보라', '라벤더'],
-    'CHARCOAL': ['차콜', '먹색'],
-    'CORAL': ['코랄'],
-    'PEACH': ['피치'],
-    'BROWN': ['브라운', '갈색', '코코아'],
-    'LIME': ['라임', '연두'],
-    'ORANGE': ['오렌지', '주황']
+    'IVORY': ['?꾩씠蹂대━', '?붿씠??, '?щ┝', '諛깆븘?대낫由?],
+    'WHITE': ['?붿씠??, '?꾩씠蹂대━', '諛깆븘?대낫由?, '?곗깋'],
+    'BLACK': ['釉붾옓', '寃??, '寃?뺤깋'],
+    'PINK': ['?묓겕', '遺꾪솉', '?ロ븨??, '?고븨??],
+    'YELLOW': ['?먮줈??, '?몃옉'],
+    'MELANGE': ['硫쒕?吏', '?뚯깋', '洹몃젅??, 'G MEL', 'MEL', 'GMEL'],
+    'GRAY': ['洹몃젅??, '?뚯깋', '硫쒕?吏'],
+    'GREY': ['洹몃젅??, '?뚯깋', '硫쒕?吏'],
+    'BEIGE': ['踰좎씠吏', '?ㅽ듃諛'],
+    'BLUE': ['釉붾（', '?뚮옉', '誘쇳듃', '?뚮씪', 'S BLUE', 'SKY BLUE'],
+    'NAVY': ['?ㅼ씠鍮?, '?⑥깋'],
+    'RED': ['?덈뱶', '鍮④컯', '???],
+    'GREEN': ['洹몃┛', '珥덈줉'],
+    'PURPLE': ['?쇳뵆', '蹂대씪', '?쇰깽??],
+    'CHARCOAL': ['李⑥퐳', '癒뱀깋'],
+    'CORAL': ['肄붾엫'],
+    'PEACH': ['?쇱튂'],
+    'BROWN': ['釉뚮씪??, '媛덉깋', '肄붿퐫??],
+    'LIME': ['?쇱엫', '?곕몢'],
+    'ORANGE': ['?ㅻ젋吏', '二쇳솴']
 };
 
 function decomposeHangul(str: string): string {
-    const CHOSUNG = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
-    const JUNGSUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
-    const JONGSUNG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+    const CHOSUNG = ['??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??];
+    const JUNGSUNG = ['??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??];
+    const JONGSUNG = ['', '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '?', '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??, '??];
     let result = "";
     for (const char of str) {
         const code = char.charCodeAt(0) - 44032;
@@ -43,8 +43,8 @@ function decomposeHangul(str: string): string {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    // 특수문자 제거하되 공백은 한 개로 표준화 (한글 포함)
-    return s.toString().replace(/[^0-9A-Z가-힣]/gi, ' ').replace(/\s+/g, '').toUpperCase();
+    // ?뱀닔臾몄옄 ?쒓굅?섎릺 怨듬갚? ??媛쒕줈 ?쒖???(?쒓? ?ы븿)
+    return s.toString().replace(/[^0-9A-Z媛-??/gi, ' ').replace(/\s+/g, '').toUpperCase();
 }
 
 function getLevenshteinDistance(s1: string, s2: string): number {
@@ -63,20 +63,20 @@ function getLevenshteinDistance(s1: string, s2: string): number {
 }
 
 function getSimilarity(s1: string, s2: string): number {
-    const s1_clean = s1.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
-    const s2_clean = s2.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
+    const s1_clean = s1.toUpperCase().replace(/[^0-9A-Z媛-??/g, '');
+    const s2_clean = s2.toUpperCase().replace(/[^0-9A-Z媛-??/g, '');
     
-    // 1. 완전 일치 (정규화 후)
+    // 1. ?꾩쟾 ?쇱튂 (?뺢퇋????
     if (s1 === s2 || s1_clean === s2_clean) return 1.0;
     
-    // 2. 포함 관계 (한글/영문 모두 포함, 최소 3글자 이상인 경우 0.95 부여)
+    // 2. ?ы븿 愿怨?(?쒓?/?곷Ц 紐⑤몢 ?ы븿, 理쒖냼 3湲???댁긽??寃쎌슦 0.95 遺??
     if (s1_clean && s2_clean && (s1_clean.length >= 3 || s2_clean.length >= 3)) {
         if (s1_clean.includes(s2_clean) || s2_clean.includes(s1_clean)) return 0.95;
     }
     
-    // 3. 토큰 기반 매칭 (정확히 일치하는 단어가 있을 때만)
-    const tokens1 = s1.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
-    const tokens2 = s2.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
+    // 3. ?좏겙 湲곕컲 留ㅼ묶 (?뺥솗???쇱튂?섎뒗 ?⑥뼱媛 ?덉쓣 ?뚮쭔)
+    const tokens1 = s1.split(/[^0-9A-Z媛-??/).filter(t => t.length >= 2);
+    const tokens2 = s2.split(/[^0-9A-Z媛-??/).filter(t => t.length >= 2);
     for (const t1 of tokens1) {
         if (tokens2.includes(t1)) return 0.9;
     }
@@ -92,8 +92,7 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
     if (!s) return 0;
 
     let maxScore = 0;
-    // 인도와 중국 모두 이름 기반 매칭이므로 0.7로 완화하여 오타/누락 대응
-    const threshold = 0.7; 
+    // ?몃룄? 以묎뎅 紐⑤몢 ?대쫫 湲곕컲 留ㅼ묶?대?濡?0.7濡??꾪솕?섏뿬 ?ㅽ?/?꾨씫 ???    const threshold = 0.7; 
 
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
@@ -102,8 +101,7 @@ function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: s
         const similarity = getSimilarity(s, val);
         if (similarity < threshold) continue;
 
-        // 이름 점수를 기본으로 하고 크게 비중을 둠
-        let currentScore = similarity * 1000;
+        // ?대쫫 ?먯닔瑜?湲곕낯?쇰줈 ?섍퀬 ?ш쾶 鍮꾩쨷????        let currentScore = similarity * 1000;
         if (currentScore > maxScore) maxScore = currentScore;
     }
     return maxScore;
@@ -117,16 +115,15 @@ function getSeasonalScore(dbName: string): number {
     let score = 0;
     const n = dbName.toUpperCase();
     
-    // 연도 매칭 (현재 연도 포함 시 가점)
+    // ?곕룄 留ㅼ묶 (?꾩옱 ?곕룄 ?ы븿 ??媛??
     if (n.includes(year)) score += 30;
-    if (n.includes(String(parseInt(year) - 1))) score += 10; // 작년 제품도 약간의 가점
-
-    // 시즌 매칭 (SS/FW)
-    const isSS = month >= 2 && month <= 7; // 봄/여름 시즌 작업 기간
-    const isFW = month >= 8 || month <= 1; // 가을/겨울 시즌 작업 기간
+    if (n.includes(String(parseInt(year) - 1))) score += 10; // ?묐뀈 ?쒗뭹???쎄컙??媛??
+    // ?쒖쫵 留ㅼ묶 (SS/FW)
+    const isSS = month >= 2 && month <= 7; // 遊??щ쫫 ?쒖쫵 ?묒뾽 湲곌컙
+    const isFW = month >= 8 || month <= 1; // 媛??寃⑥슱 ?쒖쫵 ?묒뾽 湲곌컙
     
-    if (isSS && (n.includes('SS') || n.includes('S/S') || n.includes('여름') || n.includes('봄'))) score += 20;
-    if (isFW && (n.includes('FW') || n.includes('F/W') || n.includes('겨울') || n.includes('가을'))) score += 20;
+    if (isSS && (n.includes('SS') || n.includes('S/S') || n.includes('?щ쫫') || n.includes('遊?))) score += 20;
+    if (isFW && (n.includes('FW') || n.includes('F/W') || n.includes('寃⑥슱') || n.includes('媛??))) score += 20;
     
     return score;
 }
@@ -140,7 +137,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
         const styleNo = row.getCell(1).text.trim();
-        if (!styleNo || styleNo.includes('합계') || styleNo === 'STYLE NO' || styleNo.includes('TOTAL')) return;
+        if (!styleNo || styleNo.includes('?⑷퀎') || styleNo === 'STYLE NO' || styleNo.includes('TOTAL')) return;
         
         excelRecords.push({
             styleNo: styleNo,
@@ -159,18 +156,17 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const allCols = tableInfo.rows.map(r => r.column_name);
         
         if (type === 'china') {
-            // 중국은 상품명 매칭이 핵심이므로 상품명 컬럼만 우선 조회 (옵션/코드로 오매칭되는 것 방지)
-            barcodeCols = allCols.filter(c => ['상품명', 'name'].some(k => c.toLowerCase().includes(k)));
-            // 만약 상품명 컬럼이 없으면 폴백
-            if (barcodeCols.length === 0) barcodeCols = ['상품명', '상품코드', '옵션'].filter(c => allCols.includes(c));
+            // 以묎뎅? ?곹뭹紐?留ㅼ묶???듭떖?대?濡??곹뭹紐?而щ읆留??곗꽑 議고쉶 (?듭뀡/肄붾뱶濡??ㅻℓ移?릺??寃?諛⑹?)
+            barcodeCols = allCols.filter(c => ['?곹뭹紐?, 'name'].some(k => c.toLowerCase().includes(k)));
+            // 留뚯빟 ?곹뭹紐?而щ읆???놁쑝硫??대갚
+            if (barcodeCols.length === 0) barcodeCols = ['?곹뭹紐?, '?곹뭹肄붾뱶', '?듭뀡'].filter(c => allCols.includes(c));
         } else {
-            // 인도패킹은 바코드가 중요하지만, 상품명으로도 검색할 수 있어야 함
-            barcodeCols = allCols.filter(c => ['바코드', 'barcode', 'sku', '상품명', 'name'].some(k => c.toLowerCase().includes(k)));
-            if (barcodeCols.length === 0) barcodeCols = ['상품코드', '상품명'].filter(c => allCols.includes(c));
+            // ?몃룄?⑦궧? 諛붿퐫?쒓? 以묒슂?섏?留? ?곹뭹紐낆쑝濡쒕룄 寃?됲븷 ???덉뼱????            barcodeCols = allCols.filter(c => ['諛붿퐫??, 'barcode', 'sku', '?곹뭹紐?, 'name'].some(k => c.toLowerCase().includes(k)));
+            if (barcodeCols.length === 0) barcodeCols = ['?곹뭹肄붾뱶', '?곹뭹紐?].filter(c => allCols.includes(c));
         }
         
-        // 정렬 기준을 'id'에서 '업로드일시'로 변경하여 에러 수정
-        const result = await client.query('SELECT * FROM products ORDER BY "업로드일시" DESC NULLS LAST');
+        // ?뺣젹 湲곗???'id'?먯꽌 '?낅줈?쒖씪??濡?蹂寃쏀븯???먮윭 ?섏젙
+        const result = await client.query('SELECT * FROM products ORDER BY "?낅줈?쒖씪?? DESC NULLS LAST');
         dbRows = result.rows;
     } finally {
         client.release();
@@ -183,25 +179,24 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
         for (let row of dbRows) {
             const baseScore = getMatchScore(ex.styleNo, row, barcodeCols, type);
-            // 베이스 점수(이름 유사도)가 임계치를 넘지 못하면 아예 후보에서 제외
-            if (baseScore < 500) continue; // 최소 0.5 유사도
-
+            // 踰좎씠???먯닔(?대쫫 ?좎궗??媛 ?꾧퀎移섎? ?섏? 紐삵븯硫??꾩삁 ?꾨낫?먯꽌 ?쒖쇅
+            if (baseScore < 500) continue; // 理쒖냼 0.5 ?좎궗??
             let colorScore = 0;
-            const dbOpt = (row["옵션"] || "").toString().toUpperCase();
+            const dbOpt = (row["?듭뀡"] || "").toString().toUpperCase();
             for (const [group, synonyms] of Object.entries(COLOR_MAP)) {
                 if (normalizedExColor.includes(group) || synonyms.some(s => normalizedExColor.includes(s))) {
                     if ([group, ...synonyms].some(t => dbOpt.includes(t))) {
-                        colorScore = 100; break; // 색상 일치 시 가산점
+                        colorScore = 100; break; // ?됱긽 ?쇱튂 ??媛?곗젏
                     }
                 }
             }
 
-            const dbName = (row["상품명"] || row["name"] || "").toString();
-            const dbCode = (row["상품코드"] || row["code"] || "").toString();
+            const dbName = (row["?곹뭹紐?] || row["name"] || "").toString();
+            const dbCode = (row["?곹뭹肄붾뱶"] || row["code"] || "").toString();
             let qualityScore = (dbName && dbName !== dbCode && dbName.length > 2) ? 50 : 0;
             
-            // 라벨/부자재(부수자재) 오매칭 방지 로직 (강력한 필터링)
-            const subItemKeywords = ['라벨', '택', 'LABEL', 'TAG', '보증택', '고리', '옷걸이', '봉투', '박스', '비닐', '폴리백', '사은품'];
+            // ?쇰꺼/遺?먯옱(遺?섏옄?? ?ㅻℓ移?諛⑹? 濡쒖쭅 (媛뺣젰???꾪꽣留?
+            const subItemKeywords = ['?쇰꺼', '??, 'LABEL', 'TAG', '蹂댁쬆??, '怨좊━', '?룰구??, '遊됲닾', '諛뺤뒪', '鍮꾨땺', '?대━諛?, '?ъ???];
             const s = normalizeStr(ex.styleNo);
             const s_upper = s.toUpperCase();
             const dbName_upper = dbName.toUpperCase();
@@ -210,22 +205,21 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             const dbIsSubItem = subItemKeywords.some(k => dbName_upper.includes(k));
             
             if (inputIsSubItem !== dbIsSubItem) {
-                // 한쪽만 부자재일 경우, 점수를 대폭 삭감하여 아예 매칭되지 않도록 함 (중복 방지 정책)
+                // ?쒖そ留?遺?먯옱??寃쎌슦, ?먯닔瑜??????컧?섏뿬 ?꾩삁 留ㅼ묶?섏? ?딅룄濡???(以묐났 諛⑹? ?뺤콉)
                 qualityScore -= 500; 
             } else if (inputIsSubItem && dbIsSubItem) {
-                // 둘 다 부자재일 경우 가산점
+                // ????遺?먯옱??寃쎌슦 媛?곗젏
                 qualityScore += 100;
             }
             
-            // 중국 및 국내일 경우 시즌 가산점 추가
+            // 以묎뎅 諛?援?궡??寃쎌슦 ?쒖쫵 媛?곗젏 異붽?
             let seasonalScore = (type === 'china' || type === 'domestic') ? getSeasonalScore(dbName) : 0;
             
-            // 사이즈 매칭 가산점 (국내 패킹에서 중요)
+            // ?ъ씠利?留ㅼ묶 媛?곗젏 (援?궡 ?⑦궧?먯꽌 以묒슂)
             let sizeScore = 0;
             const exSize = String(ex.size).toUpperCase().trim();
             if (exSize && dbOpt.includes(exSize)) {
-                sizeScore = 200; // 사이즈 일치 시 강력한 우선순위 부여
-            }
+                sizeScore = 200; // ?ъ씠利??쇱튂 ??媛뺣젰???곗꽑?쒖쐞 遺??            }
 
             candidates.push({ row, score: baseScore + colorScore + sizeScore + qualityScore + seasonalScore, nameScore: qualityScore });
         }
@@ -234,10 +228,10 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const bestCandidate = candidates[0];
         const originalKey = `${ex.styleNo}|${ex.pdfName}|${ex.color}|${ex.size}`;
         
-        if (bestCandidate && bestCandidate.score >= 500) { // 최소 50% 이상의 이름 유사도 보장 (유사도 0.5 * 1000 = 500)
+        if (bestCandidate && bestCandidate.score >= 500) { // 理쒖냼 50% ?댁긽???대쫫 ?좎궗??蹂댁옣 (?좎궗??0.5 * 1000 = 500)
             const bestMatch = bestCandidate.row;
             let korColor = ex.color;
-            const optVal = (bestMatch["옵션"] || "").toString();
+            const optVal = (bestMatch["?듭뀡"] || "").toString();
             const optParts = optVal.split(',').map((p:string) => p.replace(/[:\s]/g, '').trim());
             
             let foundGroup = "";
@@ -253,25 +247,25 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 }
             }
 
-            let finalName = bestMatch["상품명"] || bestMatch["name"] || '상품명누락';
+            let finalName = bestMatch["?곹뭹紐?] || bestMatch["name"] || '?곹뭹紐낅늻??;
             if (bestCandidate.nameScore === 0) {
                 const legacyMatch = candidates.find(c => c.nameScore > 0);
-                if (legacyMatch) finalName = legacyMatch.row["상품명"] || legacyMatch.row["name"];
+                if (legacyMatch) finalName = legacyMatch.row["?곹뭹紐?] || legacyMatch.row["name"];
             }
 
-            if (finalName === bestMatch["상품코드"] || finalName.length < 2) {
+            if (finalName === bestMatch["?곹뭹肄붾뱶"] || finalName.length < 2) {
                 finalName = (ex.pdfName && ex.pdfName.length > 2) ? ex.pdfName : finalName;
             }
 
             matchedRaw.push({
-                productCode: bestMatch["상품코드"] || bestMatch["code"] || '코드누락',
+                productCode: bestMatch["?곹뭹肄붾뱶"] || bestMatch["code"] || '肄붾뱶?꾨씫',
                 sheetName: finalName,
                 color: korColor, size: ex.size, qty: ex.qty,
                 originalKey: originalKey
             });
         } else {
             matchedRaw.push({
-                productCode: '미매칭',
+                productCode: '誘몃ℓ移?,
                 sheetName: ex.pdfName,
                 color: ex.color, size: ex.size, qty: ex.qty,
                 originalKey: originalKey
@@ -291,16 +285,16 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     });
 
     const finalResults = Object.values(aggregated).sort((a:any, b:any) => {
-        if (a.productCode === '미매칭' && b.productCode !== '미매칭') return 1;
-        if (a.productCode !== '미매칭' && b.productCode === '미매칭') return -1;
+        if (a.productCode === '誘몃ℓ移? && b.productCode !== '誘몃ℓ移?) return 1;
+        if (a.productCode !== '誘몃ℓ移? && b.productCode === '誘몃ℓ移?) return -1;
         return a.sheetName.localeCompare(b.sheetName);
     });
 
     const outWb = new ExcelJS.Workbook();
-    const outWs = outWb.addWorksheet('매칭결과');
+    const outWs = outWb.addWorksheet('留ㅼ묶寃곌낵');
     const memoDate = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     
-    let memoContent = `${memoDate}_인도 입고`;
+    let memoContent = `${memoDate}_?몃룄 ?낃퀬`;
     if (type === 'china') {
         const cleanFileName = fileName.replace(/\.[^/.]+$/, "");
         let filePart = "";
@@ -310,19 +304,19 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         } else {
             filePart = cleanFileName;
         }
-        memoContent = `${memoDate}_${filePart} 중국 패킹 입고`;
+        memoContent = `${memoDate}_${filePart} 以묎뎅 ?⑦궧 ?낃퀬`;
     } else if (type === 'domestic') {
-        memoContent = `${memoDate}_국내 패킹 입고`;
+        memoContent = `${memoDate}_援?궡 ?⑦궧 ?낃퀬`;
     }
 
     outWs.columns = [
-        { header: '상품코드', key: 'productCode', width: 20 },
-        { header: '상품명', key: 'sheetName', width: 40 },
-        { header: '색상', key: 'color', width: 15 },
-        { header: '사이즈', key: 'size', width: 12 },
-        { header: '작업수량', key: 'qty', width: 15 },
-        { header: '메모', key: 'memo', width: 25 },
-        { header: '식별키', key: 'originalKey', width: 35, hidden: true }
+        { header: '?곹뭹肄붾뱶', key: 'productCode', width: 20 },
+        { header: '?곹뭹紐?, key: 'sheetName', width: 40 },
+        { header: '?됱긽', key: 'color', width: 15 },
+        { header: '?ъ씠利?, key: 'size', width: 12 },
+        { header: '?묒뾽?섎웾', key: 'qty', width: 15 },
+        { header: '硫붾え', key: 'memo', width: 25 },
+        { header: '?앸퀎??, key: 'originalKey', width: 35, hidden: true }
     ];
 
     const hRow = outWs.getRow(1);
@@ -339,7 +333,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             memo: memoContent,
             originalKey: r.originalKeys.join(';')
         });
-        if (r.productCode === '미매칭') {
+        if (r.productCode === '誘몃ℓ移?) {
             row.eachCell(c => { c.font = { color: { argb: 'FFFF0000' } }; });
         }
     });
