@@ -111,7 +111,6 @@ export default function DomesticPacking() {
               matchedTotal: data.matchedTotal,
               fileName: data.fileName
           });
-          await generateAndDownload(data.items, data.fileName);
       } else alert(data.message);
     } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
   };
