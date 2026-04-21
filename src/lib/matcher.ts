@@ -219,8 +219,15 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
             
             // 중국 및 국내일 경우 시즌 가산점 추가
             let seasonalScore = (type === 'china' || type === 'domestic') ? getSeasonalScore(dbName) : 0;
+            
+            // 사이즈 매칭 가산점 (국내 패킹에서 중요)
+            let sizeScore = 0;
+            const exSize = String(ex.size).toUpperCase().trim();
+            if (exSize && dbOpt.includes(exSize)) {
+                sizeScore = 200; // 사이즈 일치 시 강력한 우선순위 부여
+            }
 
-            candidates.push({ row, score: baseScore + colorScore + qualityScore + seasonalScore, nameScore: qualityScore });
+            candidates.push({ row, score: baseScore + colorScore + sizeScore + qualityScore + seasonalScore, nameScore: qualityScore });
         }
 
         candidates.sort((a, b) => b.score - a.score);
