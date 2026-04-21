@@ -282,7 +282,28 @@ export default function ChinaPacking() {
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
       const data = await res.json();
       if (data.success) {
-        const sorted = data.items.sort((a: any, b: any) => {
+        let items = data.items;
+        
+        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
+        const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
+        if (tokens.length > 0) {
+          items = items.filter((it: any) => {
+            const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
+            // 모든 토큰이 포함되어야 함
+            return tokens.every(token => {
+              const t = token.replace(/\s/g, '');
+              // 만약 토큰이 100~200 사이의 숫자라면(사이즈일 확률 높음), 
+              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
+              if (/^[0-9]{3}$/.test(t)) {
+                const opt = (it.option || "").toUpperCase();
+                return opt.includes(t);
+              }
+              return combined.includes(t);
+            });
+          });
+        }
+
+        const sorted = items.sort((a: any, b: any) => {
           return getSizeScore(a.option || "") - getSizeScore(b.option || "");
         });
         setSearchResults(sorted);
