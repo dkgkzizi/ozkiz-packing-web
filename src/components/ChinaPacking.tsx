@@ -229,7 +229,13 @@ export default function ChinaPacking() {
       }
       
       if (data.success) {
-          setResults(data.items);
+          // 전체 리스트를 스타일과 사이즈별로 정렬하여 표시
+          const sortedResults = data.items.sort((a: any, b: any) => {
+            if (a.style !== b.style) return a.style.localeCompare(b.style);
+            return getSizeScore(a.size) - getSizeScore(b.size);
+          });
+          
+          setResults(sortedResults);
           setVerification({
               originalTotal: data.originalTotal,
               matchedTotal: data.matchedTotal,
@@ -252,6 +258,18 @@ export default function ChinaPacking() {
     } finally { setLoading(false); }
   };
 
+  const getSizeScore = (sizeStr: string) => {
+    const s = sizeStr.toUpperCase();
+    if (s.includes('XS')) return -2;
+    if (s.includes('S')) return -1;
+    if (s.includes('FREE') || s.includes('F')) return 0;
+    if (s.includes('M')) return 500;
+    if (s.includes('L')) return 600;
+    if (s.includes('XL')) return 700;
+    const num = parseInt(s.replace(/[^0-9]/g, ''));
+    return isNaN(num) ? 999 : num;
+  };
+
   const handleSearch = async (val: string) => {
     setSearchTerm(val);
     if (val.length < 2) {
@@ -263,7 +281,10 @@ export default function ChinaPacking() {
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
       const data = await res.json();
       if (data.success) {
-        setSearchResults(data.items);
+        const sorted = data.items.sort((a: any, b: any) => {
+          return getSizeScore(a.option || "") - getSizeScore(b.option || "");
+        });
+        setSearchResults(sorted);
       }
     } catch (e) {
       console.error(e);
@@ -272,7 +293,7 @@ export default function ChinaPacking() {
     }
   };
 
-  const selectProduct = (item: any) => {
+  const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
     // 1. 현재 수정하려는 행 정보 (스타일 정규화)
@@ -284,27 +305,27 @@ export default function ChinaPacking() {
       const currentStyleNormalized = resItem.style.replace(/\s/g, '').toUpperCase();
       
       if (currentStyleNormalized === targetStyleNormalized) {
-        const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
-        
-        // 3. 검색 결과(searchResults)에서 해당 행의 사이즈와 가장 잘 맞는 옵션 매칭
-        const bestMatchOption = searchResults.find(opt => {
-          const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
-          // 사이즈 매칭 (XS, S, M, L, XL 등)
-          return optRaw.includes(resSize);
-        });
+        if (idx === editingIndex) {
+          // **핵심**: 지금 클릭한 행은 무조건 정확히 선택한 아이템으로 업데이트
+          newResults[idx] = {
+            ...resItem,
+            matchedCode: selectedItem.productCode,
+            matchedName: selectedItem.matchedName
+          };
+        } else {
+          const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
+          const bestMatchOption = searchResults.find(opt => {
+            const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
+            return optRaw.includes(resSize);
+          });
 
-        if (bestMatchOption) {
-          newResults[idx] = {
-            ...resItem,
-            matchedCode: bestMatchOption.productCode,
-            matchedName: bestMatchOption.matchedName
-          };
-        } else if (idx === editingIndex) {
-          newResults[idx] = {
-            ...resItem,
-            matchedCode: item.productCode,
-            matchedName: item.matchedName
-          };
+          if (bestMatchOption) {
+            newResults[idx] = {
+              ...resItem,
+              matchedCode: bestMatchOption.productCode,
+              matchedName: bestMatchOption.matchedName
+            };
+          }
         }
       }
     });

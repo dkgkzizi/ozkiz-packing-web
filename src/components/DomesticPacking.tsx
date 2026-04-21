@@ -106,7 +106,11 @@ export default function DomesticPacking() {
       const data = await res.json();
       
       if (data.success) {
-          setResults(data.items);
+          const sorted = data.items.sort((a: any, b: any) => {
+            if (a.style !== b.style) return a.style.localeCompare(b.style);
+            return getSizeScore(a.size || "") - getSizeScore(b.size || "");
+          });
+          setResults(sorted);
           setVerification({
               originalTotal: data.originalTotal,
               matchedTotal: data.matchedTotal,
@@ -114,6 +118,18 @@ export default function DomesticPacking() {
           });
       } else alert(data.message);
     } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
+  };
+
+  const getSizeScore = (sizeStr: string) => {
+    const s = sizeStr.toUpperCase();
+    if (s.includes('XS')) return -2;
+    if (s.includes('S')) return -1;
+    if (s.includes('FREE') || s.includes('F')) return 0;
+    if (s.includes('M')) return 500;
+    if (s.includes('L')) return 600;
+    if (s.includes('XL')) return 700;
+    const num = parseInt(s.replace(/[^0-9]/g, ''));
+    return isNaN(num) ? 999 : num;
   };
 
   const handleSearch = async (val: string) => {
@@ -127,7 +143,11 @@ export default function DomesticPacking() {
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
       const data = await res.json();
       if (data.success) {
-        setSearchResults(data.items);
+        // 검색 결과를 사이즈순으로 정렬하여 표시
+        const sorted = data.items.sort((a: any, b: any) => {
+          return getSizeScore(a.option || "") - getSizeScore(b.option || "");
+        });
+        setSearchResults(sorted);
       }
     } catch (e) {
       console.error(e);
@@ -136,46 +156,47 @@ export default function DomesticPacking() {
     }
   };
 
-  const selectProduct = (item: any) => {
+  const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. 현재 수정하려는 행 정보 (스타일 정규화: 공백 제거 및 대문자화)
+    // 1. 현재 수정하려는 행 정보
     const targetStyleNormalized = results[editingIndex].style.replace(/\s/g, '').toUpperCase();
     const newResults = [...results];
 
-    // 2. 같은 스타일을 공유하는 모든 행을 스마트하게 연쇄 교정
+    // 2. 같은 스타일을 공유하는 행들을 연쇄 교정
     newResults.forEach((resItem, idx) => {
       const currentStyleNormalized = resItem.style.replace(/\s/g, '').toUpperCase();
       
       if (currentStyleNormalized === targetStyleNormalized) {
-        // 전표의 사이즈/색상 정보 정규화
-        const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
-        const resColor = resItem.color.replace(/\s/g, '').toUpperCase();
-
-        // 3. 검색 결과(searchResults)에서 해당 행에 가장 적합한 옵션 찾기
-        const bestMatchOption = searchResults.find(opt => {
-          const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
-          // 사이즈와 색상이 모두 포함되어 있는지 우선 체크
-          return optRaw.includes(resSize) && (resColor === "" || optRaw.includes(resColor));
-        }) || searchResults.find(opt => {
-          // 색상 매칭 실패 시 사이즈만이라도 일치하는지 체크
-          const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
-          return optRaw.includes(resSize);
-        });
-
-        if (bestMatchOption) {
+        if (idx === editingIndex) {
+          // **핵심**: 지금 클릭한 바로 그 행은 사용자가 선택한 아이템(selectedItem)으로 무조건 정확히 업데이트
           newResults[idx] = {
             ...resItem,
-            matchedCode: bestMatchOption.productCode,
-            matchedName: bestMatchOption.matchedName
+            matchedCode: selectedItem.productCode,
+            matchedName: selectedItem.matchedName
+            // 수동 선택 시 사이즈/색상은 인벤토리 정보가 더 정확하므로 여기서 교정 가능하나, 
+            // 현재 요구사항은 수량/사이즈 유지이므로 코드와 상품명만 업데이트
           };
-        } else if (idx === editingIndex) {
-          // 직접 클릭한 행인데 옵션 매칭 실패 시, 선택한 상품 정보로 강제 업데이트
-          newResults[idx] = {
-            ...resItem,
-            matchedCode: item.productCode,
-            matchedName: item.matchedName
-          };
+        } else {
+          // 같은 그룹의 다른 행들은 검색 결과 리스트에서 적절한 사이즈를 찾아 매칭
+          const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
+          const resColor = resItem.color.replace(/\s/g, '').toUpperCase();
+
+          const bestMatchOption = searchResults.find(opt => {
+            const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
+            return optRaw.includes(resSize) && (resColor === "" || optRaw.includes(resColor));
+          }) || searchResults.find(opt => {
+            const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
+            return optRaw.includes(resSize);
+          });
+
+          if (bestMatchOption) {
+            newResults[idx] = {
+              ...resItem,
+              matchedCode: bestMatchOption.productCode,
+              matchedName: bestMatchOption.matchedName
+            };
+          }
         }
       }
     });
