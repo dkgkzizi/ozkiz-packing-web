@@ -131,7 +131,7 @@ function getSeasonalScore(dbName: string): number {
     return score;
 }
 
-export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): Promise<ExcelJS.Workbook> {
+export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', fileName: string = ""): Promise<ExcelJS.Workbook> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as any);
     const sheet = workbook.worksheets[0];
@@ -299,7 +299,21 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india'): 
     const outWb = new ExcelJS.Workbook();
     const outWs = outWb.addWorksheet('매칭결과');
     const memoDate = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-    const memoContent = `${memoDate}_인도 입고`;
+    
+    let memoContent = `${memoDate}_인도 입고`;
+    if (type === 'china') {
+        const cleanFileName = fileName.replace(/\.[^/.]+$/, "");
+        let filePart = "";
+        const dateMatch = cleanFileName.match(/[0-9]{8}/);
+        if (dateMatch) {
+            filePart = cleanFileName.replace(dateMatch[0], dateMatch[0].substring(4));
+        } else {
+            filePart = cleanFileName;
+        }
+        memoContent = `${memoDate}_${filePart} 중국 패킹 입고`;
+    } else if (type === 'domestic') {
+        memoContent = `${memoDate}_국내 패킹 입고`;
+    }
 
     outWs.columns = [
         { header: '상품코드', key: 'productCode', width: 20 },

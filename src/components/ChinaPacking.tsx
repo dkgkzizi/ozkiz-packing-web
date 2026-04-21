@@ -66,21 +66,21 @@ export default function ChinaPacking() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('중국매칭결과');
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-    
-    worksheet.columns = [
-      { header: '상품코드', key: 'matchedCode', width: 20 },
-      { header: '상품명', key: 'matchedName', width: 40 },
-      { header: '색상', key: 'color', width: 15 },
-      { header: '사이즈', key: 'size', width: 12 },
-      { header: '작업수량', key: 'qty', width: 15 },
-      { header: '메모', key: 'memo', width: 25 }
-    ];
+    const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
+    let filePart = "";
+    // 파일명에서 8자리 숫자(날짜) 찾기 (예: 20260418)
+    const dateMatch = cleanFileName.match(/[0-9]{8}/);
+    if (dateMatch) {
+      const fullDate = dateMatch[0];
+      const shortDatePart = fullDate.substring(4); // 0418
+      filePart = cleanFileName.replace(fullDate, shortDatePart);
+    } else {
+      filePart = cleanFileName;
+    }
 
-    const hRow = worksheet.getRow(1);
-    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; // Signature China Red
+    const finalMemo = `${dateStr}_${filePart} 중국 패킹 입고`;
 
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_중국 입고` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: finalMemo }));
     
     worksheet.eachRow(row => {
         row.eachCell(cell => {
