@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useRef } from 'react';
 import { 
@@ -64,11 +64,11 @@ export default function ChinaPacking() {
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('以묎뎅留ㅼ묶寃곌낵');
+    const worksheet = workbook.addWorksheet('중국매칭결과');
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
     let filePart = "";
-    // ?뚯씪紐낆뿉??8?먮━ ?レ옄(?좎쭨) 李얘린 (?? 20260418)
+    // 파일명에서 8자리 숫자(날짜) 찾기 (ex: 20260418)
     const dateMatch = cleanFileName.match(/[0-9]{8}/);
     if (dateMatch) {
       const fullDate = dateMatch[0];
@@ -78,15 +78,15 @@ export default function ChinaPacking() {
       filePart = cleanFileName;
     }
 
-    const finalMemo = `${dateStr}_${filePart} 以묎뎅 ?⑦궧 ?낃퀬`;
+    const finalMemo = `${dateStr}_${filePart} 중국 패킹 입고`;
 
     worksheet.columns = [
-      { header: '?곹뭹肄붾뱶', key: 'matchedCode', width: 20 },
-      { header: '?곹뭹紐?, key: 'matchedName', width: 40 },
-      { header: '?됱긽', key: 'color', width: 15 },
-      { header: '?ъ씠利?, key: 'size', width: 12 },
-      { header: '?묒뾽?섎웾', key: 'qty', width: 15 },
-      { header: '硫붾え', key: 'memo', width: 25 }
+      { header: '상품코드', key: 'matchedCode', width: 20 },
+      { header: '상품명', key: 'matchedName', width: 40 },
+      { header: '색상', key: 'color', width: 15 },
+      { header: '사이즈', key: 'size', width: 12 },
+      { header: '작업수량', key: 'qty', width: 15 },
+      { header: '메모', key: 'memo', width: 25 }
     ];
 
     const hRow = worksheet.getRow(1);
@@ -103,7 +103,7 @@ export default function ChinaPacking() {
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_留ㅼ묶?꾨즺.xlsx`);
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
   };
 
   const handleProcess = async () => {
@@ -113,16 +113,16 @@ export default function ChinaPacking() {
     setVerification(null);
 
     try {
-      // 1. 釉뚮씪?곗??먯꽌 吏곸젒 ?묒? ?쎄린 (?⑸웾 ?ㅼ씠?댄듃 諛?OZ/OH ?뺣? ?ㅼ틪)
+      // 1. 브라우저에서 직접 엑셀 읽기 (수량 데이터 및 OZ/OH 정보 추출)
       const buffer = await file.arrayBuffer();
       const XLSX = await import('xlsx');
       const workbook = XLSX.read(buffer, { type: 'array' });
       
       let clientExtractedData: any[] = [];
       const targetSheets = workbook.SheetNames.filter(name => 
-          name.includes('OZ') || name.includes('OH') || name.includes('?ㅼ쫰') || name.includes('?ㅼ뿉?댁튂') || name.includes('留ㅼ묶')
+          name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치') || name.includes('매칭')
       );
-      // 留뚯빟 ?寃??쒗듃媛 ?놁쑝硫?2踰덉㎏ ?쒗듃(Index 1)瑜??곗꽑?쒖쐞濡??먭퀬, 洹멸쾬???놁쑝硫??꾩껜 ?쒗듃 泥섎━
+      // 만약 타겟 시트가 없으면 2번째 시트(Index 1)를 우선순위로 두고, 그것도 없으면 전체 시트 처리
       const sheetsToProcess = targetSheets.length > 0 ? targetSheets : 
                              (workbook.SheetNames.length >= 2 ? [workbook.SheetNames[1]] : workbook.SheetNames);
 
@@ -131,35 +131,35 @@ export default function ChinaPacking() {
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
           if (jsonData.length === 0) return;
 
-          // 1. ?ㅻ뜑 ?꾩튂 李얘린 (?덈챸, 移쇰씪, ?⑷퀎 ?깆씠 ?ы븿????
+          // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
           const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number }[] = [];
           
           jsonData.forEach((row, idx) => {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
-              if (rowStr.includes('?덈챸') && (rowStr.includes('?⑷퀎') || rowStr.includes('?섎웾'))) {
+              if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
                   let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim();
-                      if (c === '?덈챸') nameCol = cellIdx;
-                      else if (c === '移쇰씪' || c === '?됱긽') colorCol = cellIdx;
-                      else if (c === '?⑷퀎' || c === '?뚭퀎' || c === '珥앷퀎') totalCol = cellIdx;
-                      else if (c.includes('?ъ씠利?) && c.includes('?섎웾')) sizeStartCol = cellIdx;
+                      if (c === '품명') nameCol = cellIdx;
+                      else if (c === '칼라' || c === '색상') colorCol = cellIdx;
+                      else if (c === '합계' || c === '소계' || c === '총계') totalCol = cellIdx;
+                      else if (c.includes('사이즈') && c.includes('수량')) sizeStartCol = cellIdx;
                   });
-                  // ?ъ씠利??섎웾 ?쒖옉 ?꾩튂媛 紐낆떆?섏? ?딆? 寃쎌슦 ?⑷퀎 ?ㅼ쓬 而щ읆遺???먯깋
+                  // 사이즈 수량 시작 위치가 명시되지 않은 경우 합계 다음 컬럼부터 탐색
                   if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
                   
-                  if (nameCol !== -1 && nameCol > 5) { // ?몃룄/援?궡? ?욎씠吏 ?딅룄濡??ㅻⅨ履??꾪몴(index > 5)留??寃잜똿
+                  if (nameCol !== -1 && nameCol > 5) { // 인도/국내와 섞이지 않도록 오른쪽 도표(index > 5)만 타겟팅
                       headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol });
                   }
               }
           });
 
-          // 2. 媛??ㅻ뜑 ?꾨옒 ?곗씠??異붿텧
+          // 2. 각 헤더 아래 데이터 추출
           headerRows.forEach(header => {
               let lastName = "";
               
-              // ?ъ씠利??ㅻ뜑媛 ?ㅻ뜑??諛붾줈 ?꾨옒???덈뒗吏 ?뺤씤 (蹂묓빀 ?덉씠?꾩썐 ???
+              // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
               const nextRow = jsonData[header.rowIdx + 1];
               const isTwoStepHeader = nextRow && nextRow.some(c => !isNaN(parseInt(String(c))));
               const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
@@ -171,12 +171,13 @@ export default function ChinaPacking() {
                   
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // ?뱀뀡 醫낅즺 議곌굔 (鍮꾧퀬, ?⑷퀎, ?뱀? ?꾩쟾??鍮???
-                  if (currentName.includes('鍮꾧퀬') || currentName === '?⑷퀎' || currentName === 'TOTAL') break;
+                  // 섹션 종료 조건 (비고, 합계, 또는 완전히 빈 행)
+                  if (currentName.includes('비고') || currentName === '합계' || currentName === 'TOTAL') break;
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
                   if (!rowStr && !currentName) break; 
 
-                  // 蹂묓빀??紐낆묶 ?몃뱾留?                  if (!currentName && lastName) {
+                  // 병합된 명칭 핸들링
+                  if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
                       lastName = currentName;
@@ -192,8 +193,9 @@ export default function ChinaPacking() {
                       for (let sIdx = header.sizeStartCol; sIdx < row.length; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                           if (sVal > 0) {
-                              // ?щ컮瑜??됱뿉???ъ씠利?紐낆묶 媛?몄삤湲?                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
-                              if (!sHeader || sHeader.includes('?ъ씠利?)) sHeader = "FREE";
+                              // 올바른 행에서 사이즈 명칭 가져오기
+                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                              if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
                               
                               clientExtractedData.push({ 
                                   style: currentName, 
@@ -221,7 +223,7 @@ export default function ChinaPacking() {
       });
 
       if (clientExtractedData.length === 0) {
-          throw new Error("?묒? ?뚯씪??OZ/OH ??뿉???좏슚??留ㅼ묶 ?곗씠?곕? 李얠? 紐삵뻽?듬땲??");
+          throw new Error("엑셀 파일의 OZ/OH 탭에서 유효한 매칭 데이터를 찾지 못했습니다.");
       }
 
       const res = await fetch('/api/china/convert', { 
@@ -235,11 +237,11 @@ export default function ChinaPacking() {
       try {
           data = JSON.parse(text);
       } catch (e) {
-          throw new Error(`?쒕쾭 ?묐떟 ?ㅻ쪟 (Status: ${res.status}). ?곗씠?곌? ?덈Т 諛⑸??섍굅???쒕쾭媛 ?묐떟?섏? ?딆뒿?덈떎.`);
+          throw new Error(`서버 응답 오류 (Status: ${res.status}). 데이터가 너무 방대하거나 서버가 응답하지 않습니다.`);
       }
       
       if (data.success) {
-          // ?꾩껜 由ъ뒪?몃? ?ㅽ??쇨낵 ?ъ씠利덈퀎濡??뺣젹?섏뿬 ?쒖떆
+          // 전체 리스트를 스타일과 사이즈별로 정렬하여 표시
           const sortedResults = data.items.sort((a: any, b: any) => {
             if (a.style !== b.style) return a.style.localeCompare(b.style);
             if (a.color !== b.color) return a.color.localeCompare(b.color);
@@ -253,19 +255,19 @@ export default function ChinaPacking() {
               fileName: data.fileName
           });
 
-          // ?ㅻ쭏??濡쒖쭅: 誘몃ℓ移??곹뭹???녾퀬 ?섎웾???꾨꼍???쇱튂?섎㈃ ?먮룞 ?ㅼ슫濡쒕뱶
-          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '誘몃ℓ移? || item.matchedCode === '肄붾뱶?꾨씫');
+          // 스마트 로직: 미매칭 상품이 없고 수량이 완벽히 일치하면 자동 다운로드
+          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매칭' || item.matchedCode === '코드누락');
           const isQuantityMatched = data.originalTotal === data.matchedTotal;
 
           if (!hasUnmatched && isQuantityMatched) {
               await generateAndDownload(data.items, data.fileName);
           }
       } else {
-          alert(`?묒뾽 ?ㅽ뙣: ${data.message}`);
+          alert(`작업 실패: ${data.message}`);
       }
     } catch (e: any) { 
       console.error(e);
-      alert(e.message || '泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.'); 
+      alert(e.message || '처리 중 오류가 발생했습니다.'); 
     } finally { setLoading(false); }
   };
 
@@ -294,15 +296,16 @@ export default function ChinaPacking() {
       if (data.success) {
         let items = data.items;
         
-        // **媛뺣젰???꾨줎?몄뿏???꾪꽣留?*: ?ъ슜?먭? 紐낆떆??紐⑤뱺 ?⑥뼱媛 ?ы븿??寃껊쭔 ?몄텧
+        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
         const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length > 0) {
           items = items.filter((it: any) => {
             const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
-            // 紐⑤뱺 ?좏겙???ы븿?섏뼱????            return tokens.every(token => {
+            // 모든 토큰이 포함되어야 함
+            return tokens.every(token => {
               const t = token.replace(/\s/g, '');
-              // 留뚯빟 ?좏겙??100~200 ?ъ씠???レ옄?쇰㈃(?ъ씠利덉씪 ?뺣쪧 ?믪쓬), 
-              // ?⑥닚 ?ы븿???꾨땲???듭뀡 ?꾨뱶???대떦 ?レ옄媛 ?덈뒗吏 ???꾧꺽?섍쾶 泥댄겕
+              // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음), 
+              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
               if (/^[0-9]{3}$/.test(t)) {
                 const opt = (it.option || "").toUpperCase();
                 return opt.includes(t);
@@ -327,18 +330,18 @@ export default function ChinaPacking() {
   const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. ?꾩옱 ?섏젙?섎젮?????뺣낫 (?ㅽ???珥덉젙洹쒗솕)
-    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9媛-??/g, '').toUpperCase();
+    // 1. 현재 수정하려는 행 정보 (스타일 초정규화)
+    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
     const targetStyleNormalized = normalize(results[editingIndex].style);
     const newResults = [...results];
 
-    // 2. 媛숈? ?ㅽ??쇱쓣 怨듭쑀?섎뒗 紐⑤뱺 ?됱쓣 ?ㅻ쭏?명븯寃??곗뇙 援먯젙
+    // 2. 같은 스타일을 공유하는 모든 행을 스마트하게 연쇄 교정
     newResults.forEach((resItem, idx) => {
       const currentStyleNormalized = normalize(resItem.style);
       
       if (currentStyleNormalized === targetStyleNormalized) {
         if (idx === editingIndex) {
-          // **?듭떖**: 吏湲??대┃???됱? 臾댁“嫄??뺥솗???좏깮???꾩씠?쒖쑝濡??낅뜲?댄듃
+          // **핵심**: 지금 클릭한 행은 무조건 정확히 선택한 아이템으로 업데이트
           newResults[idx] = {
             ...resItem,
             matchedCode: selectedItem.productCode,
@@ -362,11 +365,11 @@ export default function ChinaPacking() {
       }
     });
 
-    // 3. ?뺣젹 ?곹깭 ?좎?
+    // 3. 정렬 상태 유지
     const sortedResults = newResults.sort((a: any, b: any) => {
       if (a.style !== b.style) return a.style.localeCompare(b.style);
       if (a.color !== b.color) return a.color.localeCompare(b.color);
-      return getSizeScore(a.size) - getSizeScore(b.size);
+      return getSizeScore(a.size);
     });
 
     setResults(sortedResults);
@@ -392,8 +395,8 @@ export default function ChinaPacking() {
           China <span className="text-red-600">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           以묎뎅 ?쒖옉 ?ъ쭊???ㅽ?瑜?AI媛 ?ㅼ떆媛꾩쑝濡?援먯젙?섍퀬 <br />
-           <span className="text-red-600 font-black">?섎웾 ?뺥빀??寃利?/span>??留덉튇 臾닿껐???묒? ?뚯씪???앹꽦?⑸땲??
+           중국 제작 지시서를 AI가 실시간으로 교정하고 <br />
+           <span className="text-red-600 font-black">수량 정합성 검증</span>을 마친 무결성 엑셀 파일을 생성합니다.
         </p>
       </header>
 
@@ -406,20 +409,20 @@ export default function ChinaPacking() {
                 onDrop={onDrop}
                 onClick={() => fileInputRef.current?.click()} 
                 className={`relative h-72 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all duration-300 cursor-pointer ${
-                    isDragging ? 'border-red-600 bg-red-50' : 
-                    file ? 'border-red-200 bg-red-50/30' : 'border-slate-100 bg-slate-50 hover:bg-slate-100/50'
+                    isDragging ? 'border-red-500 bg-red-50/30' : 
+                    file ? 'border-red-100 bg-red-50/10' : 'border-slate-100 bg-slate-50 hover:bg-red-50/50'
                 }`}
             >
-              <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} accept=".xlsx, .xls" />
+              <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} accept=".xlsx,.xls" />
               <div className="flex flex-col items-center text-center p-6">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-all duration-500 ${
                   file ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-white border border-slate-100 text-slate-300'
                 }`}>
                   <FileSpreadsheet className="w-8 h-8" />
                 </div>
-                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'Data Secured' : 'Upload China Excel'}</h4>
+                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'Excel Loaded' : 'Upload China List'}</h4>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 italic truncate max-w-full">
-                    {file ? file.name : 'OZ/OH Sheet Detection Active'}
+                    {file ? file.name : 'OZ / OH Packing Excel'}
                 </p>
               </div>
             </div>
@@ -427,17 +430,17 @@ export default function ChinaPacking() {
             <button 
                 onClick={handleProcess} 
                 disabled={!file || loading} 
-                className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase font-black"
+                className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-              AI Verification Start
+              Sync China Data
             </button>
 
             {results && (
               <motion.button 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results, verification?.fileName || '以묎뎅?⑦궧')} 
+                  onClick={() => generateAndDownload(results, verification?.fileName || '중국패킹')} 
                   className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
               >
                 <Download className="w-5 h-5" />
@@ -449,43 +452,42 @@ export default function ChinaPacking() {
 
         <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
-             {/*Verification Summary Card*/}
              {verification && (
-               <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-red-50/30 rounded-[2rem] border border-red-100 flex items-center justify-between shadow-sm">
+               <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-red-50/50 rounded-[2rem] border border-red-100 flex items-center justify-between shadow-sm">
                   <div className="flex items-center gap-6">
                     <div className="bg-white p-3 rounded-2xl shadow-sm border border-red-50">
                         <ArrowRightLeft className="w-6 h-6 text-red-600" />
                     </div>
                     <div>
-                        <h4 className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">AI Audit Integrity</h4>
+                        <h4 className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">China Integrity Summary</h4>
                         <div className="flex items-center gap-4">
                             <div className="text-center">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Pre-Correction</p>
+                                <p className="text-[9px] font-bold text-red-300 uppercase mb-0.5">Original Qty</p>
                                 <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
                             </div>
-                            <div className="w-px h-8 bg-red-200/50" />
+                            <div className="w-px h-8 bg-red-200" />
                             <div className="text-center">
-                                <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">Post-Match Sum</p>
+                                <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">DB Matched</p>
                                 <p className="text-xl font-black text-red-600">{verification.matchedTotal}</p>
                             </div>
                         </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-slate-500'}`}>
                         {verification.originalTotal === verification.matchedTotal ? (
                             <>
                                 <CheckCircle2 className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">AI Logic Passed</span>
+                                <span className="text-xs font-black uppercase italic tracking-tighter">Verified</span>
                             </>
                         ) : (
                             <>
                                 <AlertCircle className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Review Needed</span>
+                                <span className="text-xs font-black uppercase italic tracking-tighter">Variance Check</span>
                             </>
                         )}
                     </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic tracking-tight">Dynamic Naming Triggered</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Factory-to-Cloud Stream</p>
                   </div>
                </motion.div>
              )}
@@ -493,7 +495,7 @@ export default function ChinaPacking() {
              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-red-600" />
-                  China Audit Analytics
+                  China Production Stream
                 </h3>
              </div>
 
@@ -501,17 +503,17 @@ export default function ChinaPacking() {
                 <AnimatePresence mode="wait">
                   {loading ? (
                     <div className="h-full flex flex-col items-center justify-center p-20 text-center">
-                      <div className="w-16 h-16 border-[4px] border-slate-100 border-t-red-600 rounded-full animate-spin mb-6" />
-                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse italic">AI Correcting Typos...</p>
+                      <div className="w-16 h-16 border-[4px] border-red-100 border-t-red-600 rounded-full animate-spin mb-6" />
+                      <p className="text-xs font-black text-red-400 uppercase tracking-widest animate-pulse italic tracking-tighter">Analyzing Factory Orders...</p>
                     </div>
                   ) : results ? (
                     <table className="w-full text-left border-collapse">
                       <thead className="sticky top-0 bg-white/100 backdrop-blur-md z-10 border-b border-slate-100">
                         <tr>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Master SKU</th>
-                          <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Corrected Name</th>
-                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Audit flow</th>
-                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Audit</th>
+                          <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Detail Matrix</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Qty Score</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Valid</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
@@ -526,14 +528,14 @@ export default function ChinaPacking() {
                               )}
                               <tr 
                                 onClick={() => {
-                                  setEditingIndex(idx);
-                                  setSearchTerm('');
-                                  setIsModalOpen(true);
-                                  setSearchResults([]);
+                                    setEditingIndex(idx);
+                                    setSearchTerm('');
+                                    setIsModalOpen(true);
+                                    setSearchResults([]);
                                 }}
                                 className={`group hover:bg-red-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
                               >
-                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 flex items-center gap-2">
+                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 transition-colors flex items-center gap-2">
                                    {item.matchedCode}
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
@@ -541,28 +543,18 @@ export default function ChinaPacking() {
                                    <div className="mb-1.5 flex items-center gap-2">
                                        <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
                                    </div>
-                                   <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-600 transition-colors">{item.matchedName}</span>
-                                   <span className="text-[9px] text-red-400 font-bold uppercase block italic">{item.size} / {item.color}</span>
+                                   <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-900 transition-colors">{item.matchedName}</span>
+                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">{item.size} / {item.color}</span>
                                 </td>
                                 <td className="p-4 text-center">
                                    <div className="flex items-center justify-center gap-3">
-                                       <span className="text-[10px] font-bold text-slate-200 line-through">{item.pdfQty}</span>
-                                       <ArrowRightLeft className="w-3 h-3 text-red-300" />
-                                       <span className={`text-sm font-black ${item.pdfQty === item.qty ? 'text-red-600' : 'text-slate-500 underline'}`}>
-                                           {item.qty}
-                                       </span>
+                                       <span className="text-sm font-black text-slate-900">{item.qty}</span>
                                    </div>
                                 </td>
                                 <td className="p-4 text-center">
-                                   {item.pdfQty === item.qty ? (
-                                       <div className="bg-red-50 text-red-600 p-1.5 rounded-lg inline-block shadow-sm">
-                                           <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
-                                       </div>
-                                   ) : (
-                                       <div className="bg-red-50 text-red-400 p-1.5 rounded-lg inline-block">
-                                           <AlertCircle className="w-3.5 h-3.5" />
-                                       </div>
-                                   )}
+                                   <div className="bg-red-50 text-red-600 p-1.5 rounded-lg inline-block shadow-sm">
+                                       <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                   </div>
                                 </td>
                               </tr>
                             </React.Fragment>
@@ -571,9 +563,9 @@ export default function ChinaPacking() {
                       </tbody>
                     </table>
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center p-20 opacity-20 text-slate-400 grayscale scale-[0.7]">
-                      <FileSpreadsheet className="w-16 h-16 mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting AI Production Data</p>
+                    <div className="h-full flex flex-col items-center justify-center p-20 opacity-20 text-slate-400 grayscale scale-[0.7] transition-all">
+                      <Table className="w-16 h-16 mb-4" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Factory Feed</p>
                     </div>
                   )}
                 </AnimatePresence>
@@ -582,8 +574,7 @@ export default function ChinaPacking() {
         </div>
       </div>
 
-      {/* Manual Selection Modal */}
-      <AnimatePresence>
+       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
@@ -601,9 +592,10 @@ export default function ChinaPacking() {
             >
               <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 italic uppercase">Manual Product Select</h3>
+                  <h3 className="text-xl font-black text-slate-900 italic uppercase">Code Matrix Override</h3>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    ?뺥솗???곹뭹紐낆쓣 寃?됲븯??留ㅼ묶 ?뺣낫瑜?援먯젙?섏꽭??                  </p>
+                    정확한 상품을 검색하여 매칭 데이터를 교정하세요.
+                  </p>
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(false)}
@@ -615,17 +607,17 @@ export default function ChinaPacking() {
 
               <div className="p-8">
                 <div className="relative mb-6">
-                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-red-400" />
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500" />
                   <input 
                     type="text"
                     value={searchTerm}
                     onChange={(e) => handleSearch(e.target.value)}
-                    placeholder="?곹뭹紐??먮뒗 ?곹뭹肄붾뱶瑜??낅젰?섏꽭??.."
-                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-600/20 transition-all outline-none"
+                    placeholder="상품명 또는 상품코드를 입력하세요..."
+                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-500/20 transition-all outline-none"
                     autoFocus
                   />
                   {searchLoading && (
-                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-red-600" />
+                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-red-500" />
                   )}
                 </div>
 
@@ -640,7 +632,7 @@ export default function ChinaPacking() {
                         >
                           <div className="flex items-center justify-between relative z-10">
                             <div>
-                              <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1 italic">
+                              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1 italic">
                                 {item.productCode}
                               </p>
                               <h4 className="text-sm font-bold text-slate-800 group-hover:text-red-700 transition-colors">
@@ -658,12 +650,12 @@ export default function ChinaPacking() {
                   ) : searchTerm.length > 1 ? (
                     <div className="text-center py-20">
                       <Search className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">寃??寃곌낵媛 ?놁뒿?덈떎.</p>
+                      <p className="text-sm font-bold text-slate-300">검색 결과가 없습니다.</p>
                     </div>
                   ) : (
                     <div className="text-center py-20">
                       <AlertCircle className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">寃?됱뼱瑜??낅젰?섏뿬 ?몃깽?좊━瑜??뺤씤?섏꽭??</p>
+                      <p className="text-sm font-bold text-slate-300">검색어를 입력하여 인벤토리를 확인하세요.</p>
                     </div>
                   )}
                 </div>
@@ -671,7 +663,7 @@ export default function ChinaPacking() {
               
               <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                   Powered by Anti-Gravity AI Matcher v4.2
+                   China Integration System v3.1
                  </p>
               </div>
             </motion.div>

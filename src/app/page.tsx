@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { 
@@ -24,14 +24,14 @@ export default function Home() {
   const [pin, setPin] = useState<string>('');
   const [error, setError] = useState<boolean>(false);
 
-  // 愿由ъ옄 留덉뒪??PIN (?ъ슜???붿껌 ???섏젙 媛??
+  // 관리자 마스터 PIN (사용자 요청 시 수정 가능)
   const ADMIN_PIN = '0411';
 
   const categories = [
     { 
       id: 1, 
       name: 'Domestic Packing', 
-      label: '援?궡 ?⑦궧由ъ뒪??, 
+      label: '국내 패킹리스트', 
       icon: <Package className="w-5 h-5" />, 
       desc: 'Local Hub',
       color: 'from-red-600 to-rose-500',
@@ -41,7 +41,7 @@ export default function Home() {
     { 
       id: 2, 
       name: 'China Packing', 
-      label: '以묎뎅 ?⑦궧由ъ뒪??, 
+      label: '중국 패킹리스트', 
       icon: <Truck className="w-5 h-5" />, 
       desc: 'China Branch',
       color: 'from-red-600 to-red-400',
@@ -51,7 +51,7 @@ export default function Home() {
     { 
       id: 3, 
       name: 'India Packing', 
-      label: '?몃룄 ?⑦궧由ъ뒪??, 
+      label: '인도 패킹리스트', 
       icon: <Globe className="w-5 h-5" />, 
       desc: 'Global Matcher',
       color: 'from-rose-600 to-red-500',
@@ -135,7 +135,7 @@ export default function Home() {
           </div>
 
           <div className="mt-auto space-y-4">
-             {/* 愿由ъ옄 ?낅뜲?댄듃 ???곹깭 踰꾪듉 */}
+             {/* 관리자 업데이트 락 상태 버튼 */}
              <button 
                 onClick={() => isLocked ? setShowUnlockModal(true) : setIsLocked(true)}
                 className={`w-full flex items-center gap-3 p-4 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-[0.2em] ${
@@ -181,7 +181,7 @@ export default function Home() {
                         <Key className="w-8 h-8 text-slate-900" />
                     </div>
                     <h3 className="text-xl font-black text-slate-900 italic uppercase mb-2 leading-none">Security Authorization</h3>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-8">愿由ъ옄 PIN 踰덊샇瑜??낅젰?섏떗?쒖삤</p>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-8">관리자 PIN 번호를 입력하십시오</p>
                     
                     <div className="grid grid-cols-4 gap-2 mb-8">
                         {[1, 2, 3, 4].map((i) => (
@@ -191,7 +191,7 @@ export default function Home() {
                                     error ? 'border-red-400 bg-red-50 text-red-600' : (pin.length >= i ? 'border-slate-900 bg-white text-slate-900' : 'border-slate-100 bg-slate-50 text-slate-200')
                                 }`}
                             >
-                                {pin.length >= i ? '?? : ''}
+                                {pin.length >= i ? '●' : ''}
                             </div>
                         ))}
                     </div>

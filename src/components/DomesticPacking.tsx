@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useRef } from 'react';
 import { 
@@ -63,23 +63,23 @@ export default function DomesticPacking() {
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('援?궡留ㅼ묶寃곌낵');
+    const worksheet = workbook.addWorksheet('국내매칭결과');
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     
     worksheet.columns = [
-      { header: '?곹뭹肄붾뱶', key: 'matchedCode', width: 20 },
-      { header: '?곹뭹紐?, key: 'matchedName', width: 40 },
-      { header: '?됱긽', key: 'color', width: 15 },
-      { header: '?ъ씠利?, key: 'size', width: 12 },
-      { header: '?묒뾽?섎웾', key: 'qty', width: 15 },
-      { header: '硫붾え', key: 'memo', width: 25 }
+      { header: '상품코드', key: 'matchedCode', width: 20 },
+      { header: '상품명', key: 'matchedName', width: 40 },
+      { header: '색상', key: 'color', width: 15 },
+      { header: '사이즈', key: 'size', width: 12 },
+      { header: '작업수량', key: 'qty', width: 15 },
+      { header: '메모', key: 'memo', width: 25 }
     ];
 
     const hRow = worksheet.getRow(1);
     hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; 
 
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_援?궡 ?낃퀬` }));
+    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_국내 입고` }));
     
     worksheet.eachRow(row => {
         row.eachCell(cell => {
@@ -90,7 +90,7 @@ export default function DomesticPacking() {
 
     const buffer = await workbook.xlsx.writeBuffer();
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_留ㅼ묶?꾨즺.xlsx`);
+    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
   };
 
   const handleProcess = async () => {
@@ -118,7 +118,7 @@ export default function DomesticPacking() {
               fileName: data.fileName
           });
       } else alert(data.message);
-    } catch (e) { alert('泥섎━ 以??ㅻ쪟'); } finally { setLoading(false); }
+    } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
   };
 
   const getSizeScore = (sizeStr: string) => {
@@ -146,15 +146,16 @@ export default function DomesticPacking() {
       if (data.success) {
         let items = data.items;
         
-        // **媛뺣젰???꾨줎?몄뿏???꾪꽣留?*: ?ъ슜?먭? 紐낆떆??紐⑤뱺 ?⑥뼱媛 ?ы븿??寃껊쭔 ?몄텧
+        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
         const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length > 0) {
           items = items.filter((it: any) => {
             const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
-            // 紐⑤뱺 ?좏겙???ы븿?섏뼱????            return tokens.every(token => {
+            // 모든 토큰이 포함되어야 함
+            return tokens.every(token => {
               const t = token.replace(/\s/g, '');
-              // 留뚯빟 ?좏겙??100~200 ?ъ씠???レ옄?쇰㈃(?ъ씠利덉씪 ?뺣쪧 ?믪쓬), 
-              // ?⑥닚 ?ы븿???꾨땲???듭뀡 ?꾨뱶???대떦 ?レ옄媛 ?덈뒗吏 ???꾧꺽?섍쾶 泥댄겕
+              // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음), 
+              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
               if (/^[0-9]{3}$/.test(t)) {
                 const opt = (it.option || "").toUpperCase();
                 return opt.includes(t);
@@ -179,27 +180,27 @@ export default function DomesticPacking() {
   const selectProduct = (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. ?꾩옱 ?섏젙?섎젮?????뺣낫 (?ㅽ???珥덉젙洹쒗솕: ?뱀닔臾몄옄/怨듬갚 ?쒓굅 諛??臾몄옄??
-    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9媛-??/g, '').toUpperCase();
+    // 1. 현재 수정하려는 행 정보 (스타일 초정규화: 특수문자/공백 제거 및 대문자화)
+    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
     const targetStyleNormalized = normalize(results[editingIndex].style);
     const newResults = [...results];
 
-    // 2. 媛숈? ?ㅽ???洹몃９??怨듭쑀?섎뒗 ?됰뱾???곗뇙 援먯젙
+    // 2. 같은 스타일 그룹을 공유하는 행들을 연쇄 교정
     newResults.forEach((resItem, idx) => {
       const currentStyleNormalized = normalize(resItem.style);
       
       if (currentStyleNormalized === targetStyleNormalized) {
         if (idx === editingIndex) {
-          // **?듭떖**: 吏湲??대┃??諛붾줈 洹??됱? ?ъ슜?먭? ?좏깮???꾩씠??selectedItem)?쇰줈 臾댁“嫄??뺥솗???낅뜲?댄듃
+          // **핵심**: 지금 클릭한 바로 그 행은 사용자가 선택한 아이템(selectedItem)으로 무조건 정확히 업데이트
           newResults[idx] = {
             ...resItem,
             matchedCode: selectedItem.productCode,
             matchedName: selectedItem.matchedName
-            // ?섎룞 ?좏깮 ???ъ씠利??됱긽? ?몃깽?좊━ ?뺣낫媛 ???뺥솗?섎?濡??ш린??援먯젙 媛?ν븯?? 
-            // ?꾩옱 ?붽뎄?ы빆? ?섎웾/?ъ씠利??좎??대?濡?肄붾뱶? ?곹뭹紐낅쭔 ?낅뜲?댄듃
+            // 수동 선택 시 사이즈/색상은 인벤토리 정보가 더 정확하므로 여기서 교정 가능하나 
+            // 현재 요구사항은 수량/사이즈 유지가 포인트이므로 코드와 상품명만 업데이트
           };
         } else {
-          // 媛숈? 洹몃９???ㅻⅨ ?됰뱾? 寃??寃곌낵 由ъ뒪?몄뿉???곸젅???ъ씠利덈? 李얠븘 留ㅼ묶
+          // 같은 그룹의 다른 행들은 검색 결과 리스트에서 적절한 사이즈를 찾아 매칭
           const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
           const resColor = resItem.color.replace(/\s/g, '').toUpperCase();
 
@@ -222,7 +223,7 @@ export default function DomesticPacking() {
       }
     });
 
-    // 3. ?뺣젹 ?곹깭 ?좎? (?됱긽 -> ?ъ씠利??쒖쑝濡??먮룞 ?ъ젙??
+    // 3. 정렬 상태 유지 (색상 -> 사이즈 순으로 자동 세팅)
     const sortedResults = newResults.sort((a: any, b: any) => {
       if (a.style !== b.style) return a.style.localeCompare(b.style);
       if (a.color !== b.color) return a.color.localeCompare(b.color);
@@ -252,8 +253,8 @@ export default function DomesticPacking() {
           Domestic <span className="text-slate-400">Packing</span>
         </h2>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           援?궡 ?쒖? ?묒떇???뺣? 遺꾩꽍?섍퀬 <span className="text-slate-900 font-black">?ㅼ떆媛??섎웾 寃利?/span> 寃곌낵瑜??쒓났?⑸땲?? <br />
-           <span className="text-slate-900 font-black">?섎룞 援먯젙 ?쒖뒪??/span>???듯빐 紐⑦샇???섍린 ?곗씠?곕룄 100% 臾닿껐?깆쓣 蹂댁옣?⑸땲??
+           국내 표준 형식을 정밀 분석하고 <span className="text-slate-900 font-black">실시간 수량 검증</span> 결과를 제공합니다. <br />
+           <span className="text-slate-900 font-black">수동 교정 시스템</span>을 통해 모호한 수기 데이터도 100% 무결성을 보장합니다.
         </p>
       </header>
 
@@ -297,7 +298,7 @@ export default function DomesticPacking() {
               <motion.button 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results, verification?.fileName || '援?궡?⑦궧')} 
+                  onClick={() => generateAndDownload(results, verification?.fileName || '국내패킹')} 
                   className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
               >
                 <Download className="w-5 h-5" />
@@ -461,7 +462,8 @@ export default function DomesticPacking() {
                 <div>
                   <h3 className="text-xl font-black text-slate-900 italic uppercase">Manual Code Correction</h3>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    ?뺥솗???곹뭹??寃?됲븯???섍린 ?곗씠?곕? 援먯젙?섏꽭??                  </p>
+                    정확한 상품을 검색하여 매칭 데이터를 교정하세요.
+                  </p>
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(false)}
@@ -478,7 +480,7 @@ export default function DomesticPacking() {
                     type="text"
                     value={searchTerm}
                     onChange={(e) => handleSearch(e.target.value)}
-                    placeholder="?곹뭹紐??먮뒗 ?곹뭹肄붾뱶瑜??낅젰?섏꽭??.."
+                    placeholder="상품명 또는 상품코드를 입력하세요..."
                     className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-500/20 transition-all outline-none"
                     autoFocus
                   />
@@ -516,12 +518,12 @@ export default function DomesticPacking() {
                   ) : searchTerm.length > 1 ? (
                     <div className="text-center py-20">
                       <Search className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">寃??寃곌낵媛 ?놁뒿?덈떎.</p>
+                      <p className="text-sm font-bold text-slate-300">검색 결과가 없습니다.</p>
                     </div>
                   ) : (
                     <div className="text-center py-20">
                       <AlertCircle className="w-12 h-12 text-slate-100 mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-300">寃?됱뼱瑜??낅젰?섏뿬 ?몃깽?좊━瑜??뺤씤?섏꽭??</p>
+                      <p className="text-sm font-bold text-slate-300">검색어를 입력하여 인벤토리를 확인하세요.</p>
                     </div>
                   )}
                 </div>
