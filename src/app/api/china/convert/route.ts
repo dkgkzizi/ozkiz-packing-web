@@ -34,6 +34,9 @@ export async function POST(req: NextRequest) {
         
         // 매칭된 원본 데이터(Supabase)에서 이미지 URL 추출 시도
         // matcher.ts가 저장한 데이터를 기반으로 구성
+        const originalKey = row.getCell(7).text || "";
+        const styleName = originalKey.split('|')[0] || row.getCell(2).text;
+
         finalItems.push({
             matchedCode: row.getCell(1).text,
             matchedName: row.getCell(2).text,
@@ -41,8 +44,8 @@ export async function POST(req: NextRequest) {
             size: row.getCell(4).text,
             qty: q,
             pdfQty: q,
-            // 힌트: Supabase 매칭 결과가 있다면 이미지 URL을 UI에 전달
-            imageUrl: null // matcher에서 수정을 통해 확장 가능하나, 현재는 디자인상 아이콘 위주로 먼저 배치
+            style: styleName,
+            imageUrl: null 
         });
     });
 

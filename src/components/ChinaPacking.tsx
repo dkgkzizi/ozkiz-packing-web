@@ -30,6 +30,7 @@ type PackingItem = {
   size: string;
   qty: number;
   pdfQty: number;
+  style: string;
 };
 
 type VerificationData = {
@@ -274,24 +275,40 @@ export default function ChinaPacking() {
   const selectProduct = (item: any) => {
     if (editingIndex === null || !results) return;
     
-    // 옵션 문자열 파싱 (예: ":화이트, :XS")
-    const optionRaw = item.option || "";
-    const parts = optionRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
-    
-    // 대략적으로 첫 번째가 색상, 두 번째가 사이즈라고 가정 (인벤토리 구조 기준)
-    // 혹은 사이즈 특성(XS, S, M, L, XL, FREE)이 포함된 쪽을 사이즈로 판단
-    const sizeMarkers = ['XS', 'S', 'M', 'L', 'XL', 'FREE', '1', '2', '3'];
-    let detectedSize = parts.find((p: string) => sizeMarkers.some(m => p.toUpperCase() === m)) || parts[1] || results[editingIndex].size;
-    let detectedColor = parts.find((p: string) => !sizeMarkers.some(m => p.toUpperCase() === m)) || parts[0] || results[editingIndex].color;
-
+    // 1. 현재 수정하려는 행 정보 (중복 매칭을 방지하기 위해 원본 스타일 기준 그룹핑)
+    const targetStyle = results[editingIndex].style;
     const newResults = [...results];
-    newResults[editingIndex] = {
-      ...newResults[editingIndex],
-      matchedCode: item.productCode,
-      matchedName: item.matchedName,
-      color: detectedColor,
-      size: detectedSize
-    };
+
+    // 2. 검색 결과 리스트(searchResults)에서 각 행의 사이즈/색상에 맞는 적절한 SKU를 찾아 연쇄 업데이트
+    newResults.forEach((resItem, idx) => {
+      if (resItem.style === targetStyle) {
+        // 이 행의 사이즈와 일치하는 옵션을 검색 결과에서 찾기
+        const bestMatchOption = searchResults.find(opt => {
+          const optRaw = opt.option || "";
+          const optParts = optRaw.split(',').map((p: string) => p.replace(/[:\s]/g, '').trim());
+          
+          // 중국 패킹 리스트의 사이즈(XS, S, M, L, XL 등) 매칭
+          const isSizeMatch = optParts.some(p => p.toUpperCase() === resItem.size.toUpperCase());
+          return isSizeMatch;
+        });
+
+        if (bestMatchOption) {
+          newResults[idx] = {
+            ...resItem,
+            matchedCode: bestMatchOption.productCode,
+            matchedName: bestMatchOption.matchedName
+          };
+        } else if (idx === editingIndex) {
+          // 직접 선택한 행인데도 사이즈 매칭이 안 된 경우, 선택한 구체적인 하나로라도 업데이트
+          newResults[idx] = {
+            ...resItem,
+            matchedCode: item.productCode,
+            matchedName: item.matchedName
+          };
+        }
+      }
+    });
+
     setResults(newResults);
     setIsModalOpen(false);
     setEditingIndex(null);
