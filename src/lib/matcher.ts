@@ -205,7 +205,6 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     SELECT * FROM products 
                     WHERE "상품코드" ILIKE ANY($1) 
                        OR "바코드" ILIKE ANY($1)
-                       OR "자체품번" ILIKE ANY($1)
                 `, [patterns]);
                 dbRows = res.rows;
                 if (dbRows.length === 0) {
