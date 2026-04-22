@@ -182,20 +182,35 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         let maxTotalScore = -1;
 
         for (const row of dbRows) {
-            // 스타일 넘버와 상품명(설명) 두 가지 모두로 매칭 점수 계산
+            // 1. 스타일 넘버 및 상품명 매칭 (바코드 우선)
             const styleScore = getMatchScore(record.styleNo, row, barcodeCols, type);
             const nameScore = getMatchScore(record.pdfName, row, barcodeCols, type);
-            
-            // 두 점수 중 높은 것을 베이스로 사용 (스타일 넘버 매칭에 우선순위)
-            const baseMatchScore = Math.max(styleScore, nameScore);
-            
-            if (baseMatchScore < 0.4) continue; // 너무 낮은 점수는 제외
+            let baseMatchScore = Math.max(styleScore, nameScore);
 
-            const colorScore = getColorScore(record.color, row['옵션명'] || '');
+            // [인도 패킹 특화] 스타일 넘버가 바코드의 시작 부분과 일치하면 만점 부여
+            const rowBarcode = normalizeStr(row['바코드'] || row['상품코드'] || '');
+            const recordStyle = normalizeStr(record.styleNo);
+            if (recordStyle && rowBarcode && rowBarcode.startsWith(recordStyle)) {
+                baseMatchScore = 1.0; 
+            }
+
+            if (baseMatchScore < 0.3) continue; // 최소 하한치
+
+            // 2. 컬러 매칭
+            const colorScore = getColorScore(record.color, (row['옵션명'] || '') + (row['상품명'] || ''));
+
+            // 3. 사이즈 매칭 (추가)
+            let sizeScore = 0;
+            const dbOption = (row['옵션명'] || '').toUpperCase();
+            const targetSize = record.size.toUpperCase().replace(/[^0-9]/g, ''); // 숫자만 추출 (예: 100)
+            if (targetSize && dbOption.includes(targetSize)) {
+                sizeScore = 50; // 사이즈 일치 시 보너스
+            }
+
             const seasonScore = getSeasonScore(row['상품명'] || '');
             
-            // 최종 점수 계산 (매칭 점수 100점 만점 환산 + 컬러/시즌 보너스)
-            const totalScore = (baseMatchScore * 100) + colorScore + seasonScore;
+            // [가중치 개편] baseMatchScore에 1000을 곱해 스타일 불일치를 컬러/사이즈가 역전하지 못하게 함
+            const totalScore = (baseMatchScore * 1000) + colorScore + sizeScore + seasonScore;
 
             if (totalScore > maxTotalScore) {
                 maxTotalScore = totalScore;
@@ -203,7 +218,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        if (bestMatch && maxTotalScore > 50) {
+        if (bestMatch && maxTotalScore > 500) { // 하한치 상향
             finalResults.push({
                 productCode: bestMatch['상품코드'],
                 sheetName: bestMatch['상품명'],
