@@ -111,20 +111,34 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     if (curBoxes <= 0) curBoxes = 1;
 
                     // --- 상품명 및 색상 지능형 추출 ---
-                    // 색상은 보통 스타일 번호 다음(x: 10.0~25.0)에 위치함
-                    let dataCand = cols.find(c => c.x >= 10.0 && c.x < 25.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
+                    // 색상은 보통 스타일 번호 다음(x: 6.0~30.0)에 위치함
+                    let dataCand = cols.find(c => c.x >= 6.0 && c.x < 30.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
-                        if (r.includes(' - ')) {
-                            let pts = r.split(' - ').map(p=>p.trim());
-                            if (COLORS.some(cl => pts[0].toUpperCase().includes(cl))) { curC = pts[0]; curN = pts.slice(1).join(' - ').trim(); }
-                            else { curC = pts[pts.length-1]; curN = pts.slice(0,-1).join(' - ').trim(); }
+                        // 하이픈, 엔다시, 엠다시 모두 대응
+                        let pts = r.split(/\s*[-–—]\s*/).map(p=>p.trim()).filter(p=>p.length > 0);
+                        
+                        if (pts.length >= 2) {
+                            // 어느 쪽이 색상인지 판별
+                            let colorIdx = pts.findIndex(p => COLORS.some(cl => p.toUpperCase().includes(cl)));
+                            if (colorIdx !== -1) {
+                                curC = pts[colorIdx];
+                                curN = pts.filter((_, i) => i !== colorIdx).join(' - ');
+                            } else {
+                                // 색상 키워드가 없으면 첫 번째를 색상, 나머지를 상품명으로 임시 지정
+                                curC = pts[0];
+                                curN = pts.slice(1).join(' - ');
+                            }
                         } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
                             curC = r;
+                            curN = ""; // 색상만 있는 경우
                         } else {
                             curN = r;
+                            curC = ""; // 상품명만 있는 경우
                         }
                     }
+                    
+                    if (!curN) curN = curS; // 상품명이 없으면 스타일 번호라도 채움
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
