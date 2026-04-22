@@ -188,8 +188,42 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const allCols = tableInfo.rows.map(r => r.column_name);
         const possibleCols = ['상품코드', '상품명', '바코드', '자체품번', 'ERP코드', '옵션명', '매칭코드'];
         barcodeCols = allCols.filter(c => possibleCols.includes(c) || c.includes('코드') || c.includes('번호'));
-        const data = await client.query("SELECT * FROM products");
-        dbRows = data.rows;
+
+        if (type === 'india') {
+            // [성능 최적화] 전체 상품을 가져오는 대신, 엑셀에 있는 스타일 번호와 관련된 상품만 필터링해서 가져옴
+            const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 3)));
+            
+            if (uniqueStyles.length > 0) {
+                // 스타일 번호가 상품코드나 바코드의 앞부분에 오는 경우가 많으므로 접두어 매칭 활용
+                const patterns = uniqueStyles.map(s => `${s}%`);
+                const res = await client.query(`
+                    SELECT * FROM products 
+                    WHERE "상품코드" ILIKE ANY($1) 
+                       OR "바코드" ILIKE ANY($1)
+                       OR "자체품번" ILIKE ANY($1)
+                `, [patterns]);
+                dbRows = res.rows;
+                
+                // 만약 매칭 후보가 너무 적으면 전체 검색을 고려할 수 있으나, 
+                // 보통 수입 패킹은 스타일 번호가 기준이므로 이 정도로 충분함
+                if (dbRows.length === 0) {
+                    // 차선책: 포함 검색 (속도는 조금 느리지만 정확도 향상)
+                    const containsPatterns = uniqueStyles.map(s => `%${s}%`);
+                    const res2 = await client.query(`
+                        SELECT * FROM products 
+                        WHERE "상품코드" ILIKE ANY($1) 
+                           OR "바코드" ILIKE ANY($1)
+                    `, [containsPatterns]);
+                    dbRows = res2.rows;
+                }
+            } else {
+                dbRows = [];
+            }
+        } else {
+            // 국내/중국용은 기존 방식 유지 (혹은 나중에 동일하게 최적화 가능)
+            const data = await client.query("SELECT * FROM products");
+            dbRows = data.rows;
+        }
     } finally {
         client.release();
     }
