@@ -197,31 +197,32 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const possibleCols = ['상품코드', '상품명', '바코드', '자체품번', 'ERP코드', '옵션명', '매칭코드'];
         barcodeCols = allCols.filter(c => possibleCols.includes(c) || c.includes('코드') || c.includes('번호'));
 
-        if (type === 'india') {
-            const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 3)));
-            if (uniqueStyles.length > 0) {
-                const patterns = uniqueStyles.map(s => `${s}%`);
-                const res = await client.query(`
-                    SELECT * FROM products 
-                    WHERE "상품코드" ILIKE ANY($1) 
-                       OR "바코드" ILIKE ANY($1)
-                `, [patterns]);
-                dbRows = res.rows;
-                if (dbRows.length === 0) {
-                    const containsPatterns = uniqueStyles.map(s => `%${s}%`);
-                    const res2 = await client.query(`
-                        SELECT * FROM products 
-                        WHERE "상품코드" ILIKE ANY($1) 
-                           OR "바코드" ILIKE ANY($1)
-                    `, [containsPatterns]);
-                    dbRows = res2.rows;
-                }
-            } else { dbRows = []; }
+        // [전체 최적화] 전 종목(인도/국내/중국)에 대해 스타일 기반 필터링 쿼리 적용
+        const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 2)));
+        
+        if (uniqueStyles.length > 0) {
+            // 속도와 정확도의 균형을 위해 접두어(s%)와 포함(%s%) 검색을 병행
+            const patterns = uniqueStyles.map(s => `%${s}%`);
+            const res = await client.query(`
+                SELECT * FROM products 
+                WHERE "상품코드" ILIKE ANY($1) 
+                   OR "바코드" ILIKE ANY($1)
+                   OR "상품명" ILIKE ANY($1)
+            `, [patterns]);
+            dbRows = res.rows;
+            
+            // 만약 검색 결과가 너무 적다면(예: 스타일 번호가 변조된 경우), 안전을 위해 전체 데이터를 가져옴 (폴백)
+            if (dbRows.length < excelRecords.length * 0.5 && uniqueStyles.length > 0) {
+                const fullData = await client.query("SELECT * FROM products LIMIT 50000");
+                dbRows = fullData.rows;
+            }
         } else {
-            const data = await client.query("SELECT * FROM products");
+            const data = await client.query("SELECT * FROM products LIMIT 10000");
             dbRows = data.rows;
         }
-    } finally { client.release(); }
+    } finally {
+        client.release();
+    }
 
     const finalResults: any[] = [];
     const matchCache = new Map<string, any>();
