@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "인도 패킹리스트 클라우드 파서 | ANTIGRAVITY",
-  description: "인도 패킹리스트 PDF 파일의 엑셀 변환, 구글 시트 데이터 매칭 및 수량 검증을 한 번에 해결하는 스마트 클라우드 솔루션입니다.",
-  keywords: ["인도 패킹리스트", "PDF 엑셀 변환", "물류 자동화", "ANTIGRAVITY", "수량 검증"],
+  title: "오즈키즈 통합 패킹리스트 변환 웹 | OZKIZ",
+  description: "인도, 국내, 중국 패킹리스트 PDF/엑셀 파일을 통합 관리하고 수량을 검증하는 오즈키즈 물류 자동화 솔루션입니다.",
+  keywords: ["오즈키즈", "패킹리스트 변환", "물류 자동화", "인도 패킹", "중국 패킹", "국내 패킹", "OZKIZ"],
 };
 
 export default function RootLayout({
