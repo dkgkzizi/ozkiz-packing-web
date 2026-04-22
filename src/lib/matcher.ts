@@ -50,11 +50,9 @@ function decomposeHangul(str: string): string {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    // 숫자 0과 대문자 O를 혼용하는 경우가 많아 O로 통일하여 비교 (원본 로직 반영)
     return s.toString()
         .replace(/[^0-9A-Z가-힣]/gi, '')
-        .toUpperCase()
-        .replace(/0/g, 'O');
+        .toUpperCase();
 }
 
 function getLevenshteinDistance(s1: string, s2: string): number {
@@ -270,6 +268,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 const rowProdCode = normalizeStr(row['상품코드'] || row['product_code'] || '');
                 const dbOption = (row['옵션명'] || row['옵션'] || row['option'] || '').toString();
                 const dbName = (row['상품명'] || row['product_name'] || '').toString();
+                const dbNormName = normalizeStr(dbName);
 
                 // 1. 스타일 번호 포함 매칭 (바코드나 상품코드의 일부인지 확인)
                 const styleParts = record.styleNo.split(/[/&,]/).map(s => s.trim()).filter(s => s.length >= 2);
@@ -314,7 +313,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 const seasonScore = getSeasonScore(dbName);
                 
                 // 가중치 합산 (스타일 1000점 만점 + 색상/사이즈 보너스)
-                const totalScore = (baseMatchScore * 1000) + (colorScore * 5) + (sizeScore * 5) + seasonScore;
+                const totalScore = (baseMatchScore * 10000) + (colorScore * 10) + (sizeScore * 10) + seasonScore;
                 
                 if (totalScore > maxTotalScore) {
                     maxTotalScore = totalScore;
@@ -342,7 +341,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        const threshold = type === 'india' ? 700 : 600; 
+        const threshold = type === 'india' ? 8000 : 600; 
         const isMatched = bestMatch && maxTotalScore > threshold;
         
         if (type === 'india' && !isMatched && record.styleNo.length > 3) {
