@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 수파베이스 마스터 매칭 엔진 가동
-    const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer));
+    const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer), 'india', file.name);
     const matchedWs = matchedWb.worksheets[0];
 
     // 4. 프론트엔드용 JSON 데이터 추출 (행 단위 원본 수량 추적)

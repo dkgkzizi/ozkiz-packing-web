@@ -66,8 +66,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 // 좌표 유연화: ctnF, ctnT, styleInZone 범위를 넓힘
                 let ctnF = cols.find(c => c.x > 0.0 && c.x < 3.0 && /^[0-9]+$/.test(c.text));
                 let ctnT = cols.find(c => c.x >= 1.5 && c.x < 5.0 && /^[0-9]+$/.test(c.text));
-                // 스타일 번호 인식 범위를 2.0~5.8로 좁혀서 색상(6.0~)과 겹치지 않게 하고, 5자 이상일 때만 스타일로 간주합니다.
-                let styleInZone = cols.find(c => c.x >= 2.0 && c.x < 5.8 && c.text.length >= 5);
+                // 스타일 번호 인식 범위를 1.5~6.2로 소폭 확장하고, 3자 이상일 때 스타일로 간주합니다.
+                let styleInZone = cols.find(c => c.x >= 1.5 && c.x < 6.2 && c.text.length >= 3);
                 let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 35.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 
                 let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);

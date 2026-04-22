@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 마스터 매칭 (Supabase 연동)
-    const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer), 'china');
+    const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer), 'china', fileName);
     const matchedWs = matchedWb.worksheets[0];
 
     // 4. 최종 데이터 구성 (이미지 URL 포함)
