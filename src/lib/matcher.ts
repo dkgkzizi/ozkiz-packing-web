@@ -21,7 +21,14 @@ const COLOR_MAP: Record<string, string[]> = {
     'PEACH': ['피치'],
     'BROWN': ['브라운', '갈색', '코코아'],
     'LIME': ['라임', '연두'],
-    'ORANGE': ['오렌지', '주황']
+    'ORANGE': ['오렌지', '주황'],
+    'KHAKI': ['카키'],
+    'WINE': ['와인'],
+    'GOLD': ['골드', '금색'],
+    'SILVER': ['실버', '은색'],
+    'MINT': ['민트'],
+    'LAVENDER': ['라벤더'],
+    'COCOA': ['코코아']
 };
 
 function decomposeHangul(str: string): string {
@@ -43,7 +50,6 @@ function decomposeHangul(str: string): string {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    // 특수문자 제거하되 공백은 한 개로 유지(추후 제거)
     return s.toString().replace(/[^0-9A-Z가-힣]/gi, ' ').replace(/\s+/g, '').toUpperCase();
 }
 
@@ -65,63 +71,83 @@ function getLevenshteinDistance(s1: string, s2: string): number {
 function getSimilarity(s1: string, s2: string): number {
     const s1_clean = s1.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
     const s2_clean = s2.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
-    
-    // 1. 완전 일치 (정규화 전/후)
     if (s1 === s2 || s1_clean === s2_clean) return 1.0;
-    
-    // 2. 포함 관계 (한글/영문 모두 포함, 최소 3글자 이상인 경우 0.95 부여)
     if (s1_clean && s2_clean && (s1_clean.length >= 3 || s2_clean.length >= 3)) {
         if (s1_clean.includes(s2_clean) || s2_clean.includes(s1_clean)) return 0.95;
     }
-    
-    // 3. 토큰 기반 매칭 (정확히 일치하는 단어가 있을 때만)
     const tokens1 = s1.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
     const tokens2 = s2.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
     for (const t1 of tokens1) {
         if (tokens2.includes(t1)) return 0.9;
     }
-    
     const distance = getLevenshteinDistance(s1, s2);
     const maxLen = Math.max(s1.length, s2.length);
     if (maxLen === 0) return 1;
     return 1 - distance / maxLen;
 }
 
-function getMatchScore(style: string, dbRow: any, barcodeCols: string[], type: string = 'india'): number {
+function getMatchScore(style: string, dbRow: any, barcodeCols: string[]): number {
     const s = normalizeStr(style);
     if (!s) return 0;
-
     let maxScore = 0;
-    // 인도와 중국 모두 이름 기반 매칭이므로 0.7로 완화하여 오타/누락 대응
     const threshold = 0.7; 
-
     for (const key of barcodeCols) {
         const val = normalizeStr(dbRow[key]);
         if (!val) continue;
-
         const score = getSimilarity(s, val);
         if (score > maxScore) maxScore = score;
     }
-
     return maxScore >= threshold ? maxScore : 0;
 }
 
+// 기존 로직 보존 (국내/중국용)
 export function getColorScore(styleColor: string, dbColor: string): number {
     const sc = styleColor.toUpperCase();
     const dc = dbColor.toUpperCase();
-
     if (sc === dc) return 100;
     if (sc.includes(dc) || dc.includes(sc)) return 80;
-
-    // 매핑 테이블 확인
     for (const [key, aliases] of Object.entries(COLOR_MAP)) {
         if (sc.includes(key) || aliases.some(a => sc.includes(a))) {
-            if (dc.includes(key) || aliases.some(a => dc.includes(a))) {
-                return 70;
-            }
+            if (dc.includes(key) || aliases.some(a => dc.includes(a))) return 70;
         }
     }
+    return 0;
+}
 
+// 인도용 신규 컬러 매칭 로직
+function getColorScoreIndia(styleColor: string, dbOption: string, dbName: string): number {
+    const sc = styleColor.toUpperCase().trim();
+    const target = (dbOption + dbName).toUpperCase();
+    if (!sc) return 0;
+    if (target.includes(sc)) return 100;
+    for (const [key, aliases] of Object.entries(COLOR_MAP)) {
+        if (sc === key || aliases.includes(sc)) {
+            if (target.includes(key) || aliases.some(a => target.includes(a))) return 80;
+        }
+    }
+    return 0;
+}
+
+// 인도용 신규 사이즈 매칭 로직
+function getSizeScoreIndia(recordSize: string, dbOption: string): number {
+    const rs = recordSize.toUpperCase().trim();
+    const dos = dbOption.toUpperCase().trim();
+    if (!rs || !dos) return 0;
+    const isNumeric = /^\d+$/.test(rs);
+    if (isNumeric) {
+        const regex = new RegExp(`(?<!\\d)${rs}(?!\\d)`);
+        if (regex.test(dos)) return 100;
+    } else {
+        const regex = new RegExp(`(?<![A-Z])${rs}(?![A-Z])`);
+        if (regex.test(dos)) return 100;
+        if (rs === 'F' && (dos.includes('FREE') || dos.includes(' F '))) return 100;
+        if (rs === 'FREE' && (dos.includes(' F ') || dos.endsWith(' F'))) return 100;
+    }
+    const rsNum = rs.replace(/[^0-9]/g, '');
+    if (rsNum && rsNum.length >= 2) {
+        const regex = new RegExp(`(?<!\\d)${rsNum}(?!\\d)`);
+        if (regex.test(dos)) return 60;
+    }
     return 0;
 }
 
@@ -129,13 +155,10 @@ export function getSeasonScore(name: string): number {
     const month = new Date().getMonth() + 1;
     const n = name.toUpperCase();
     let score = 0;
-
-    const isSS = month >= 2 && month <= 7; // 봄/여름 시즌 작업 기간
-    const isFW = month >= 8 || month <= 1; // 가을/겨울 시즌 작업 기간
-    
+    const isSS = month >= 2 && month <= 7;
+    const isFW = month >= 8 || month <= 1;
     if (isSS && (n.includes('SS') || n.includes('S/S') || n.includes('여름') || n.includes('봄'))) score += 20;
     if (isFW && (n.includes('FW') || n.includes('F/W') || n.includes('겨울') || n.includes('가을'))) score += 20;
-    
     return score;
 }
 
@@ -143,13 +166,11 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as any);
     const sheet = workbook.worksheets[0];
-    
     const excelRecords: any[] = [];
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
         const styleNo = row.getCell(1).text.trim();
         if (!styleNo || styleNo.includes('합계') || styleNo === 'STYLE NO' || styleNo.includes('TOTAL')) return;
-        
         excelRecords.push({
             styleNo: styleNo,
             pdfName: row.getCell(2).text.trim(),
@@ -165,10 +186,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     try {
         const tableInfo = await client.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'products'");
         const allCols = tableInfo.rows.map(r => r.column_name);
-        
         const possibleCols = ['상품코드', '상품명', '바코드', '자체품번', 'ERP코드', '옵션명', '매칭코드'];
         barcodeCols = allCols.filter(c => possibleCols.includes(c) || c.includes('코드') || c.includes('번호'));
-
         const data = await client.query("SELECT * FROM products");
         dbRows = data.rows;
     } finally {
@@ -176,7 +195,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     }
 
     const finalResults: any[] = [];
-    const matchCache = new Map<string, any>(); // 속도 개선을 위한 캐시
+    const matchCache = new Map<string, any>();
 
     for (const record of excelRecords) {
         const cacheKey = `${record.styleNo}|${record.color}|${record.size}`;
@@ -190,45 +209,54 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         let maxTotalScore = -1;
 
         for (const row of dbRows) {
-            // 1. 스타일 넘버 및 상품명 매칭 (바코드 우선)
-            const styleScore = getMatchScore(record.styleNo, row, barcodeCols, type);
-            const nameScore = getMatchScore(record.pdfName, row, barcodeCols, type);
-            let baseMatchScore = Math.max(styleScore, nameScore);
-
-            const rowBarcode = normalizeStr(row['바코드'] || row['상품코드'] || '');
-            const recordStyle = normalizeStr(record.styleNo);
-            if (recordStyle && rowBarcode && rowBarcode.startsWith(recordStyle)) {
-                baseMatchScore = 1.0; 
-            }
-
-            // [보호막] 스타일 매칭이 너무 낮으면(0.4 미만) 컬러/사이즈 점수는 무의미함
-            if (baseMatchScore < 0.4) continue; 
-
-            // 2. 컬러 매칭
-            const colorScore = getColorScore(record.color, (row['옵션명'] || '') + (row['상품명'] || ''));
-
-            // 3. 사이즈 매칭
-            let sizeScore = 0;
-            const dbOption = (row['옵션명'] || '').toUpperCase();
-            const targetSize = record.size.toUpperCase().replace(/[^0-9]/g, ''); 
-            if (targetSize && dbOption.includes(targetSize)) {
-                sizeScore = 80; 
-            }
-
-            const seasonScore = getSeasonScore(row['상품명'] || '');
-            
-            // [가중치 개편] 스타일 비중 극대화 (1000배)
-            const totalScore = (baseMatchScore * 1000) + colorScore + sizeScore + seasonScore;
-
-            if (totalScore > maxTotalScore) {
-                maxTotalScore = totalScore;
-                bestMatch = row;
+            if (type === 'india') {
+                // 인도용 최적화 로직
+                const styleScore = getMatchScore(record.styleNo, row, barcodeCols);
+                const nameScore = getMatchScore(record.pdfName, row, barcodeCols);
+                let baseMatchScore = Math.max(styleScore, nameScore);
+                const rowBarcode = normalizeStr(row['바코드'] || '');
+                const rowProdCode = normalizeStr(row['상품코드'] || '');
+                const recordStyle = normalizeStr(record.styleNo);
+                if (recordStyle && ((rowBarcode && rowBarcode.startsWith(recordStyle)) || (rowProdCode && rowProdCode.startsWith(recordStyle)))) {
+                    baseMatchScore = Math.max(baseMatchScore, 1.0); 
+                }
+                if (baseMatchScore < 0.4) continue; 
+                const colorScore = getColorScoreIndia(record.color, (row['옵션명'] || '') + (row['옵션'] || ''), row['상품명'] || '');
+                const sizeScore = getSizeScoreIndia(record.size, (row['옵션명'] || '') + (row['옵션'] || ''));
+                const seasonScore = getSeasonScore(row['상품명'] || '');
+                const totalScore = (baseMatchScore * 1000) + (colorScore * 2) + (sizeScore * 2) + seasonScore;
+                if (totalScore > maxTotalScore) {
+                    maxTotalScore = totalScore;
+                    bestMatch = row;
+                }
+            } else {
+                // 국내/중국용 기존 로직 (완전 보존)
+                const styleScore = getMatchScore(record.styleNo, row, barcodeCols);
+                const nameScore = getMatchScore(record.pdfName, row, barcodeCols);
+                let baseMatchScore = Math.max(styleScore, nameScore);
+                const rowBarcode = normalizeStr(row['바코드'] || row['상품코드'] || '');
+                const recordStyle = normalizeStr(record.styleNo);
+                if (recordStyle && rowBarcode && rowBarcode.startsWith(recordStyle)) baseMatchScore = 1.0;
+                if (baseMatchScore < 0.4) continue;
+                const colorScore = getColorScore(record.color, (row['옵션명'] || '') + (row['상품명'] || ''));
+                let sizeScore = 0;
+                const dbOption = (row['옵션명'] || '').toUpperCase();
+                const targetSize = record.size.toUpperCase().replace(/[^0-9]/g, '');
+                if (targetSize && dbOption.includes(targetSize)) sizeScore = 80;
+                const seasonScore = getSeasonScore(row['상품명'] || '');
+                const totalScore = (baseMatchScore * 1000) + colorScore + sizeScore + seasonScore;
+                if (totalScore > maxTotalScore) {
+                    maxTotalScore = totalScore;
+                    bestMatch = row;
+                }
             }
         }
 
+        const threshold = type === 'india' ? 800 : 600;
+        const isMatched = bestMatch && maxTotalScore > threshold;
         const resultItem = {
-            productCode: (bestMatch && maxTotalScore > 600) ? bestMatch['상품코드'] : '미매칭',
-            sheetName: (bestMatch && maxTotalScore > 600) ? bestMatch['상품명'] : record.pdfName,
+            productCode: isMatched ? bestMatch['상품코드'] : '미매칭',
+            sheetName: isMatched ? bestMatch['상품명'] : record.pdfName,
             color: record.color,
             size: record.size,
             qty: record.qty,
@@ -239,7 +267,6 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         finalResults.push(resultItem);
     }
 
-    // 결과 데이터 정렬 (스타일 -> 컬러 -> 사이즈 순)
     finalResults.sort((a, b) => {
         if (a.originalKeys[0] !== b.originalKeys[0]) return a.originalKeys[0].localeCompare(b.originalKeys[0]);
         if (a.color !== b.color) return a.color.localeCompare(b.color);
@@ -250,21 +277,15 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     const outWb = new ExcelJS.Workbook();
     const outWs = outWb.addWorksheet('매칭결과');
     const memoDate = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-    
     let memoContent = `${memoDate}_인도 입고`;
     if (type === 'china') {
         const cleanFileName = fileName.replace(/\.[^/.]+$/, "");
         let filePart = "";
         const dateMatch = cleanFileName.match(/[0-9]{8}/);
-        if (dateMatch) {
-            filePart = cleanFileName.replace(dateMatch[0], dateMatch[0].substring(4));
-        } else {
-            filePart = cleanFileName;
-        }
+        if (dateMatch) filePart = cleanFileName.replace(dateMatch[0], dateMatch[0].substring(4));
+        else filePart = cleanFileName;
         memoContent = `${memoDate}_${filePart} 중국 패킹 입고`;
-    } else if (type === 'domestic') {
-        memoContent = `${memoDate}_국내 패킹 입고`;
-    }
+    } else if (type === 'domestic') memoContent = `${memoDate}_국내 패킹 입고`;
 
     outWs.columns = [
         { header: '상품코드', key: 'productCode', width: 20 },
@@ -290,9 +311,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             memo: memoContent,
             originalKey: r.originalKeys.join(';')
         });
-        if (r.productCode === '미매칭') {
-            row.eachCell(c => { c.font = { color: { argb: 'FFFF0000' } }; });
-        }
+        if (r.productCode === '미매칭') row.eachCell(c => { c.font = { color: { argb: 'FFFF0000' } }; });
     });
 
     outWs.eachRow(row => {
