@@ -48,6 +48,27 @@ function decomposeHangul(str: string): string {
     return result;
 }
 
+function extractOptionParts(opt: string) {
+    if (!opt) return { color: '', size: '' };
+    // [색상-사이즈] 또는 색상-사이즈 형식 대응
+    const match = opt.match(/\[?([^\]\-]+)-([^\]]+)\]?/);
+    if (match) {
+        return {
+            color: match[1].trim(),
+            size: match[2].trim()
+        };
+    }
+    // 색상 / 사이즈 형식 대응
+    const parts = opt.split(/[/-]/);
+    if (parts.length >= 2) {
+        return {
+            color: parts[0].trim(),
+            size: parts[1].trim()
+        };
+    }
+    return { color: opt, size: '' };
+}
+
 function normalizeStr(s: any) {
     if (!s) return "";
     return s.toString()
@@ -341,18 +362,16 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        const threshold = type === 'india' ? 8000 : 600; 
+        const threshold = type === 'india' ? 5000 : 600; 
         const isMatched = bestMatch && maxTotalScore > threshold;
         
-        if (type === 'india' && !isMatched && record.styleNo.length > 3) {
-            console.log(`[Matcher] No Match: ${record.styleNo} (${record.color} ${record.size}) Score: ${maxTotalScore}`);
-        }
+        const dbOpt = isMatched ? extractOptionParts((bestMatch['옵션명'] || bestMatch['옵션'] || bestMatch['option'] || '').toString()) : null;
 
         const resultItem = {
             productCode: isMatched ? (bestMatch['상품코드'] || bestMatch['product_code']) : '미매칭',
             sheetName: isMatched ? (bestMatch['상품명'] || bestMatch['product_name']) : record.pdfName,
-            color: record.color,
-            size: record.size,
+            color: isMatched ? dbOpt?.color : record.color,
+            size: isMatched ? dbOpt?.size : record.size,
             qty: record.qty,
             originalKeys: [record.styleNo]
         };
