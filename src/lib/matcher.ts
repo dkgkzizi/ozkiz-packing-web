@@ -176,8 +176,16 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     }
 
     const finalResults: any[] = [];
+    const matchCache = new Map<string, any>(); // 속도 개선을 위한 캐시
 
     for (const record of excelRecords) {
+        const cacheKey = `${record.styleNo}|${record.color}|${record.size}`;
+        if (matchCache.has(cacheKey)) {
+            const cached = matchCache.get(cacheKey);
+            finalResults.push({ ...cached, qty: record.qty });
+            continue;
+        }
+
         let bestMatch: any = null;
         let maxTotalScore = -1;
 
@@ -187,29 +195,29 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             const nameScore = getMatchScore(record.pdfName, row, barcodeCols, type);
             let baseMatchScore = Math.max(styleScore, nameScore);
 
-            // [인도 패킹 특화] 스타일 넘버가 바코드의 시작 부분과 일치하면 만점 부여
             const rowBarcode = normalizeStr(row['바코드'] || row['상품코드'] || '');
             const recordStyle = normalizeStr(record.styleNo);
             if (recordStyle && rowBarcode && rowBarcode.startsWith(recordStyle)) {
                 baseMatchScore = 1.0; 
             }
 
-            if (baseMatchScore < 0.3) continue; // 최소 하한치
+            // [보호막] 스타일 매칭이 너무 낮으면(0.4 미만) 컬러/사이즈 점수는 무의미함
+            if (baseMatchScore < 0.4) continue; 
 
             // 2. 컬러 매칭
             const colorScore = getColorScore(record.color, (row['옵션명'] || '') + (row['상품명'] || ''));
 
-            // 3. 사이즈 매칭 (추가)
+            // 3. 사이즈 매칭
             let sizeScore = 0;
             const dbOption = (row['옵션명'] || '').toUpperCase();
-            const targetSize = record.size.toUpperCase().replace(/[^0-9]/g, ''); // 숫자만 추출 (예: 100)
+            const targetSize = record.size.toUpperCase().replace(/[^0-9]/g, ''); 
             if (targetSize && dbOption.includes(targetSize)) {
-                sizeScore = 50; // 사이즈 일치 시 보너스
+                sizeScore = 80; 
             }
 
             const seasonScore = getSeasonScore(row['상품명'] || '');
             
-            // [가중치 개편] baseMatchScore에 1000을 곱해 스타일 불일치를 컬러/사이즈가 역전하지 못하게 함
+            // [가중치 개편] 스타일 비중 극대화 (1000배)
             const totalScore = (baseMatchScore * 1000) + colorScore + sizeScore + seasonScore;
 
             if (totalScore > maxTotalScore) {
@@ -218,26 +226,26 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        if (bestMatch && maxTotalScore > 500) { // 하한치 상향
-            finalResults.push({
-                productCode: bestMatch['상품코드'],
-                sheetName: bestMatch['상품명'],
-                color: record.color,
-                size: record.size,
-                qty: record.qty,
-                originalKeys: [record.styleNo]
-            });
-        } else {
-            finalResults.push({
-                productCode: '미매칭',
-                sheetName: record.pdfName,
-                color: record.color,
-                size: record.size,
-                qty: record.qty,
-                originalKeys: [record.styleNo]
-            });
-        }
+        const resultItem = {
+            productCode: (bestMatch && maxTotalScore > 600) ? bestMatch['상품코드'] : '미매칭',
+            sheetName: (bestMatch && maxTotalScore > 600) ? bestMatch['상품명'] : record.pdfName,
+            color: record.color,
+            size: record.size,
+            qty: record.qty,
+            originalKeys: [record.styleNo]
+        };
+
+        matchCache.set(cacheKey, resultItem);
+        finalResults.push(resultItem);
     }
+
+    // 결과 데이터 정렬 (스타일 -> 컬러 -> 사이즈 순)
+    finalResults.sort((a, b) => {
+        if (a.originalKeys[0] !== b.originalKeys[0]) return a.originalKeys[0].localeCompare(b.originalKeys[0]);
+        if (a.color !== b.color) return a.color.localeCompare(b.color);
+        const getS = (s:string) => parseInt(s.replace(/[^0-9]/g, '')) || 0;
+        return getS(a.size) - getS(b.size);
+    });
 
     const outWb = new ExcelJS.Workbook();
     const outWs = outWb.addWorksheet('매칭결과');

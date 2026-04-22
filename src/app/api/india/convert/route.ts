@@ -16,13 +16,25 @@ export async function POST(req: NextRequest) {
     const rawResults = await getRawPackingResults(buffer);
     if (rawResults.length === 0) throw new Error("PDF에서 데이터를 추출하지 못했습니다.");
 
-    const originalTotal = rawResults.reduce((acc, cur) => acc + cur.qty, 0);
+    // [전문화/최적화] 동일 상품(스타일, 이름, 컬러, 사이즈) 데이터 사전에 합치기
+    const aggregated: Record<string, any> = {};
+    rawResults.forEach(res => {
+        const key = `${res.style}|${res.name}|${res.color}|${res.size}`;
+        if (aggregated[key]) {
+            aggregated[key].qty += res.qty;
+        } else {
+            aggregated[key] = { ...res };
+        }
+    });
+    const finalRawResults = Object.values(aggregated);
 
-    // 2. 임시 엑셀 생성
+    const originalTotal = finalRawResults.reduce((acc, cur) => acc + cur.qty, 0);
+
+    // 2. 임시 엑셀 생성 (합산된 데이터로 생성하여 매칭 횟수 최소화)
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
     tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY']);
-    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty]));
+    finalRawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty]));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 수파베이스 마스터 매칭 엔진 가동
