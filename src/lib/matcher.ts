@@ -50,7 +50,11 @@ function decomposeHangul(str: string): string {
 
 function normalizeStr(s: any) {
     if (!s) return "";
-    return s.toString().replace(/[^0-9A-Z가-힣]/gi, ' ').replace(/\s+/g, '').toUpperCase();
+    // 숫자 0과 대문자 O를 혼용하는 경우가 많아 O로 통일하여 비교 (원본 로직 반영)
+    return s.toString()
+        .replace(/[^0-9A-Z가-힣]/gi, '')
+        .toUpperCase()
+        .replace(/0/g, 'O');
 }
 
 function getLevenshteinDistance(s1: string, s2: string): number {
@@ -217,8 +221,14 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 2)));
         
         if (uniqueStyles.length > 0) {
-            // 속도와 정확도의 균형을 위해 접두어(s%)와 포함(%s%) 검색을 병행
-            const patterns = uniqueStyles.map(s => `%${s}%`);
+            // 숫자 0과 대문자 O 혼용 대응을 위해 패턴 중복 생성
+            const patterns = uniqueStyles.flatMap(s => {
+                const p1 = s.toUpperCase();
+                const p2 = p1.replace(/O/g, '0');
+                const p3 = p1.replace(/0/g, 'O');
+                return [...new Set([`%${p1}%`, `%${p2}%`, `%${p3}%`]).values()];
+            });
+
             const res = await client.query(`
                 SELECT * FROM products 
                 WHERE "상품코드" ILIKE ANY($1) 
@@ -227,7 +237,6 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             `, [patterns]);
             dbRows = res.rows;
             
-            // 만약 검색 결과가 너무 적다면(예: 스타일 번호가 변조된 경우), 안전을 위해 전체 데이터를 가져옴 (폴백)
             if (dbRows.length < excelRecords.length * 0.5 && uniqueStyles.length > 0) {
                 const fullData = await client.query("SELECT * FROM products LIMIT 50000");
                 dbRows = fullData.rows;
@@ -305,12 +314,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 const seasonScore = getSeasonScore(dbName);
                 
                 // 가중치 합산 (스타일 1000점 만점 + 색상/사이즈 보너스)
-                const totalScore = (baseMatchScore * 1000) + (colorScore * 2) + (sizeScore * 2) + seasonScore;
+                const totalScore = (baseMatchScore * 1000) + (colorScore * 5) + (sizeScore * 5) + seasonScore;
                 
-                if (totalScore > maxTotalScore) {
-                    maxTotalScore = totalScore;
-                    bestMatch = row;
-                }
                 if (totalScore > maxTotalScore) {
                     maxTotalScore = totalScore;
                     bestMatch = row;
@@ -325,9 +330,9 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 if (baseMatchScore < 0.4) continue;
                 const colorScore = getColorScore(record.color, (row['옵션명'] || '') + (row['상품명'] || ''));
                 let sizeScore = 0;
-                const dbOption = (row['옵션명'] || '').toUpperCase();
+                const dbOption = (row['옵션명'] || row['옵션'] || row['option'] || '').toString();
                 const targetSize = record.size.toUpperCase().replace(/[^0-9]/g, '');
-                if (targetSize && dbOption.includes(targetSize)) sizeScore = 80;
+                if (targetSize && dbOption.toUpperCase().includes(targetSize)) sizeScore = 80;
                 const seasonScore = getSeasonScore(row['상품명'] || '');
                 const totalScore = (baseMatchScore * 1000) + colorScore + sizeScore + seasonScore;
                 if (totalScore > maxTotalScore) {
@@ -337,7 +342,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        const threshold = type === 'india' ? 800 : 600; 
+        const threshold = type === 'india' ? 700 : 600; 
         const isMatched = bestMatch && maxTotalScore > threshold;
         
         if (type === 'india' && !isMatched && record.styleNo.length > 3) {
