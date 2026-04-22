@@ -262,56 +262,55 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 const dbOption = (row['옵션명'] || row['옵션'] || row['option'] || '').toString();
                 const dbName = (row['상품명'] || row['product_name'] || '').toString();
 
-                // 1. 스타일 번호 분해 및 분석
+                // 1. 스타일 번호 포함 매칭 (바코드나 상품코드의 일부인지 확인)
                 const styleParts = record.styleNo.split(/[/&,]/).map(s => s.trim()).filter(s => s.length >= 2);
                 let maxPartScore = 0;
                 for (const part of styleParts) {
-                    const sScore = getMatchScore(part, row, barcodeCols);
-                    if (sScore > maxPartScore) maxPartScore = sScore;
-                    
                     const nPart = normalizeStr(part);
-                    if (nPart && nPart.length >= 3 && ((rowBarcode && rowBarcode.startsWith(nPart)) || (rowProdCode && rowProdCode.startsWith(nPart)))) {
-                        maxPartScore = 1.0;
-                        break;
+                    if (nPart && nPart.length >= 3) {
+                        // 바코드나 상품코드에 스타일 번호가 포함되어 있는지 확인 (가장 확실한 지표)
+                        if (rowBarcode.includes(nPart) || rowProdCode.includes(nPart)) {
+                            maxPartScore = 1.0;
+                            break;
+                        }
+                        // 유사도 계산 (오타 등 대비)
+                        const sScore = getMatchScore(part, row, barcodeCols);
+                        if (sScore > maxPartScore) maxPartScore = sScore;
                     }
                 }
 
-                // 2. 복합 코드 및 약어 매칭
+                // 2. 복합 코드 및 약어 매칭 (Style+Color+Size 조합)
                 const recordStyle = normalizeStr(record.styleNo);
                 const recordColor = normalizeStr(record.color);
                 const recordSize = normalizeStr(record.size);
                 
-                if (recordStyle && recordColor && recordSize) {
+                if (maxPartScore < 1.0 && recordStyle && recordColor && recordSize) {
                     const abbreviations = COLOR_ABBR[recordColor] || [];
                     const colorVariants = [recordColor, ...abbreviations];
                     
                     for (const cv of colorVariants) {
                         const composite = recordStyle + cv + recordSize;
-                        const composite2 = recordStyle + recordSize + cv;
-                        if (rowBarcode === composite || rowBarcode === composite2) {
+                        if (rowBarcode.includes(composite)) {
                             maxPartScore = 1.0;
                             break;
                         }
                     }
-                    
-                    if (maxPartScore < 1.0 && rowBarcode.includes(recordStyle) && rowBarcode.includes(recordSize)) {
-                        const hasColorVariant = colorVariants.some(cv => rowBarcode.includes(cv));
-                        if (hasColorVariant) maxPartScore = Math.max(maxPartScore, 0.95);
-                    }
                 }
 
                 let baseMatchScore = Math.max(maxPartScore, getMatchScore(record.pdfName, row, barcodeCols));
-                if (baseMatchScore < 0.4) continue; 
+                if (baseMatchScore < 0.3) continue; // 최소한의 연관성도 없으면 제외
                 
                 const colorScore = getColorScoreIndia(record.color, dbOption, dbName);
                 const sizeScore = getSizeScoreIndia(record.size, dbOption);
                 const seasonScore = getSeasonScore(dbName);
                 
-                let penalty = 0;
-                if (record.color && colorScore === 0) penalty -= 400;
-                if (record.size && sizeScore === 0) penalty -= 400;
-
-                const totalScore = (baseMatchScore * 1000) + (colorScore * 5) + (sizeScore * 5) + seasonScore + penalty;
+                // 가중치 합산 (스타일 1000점 만점 + 색상/사이즈 보너스)
+                const totalScore = (baseMatchScore * 1000) + (colorScore * 2) + (sizeScore * 2) + seasonScore;
+                
+                if (totalScore > maxTotalScore) {
+                    maxTotalScore = totalScore;
+                    bestMatch = row;
+                }
                 if (totalScore > maxTotalScore) {
                     maxTotalScore = totalScore;
                     bestMatch = row;
