@@ -33,8 +33,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
                 if (!txt) return;
                 let y = t.y;
-                // 세로 오차 범위를 0.45에서 0.25로 줄여 위아래로 나뉜 색상을 별도 행으로 인식하게 합니다.
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.25);
+                // 세로 오차 범위를 소폭 조정하여 행 병합 최적화
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.28);
                 if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
                 else rowsRaw[y] = [{ x: t.x, text: txt }];
             });
@@ -44,65 +44,77 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
                 
-                // --- 1. 사이즈 헤더 감지 (데이터 행 여부와 관계없이 상시 감지) ---
-                let potSizes = cols.filter(c => 
-                    c.x > 10.0 && c.x < 35.0 && c.text.length <= 10 && 
-                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE'].some(k => c.text.toUpperCase().includes(k)) &&
-                    /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
-                );
-                // 스타일 번호가 없고, 사이즈 같은 숫자/글자가 2개 이상 보이면 사이즈 행으로 간주
-                if (potSizes.length >= 2 && !cols.some(c => c.x < 10.0 && c.text.length > 5)) {
-                    sizes = {}; 
-                    potSizes.forEach(sc => { sizes[sc.x] = sc.text; });
-                    return; // 사이즈 행은 데이터 행으로 처리하지 않음
+                // --- 1. 스타일 헤더 직접 감지 (STYLE NO: XXX) ---
+                if (fullText.includes('STYLE NO')) {
+                    const stylePart = cols.find(c => c.text.toUpperCase().includes('STYLE') && c.text.includes(':')) 
+                                   || cols.find(c => c.text.length > 5 && (c.x < 15.0));
+                    if (stylePart) {
+                        const sMatch = fullText.match(/STYLE NO\s*:\s*([A-Z0-9-]+)/i);
+                        if (sMatch) curS = sMatch[1];
+                        else if (stylePart.text.length > 3) curS = stylePart.text.replace(/STYLE NO\s*:\s*/i, '').trim();
+                    }
                 }
 
-                // --- 2. 데이터 행 처리 ---
+                // --- 2. 사이즈 헤더 감지 (데이터 행 여부와 관계없이 상시 감지) ---
+                // 사이즈는 보통 10.0~38.0 사이에 여러 개가 나열됨
+                let potSizes = cols.filter(c => 
+                    c.x > 12.0 && c.x < 38.0 && c.text.length <= 10 && 
+                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE'].some(k => c.text.toUpperCase().includes(k)) &&
+                    /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                );
+                
+                // 스타일 번호가 없고, 사이즈 같은 숫자/글자가 2개 이상 보이면 사이즈 행으로 간주
+                if (potSizes.length >= 2 && !cols.some(c => c.x < 8.0 && c.text.length > 10)) {
+                    sizes = {}; 
+                    potSizes.forEach(sc => { sizes[sc.x] = sc.text; });
+                    return; 
+                }
+
+                // --- 3. 데이터 행 처리 ---
                 const isMetaRow = (
                     fullText.includes('TOTAL') && (fullText.includes('KGS') || fullText.includes('PCS') || fullText.includes('CTNS')) ||
-                    fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('WEIGHT')
+                    fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('WEIGHT') || fullText.includes('SHIPPER')
                 );
 
-                // 좌표 유연화: ctnF, ctnT, styleInZone 범위를 넓힘
-                let ctnF = cols.find(c => c.x > 0.0 && c.x < 3.0 && /^[0-9]+$/.test(c.text));
-                let ctnT = cols.find(c => c.x >= 1.5 && c.x < 5.0 && /^[0-9]+$/.test(c.text));
-                // 스타일 번호 인식 범위를 1.5~6.2로 소폭 확장하고, 3자 이상일 때 스타일로 간주합니다.
-                let styleInZone = cols.find(c => c.x >= 1.5 && c.x < 6.2 && c.text.length >= 3);
-                let hasQtyData = cols.some(c => c.x >= 10.0 && c.x < 35.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                // 좌표 유연화: ctnF, ctnT 범위를 넓힘
+                let ctnF = cols.find(c => c.x > 0.0 && c.x < 4.0 && /^[0-9]+$/.test(c.text));
+                let ctnT = cols.find(c => c.x >= 1.5 && c.x < 6.0 && /^[0-9]+$/.test(c.text));
                 
+                // 스타일 번호 인식 범위를 4.0~12.0으로 확장 (이미지 기준)
+                let styleInZone = cols.find(c => c.x >= 4.0 && c.x < 12.0 && c.text.length >= 5 && !c.text.includes(':'));
+                
+                // 데이터 행 여부 판단: 박스 번호가 있거나, 스타일 정보와 수량 정보가 동시에 있을 때
+                let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 40.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);
 
                 if (isDataRow && !isMetaRow) {
                     if (styleInZone) curS = styleInZone.text;
                     
-                    // --- 박스 수 자동 계산 시스템 (Fix: Total Boxes) ---
-                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 6.0 && /^[0-9]+$/.test(c.text))
+                    // --- 박스 수 자동 계산 시스템 ---
+                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 7.0 && /^[0-9]+$/.test(c.text))
                                      .map(c => parseInt(c.text))
                                      .sort((a, b) => a - b);
                     
                     if (ctnNums.length >= 2) curBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
                     else if (ctnNums.length === 1) curBoxes = 1;
                     
-                    // TOTAL CTNS 컬럼 (x: 35~42) 우선 인식
-                    let directBoxCount = cols.find(c => c.x >= 35.0 && c.x < 42.0 && /^[0-9]+$/.test(c.text));
+                    // TOTAL CTNS 컬럼 우선 인식
+                    let directBoxCount = cols.find(c => c.x >= 35.0 && c.x < 45.0 && /^[0-9]+$/.test(c.text));
                     if (directBoxCount) {
                         const dbVal = parseInt(directBoxCount.text);
-                        if (dbVal > 0 && dbVal < 500) curBoxes = dbVal;
+                        if (dbVal > 0 && dbVal < 1000) curBoxes = dbVal;
                     }
                     if (curBoxes <= 0) curBoxes = 1;
 
-                    // --- 상품명 및 색상 지능형 추출 (Restored) ---
-                    let dataCand = cols.find(c => c.x >= 6.0 && c.x < 15.0 && c.text.length > 3);
+                    // --- 상품명 및 색상 지능형 추출 ---
+                    // 색상은 보통 스타일 번호 다음(x: 10.0~25.0)에 위치함
+                    let dataCand = cols.find(c => c.x >= 10.0 && c.x < 25.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
                         if (r.includes(' - ')) {
                             let pts = r.split(' - ').map(p=>p.trim());
                             if (COLORS.some(cl => pts[0].toUpperCase().includes(cl))) { curC = pts[0]; curN = pts.slice(1).join(' - ').trim(); }
-                            else { curN = pts[0]; curC = pts.slice(1).join(' - ').trim(); }
-                        } else if (r.includes('-')) {
-                            let pts = r.split('-').map(p=>p.trim());
-                            if (COLORS.some(cl => pts[0].toUpperCase().includes(cl))) { curC = pts[0]; curN = pts.slice(1).join('-').trim(); }
-                            else { curN = pts[0]; curC = pts.slice(1).join('-').trim(); }
+                            else { curC = pts[pts.length-1]; curN = pts.slice(0,-1).join(' - ').trim(); }
                         } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
                             curC = r;
                         } else {
@@ -112,11 +124,18 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.2); // 허용 오차 1.2로 확대
+                        // 수량 컬럼은 사이즈 헤더의 x좌표 근처에 위치함
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
-                            if (q > 0 && q < 1000) {
-                                results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * curBoxes });
+                            if (q > 0 && q < 5000) {
+                                results.push({ 
+                                    style: curS, 
+                                    name: curN || curS, 
+                                    color: curC, 
+                                    size: sizes[sx], 
+                                    qty: q * curBoxes 
+                                });
                             }
                         }
                     });
