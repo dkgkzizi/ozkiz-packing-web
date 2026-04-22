@@ -72,16 +72,24 @@ function getSimilarity(s1: string, s2: string): number {
     const s1_clean = s1.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
     const s2_clean = s2.toUpperCase().replace(/[^0-9A-Z가-힣]/g, '');
     if (s1 === s2 || s1_clean === s2_clean) return 1.0;
+    
+    // 한글 자소 분리 비교 (더 세밀한 매칭)
+    const s1_dec = decomposeHangul(s1_clean);
+    const s2_dec = decomposeHangul(s2_clean);
+    if (s1_dec === s2_dec) return 1.0;
+
     if (s1_clean && s2_clean && (s1_clean.length >= 3 || s2_clean.length >= 3)) {
         if (s1_clean.includes(s2_clean) || s2_clean.includes(s1_clean)) return 0.95;
     }
+    
     const tokens1 = s1.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
     const tokens2 = s2.split(/[^0-9A-Z가-힣]/).filter(t => t.length >= 2);
     for (const t1 of tokens1) {
         if (tokens2.includes(t1)) return 0.9;
     }
-    const distance = getLevenshteinDistance(s1, s2);
-    const maxLen = Math.max(s1.length, s2.length);
+    
+    const distance = getLevenshteinDistance(s1_dec, s2_dec);
+    const maxLen = Math.max(s1_dec.length, s2_dec.length);
     if (maxLen === 0) return 1;
     return 1 - distance / maxLen;
 }
@@ -190,11 +198,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         barcodeCols = allCols.filter(c => possibleCols.includes(c) || c.includes('코드') || c.includes('번호'));
 
         if (type === 'india') {
-            // [성능 최적화] 전체 상품을 가져오는 대신, 엑셀에 있는 스타일 번호와 관련된 상품만 필터링해서 가져옴
             const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 3)));
-            
             if (uniqueStyles.length > 0) {
-                // 스타일 번호가 상품코드나 바코드의 앞부분에 오는 경우가 많으므로 접두어 매칭 활용
                 const patterns = uniqueStyles.map(s => `${s}%`);
                 const res = await client.query(`
                     SELECT * FROM products 
@@ -203,11 +208,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                        OR "자체품번" ILIKE ANY($1)
                 `, [patterns]);
                 dbRows = res.rows;
-                
-                // 만약 매칭 후보가 너무 적으면 전체 검색을 고려할 수 있으나, 
-                // 보통 수입 패킹은 스타일 번호가 기준이므로 이 정도로 충분함
                 if (dbRows.length === 0) {
-                    // 차선책: 포함 검색 (속도는 조금 느리지만 정확도 향상)
                     const containsPatterns = uniqueStyles.map(s => `%${s}%`);
                     const res2 = await client.query(`
                         SELECT * FROM products 
@@ -216,17 +217,12 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     `, [containsPatterns]);
                     dbRows = res2.rows;
                 }
-            } else {
-                dbRows = [];
-            }
+            } else { dbRows = []; }
         } else {
-            // 국내/중국용은 기존 방식 유지 (혹은 나중에 동일하게 최적화 가능)
             const data = await client.query("SELECT * FROM products");
             dbRows = data.rows;
         }
-    } finally {
-        client.release();
-    }
+    } finally { client.release(); }
 
     const finalResults: any[] = [];
     const matchCache = new Map<string, any>();
@@ -244,27 +240,35 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
         for (const row of dbRows) {
             if (type === 'india') {
-                // 인도용 최적화 로직
                 const styleScore = getMatchScore(record.styleNo, row, barcodeCols);
                 const nameScore = getMatchScore(record.pdfName, row, barcodeCols);
                 let baseMatchScore = Math.max(styleScore, nameScore);
                 const rowBarcode = normalizeStr(row['바코드'] || '');
                 const rowProdCode = normalizeStr(row['상품코드'] || '');
                 const recordStyle = normalizeStr(record.styleNo);
+                
                 if (recordStyle && ((rowBarcode && rowBarcode.startsWith(recordStyle)) || (rowProdCode && rowProdCode.startsWith(recordStyle)))) {
                     baseMatchScore = Math.max(baseMatchScore, 1.0); 
                 }
-                if (baseMatchScore < 0.4) continue; 
+                
+                // 스타일 매칭 기본 임계값 0.5로 상향 (정확도 확보)
+                if (baseMatchScore < 0.5) continue; 
+                
                 const colorScore = getColorScoreIndia(record.color, (row['옵션명'] || '') + (row['옵션'] || ''), row['상품명'] || '');
                 const sizeScore = getSizeScoreIndia(record.size, (row['옵션명'] || '') + (row['옵션'] || ''));
                 const seasonScore = getSeasonScore(row['상품명'] || '');
-                const totalScore = (baseMatchScore * 1000) + (colorScore * 2) + (sizeScore * 2) + seasonScore;
+                
+                // 명시적 불일치 페널티 (꼼꼼한 매칭)
+                let penalty = 0;
+                if (record.color && colorScore === 0) penalty -= 300;
+                if (record.size && sizeScore === 0) penalty -= 300;
+
+                const totalScore = (baseMatchScore * 1000) + (colorScore * 3) + (sizeScore * 3) + seasonScore + penalty;
                 if (totalScore > maxTotalScore) {
                     maxTotalScore = totalScore;
                     bestMatch = row;
                 }
             } else {
-                // 국내/중국용 기존 로직 (완전 보존)
                 const styleScore = getMatchScore(record.styleNo, row, barcodeCols);
                 const nameScore = getMatchScore(record.pdfName, row, barcodeCols);
                 let baseMatchScore = Math.max(styleScore, nameScore);
@@ -286,7 +290,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        const threshold = type === 'india' ? 800 : 600;
+        const threshold = type === 'india' ? 900 : 600; // 인도용 매칭 임계값 900으로 상향 (약 90% 일치 필요)
         const isMatched = bestMatch && maxTotalScore > threshold;
         const resultItem = {
             productCode: isMatched ? bestMatch['상품코드'] : '미매칭',
