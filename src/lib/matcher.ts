@@ -240,16 +240,36 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
         for (const row of dbRows) {
             if (type === 'india') {
-                const styleScore = getMatchScore(record.styleNo, row, barcodeCols);
-                const nameScore = getMatchScore(record.pdfName, row, barcodeCols);
-                let baseMatchScore = Math.max(styleScore, nameScore);
                 const rowBarcode = normalizeStr(row['바코드'] || '');
                 const rowProdCode = normalizeStr(row['상품코드'] || '');
-                const recordStyle = normalizeStr(record.styleNo);
                 
-                if (recordStyle && ((rowBarcode && rowBarcode.startsWith(recordStyle)) || (rowProdCode && rowProdCode.startsWith(recordStyle)))) {
-                    baseMatchScore = Math.max(baseMatchScore, 1.0); 
+                // 1. 스타일 번호 분해 및 분석 (/, &, , 등으로 묶인 경우 대응)
+                const styleParts = record.styleNo.split(/[/&,]/).map(s => s.trim()).filter(s => s.length >= 3);
+                let maxPartScore = 0;
+                for (const part of styleParts) {
+                    const sScore = getMatchScore(part, row, barcodeCols);
+                    if (sScore > maxPartScore) maxPartScore = sScore;
+                    
+                    // 접두어 매칭 보너스 (각 부분별로 체크)
+                    const nPart = normalizeStr(part);
+                    if (nPart && ((rowBarcode && rowBarcode.startsWith(nPart)) || (rowProdCode && rowProdCode.startsWith(nPart)))) {
+                        maxPartScore = 1.0;
+                        break;
+                    }
                 }
+
+                // 2. 복합 코드 매칭 (Style + Color + Size 조합이 바코드와 일치하는지 확인)
+                const recordStyle = normalizeStr(record.styleNo);
+                const recordColor = normalizeStr(record.color);
+                const recordSize = normalizeStr(record.size);
+                const composite = recordStyle + recordColor + recordSize;
+                const composite2 = recordStyle + recordSize + recordColor; // 순서 바뀐 경우 대비
+                
+                if (rowBarcode === composite || rowBarcode === composite2 || (rowBarcode.includes(recordStyle) && rowBarcode.includes(recordColor) && rowBarcode.includes(recordSize))) {
+                    maxPartScore = Math.max(maxPartScore, 1.0);
+                }
+
+                let baseMatchScore = Math.max(maxPartScore, getMatchScore(record.pdfName, row, barcodeCols));
                 
                 // 스타일 매칭 기본 임계값 0.5로 상향 (정확도 확보)
                 if (baseMatchScore < 0.5) continue; 
