@@ -43,46 +43,43 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // 1. 스타일 번호 추출 (Aggressive)
-                const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
-                let stylePart = cols.find(c => styleRegex.test(c.text) && !c.text.includes(':') && c.text.length >= 6);
-                if (stylePart) curS = stylePart.text.trim();
-                else if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
+                // 1. 스타일 번호 감지 (헤더 기반)
+                if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
                     const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
-                    if (sMatch && sMatch[1].length >= 5) curS = sMatch[1].trim();
+                    if (sMatch && sMatch[1].length >= 3) curS = sMatch[1].trim();
                 }
 
-                // 2. 사이즈 헤더 감지 (가로 범위 100.0까지 확대)
+                // 2. 사이즈 헤더 감지 (범위 대폭 확대 및 100 사이즈 보정)
                 let potSizes = cols.filter(c => 
-                    c.x > 8.0 && c.x < 100.0 && c.text.length <= 10 && 
-                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','COLOUR','MODEL','NAME'].some(k => c.text.toUpperCase().includes(k)) &&
-                    /^[0-9A-Z/\-\s]+$/.test(c.text.replace(/[^0-9A-Z/\-\s]/g,''))
+                    c.x > 5.0 && c.x < 100.0 && c.text.length <= 10 && 
+                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','MODEL'].some(k => c.text.toUpperCase().includes(k)) &&
+                    /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
                 );
                 
-                if (potSizes.length >= 2 && !cols.some(c => c.x < 5.0 && c.text.length > 20)) {
+                if (potSizes.length >= 2 && !fullText.includes('SHIPPER') && !fullText.includes('ADDRESS')) {
                     sizes = {}; 
                     potSizes.forEach(sc => { 
-                        const sTxt = sc.text.trim();
-                        if (sTxt && sTxt.length < 8) sizes[sc.x] = sTxt;
+                        const st = sc.text.trim();
+                        if (st && st.length < 8) sizes[sc.x] = st;
                     });
                     return; 
                 }
 
-                // 3. 데이터 행 판단 (가로 범위 확대 및 조건 유연화)
+                // 3. 데이터 행 처리
                 const isMetaRow = (
                     fullText.includes('TOTAL') && (fullText.includes('KGS') || fullText.includes('PCS') || fullText.includes('CTNS')) ||
                     fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('SHIPPER')
                 );
 
+                // 수량 데이터가 있는지 확인
                 let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 100.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                // 행 번호(CTN NO)가 있거나, 스타일이 있는 상태에서 수량이 있으면 데이터 행으로 간주
                 let isDataRow = !!(cols.find(c => c.x < 10.0 && /^[0-9\.]+$/.test(c.text))) || (hasQtyData && curS.length >= 3);
 
                 if (isDataRow && !isMetaRow) {
-                    const isGeneric = (s: string) => ['TOP AND BTM', 'MADE IN', 'SET', 'PCS', 'TOTAL'].some(k => s.toUpperCase().includes(k));
-                    if (isGeneric(curS) || curS.length < 5) {
-                        const alternative = cols.find(c => c.text.length >= 6 && !isGeneric(c.text) && /[0-9]/.test(c.text));
-                        if (alternative) curS = alternative.text.trim();
-                    }
+                    // 데이터 행 내부의 스타일 번호 업데이트
+                    let styleInRow = cols.find(c => c.x >= 4.0 && c.x < 15.0 && c.text.length >= 5 && !c.text.includes(':') && !c.text.includes('SET') && !c.text.includes('PCS'));
+                    if (styleInRow) curS = styleInRow.text.trim();
 
                     // 박스 수 계산
                     let ctnNums = cols.filter(c => c.x >= 0 && c.x < 10.0 && /^[0-9]+$/.test(c.text))
@@ -90,6 +87,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                                      .sort((a, b) => a - b);
                     if (ctnNums.length >= 2) curBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
                     else if (ctnNums.length === 1) curBoxes = 1;
+                    if (curBoxes <= 0) curBoxes = 1;
 
                     // 상품명/색상 추출
                     let dataCand = cols.find(c => c.x >= 6.0 && c.x < 35.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
@@ -113,7 +111,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                        // 수량 컬럼 매칭 (허용 오차 3.0으로 확대)
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
                             if (q > 0 && q < 5000) {
