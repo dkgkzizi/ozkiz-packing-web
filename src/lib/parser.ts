@@ -43,8 +43,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // --- 1. 스타일 번호 지능형 추출 (Regex 기반 전방위 탐색) ---
-                // O25WE03U 같은 인도 패킹리스트 특유의 스타일 번호 패턴 (영문1-2+숫자2+영문1-2+숫자2-3)
+                // --- 1. 스타일 번호 지능형 추출 ---
                 const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
                 let stylePart = cols.find(c => styleRegex.test(c.text) && !c.text.includes(':') && c.text.length >= 6);
                 
@@ -57,7 +56,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
 
                 // --- 2. 사이즈 헤더 감지 ---
                 let potSizes = cols.filter(c => 
-                    c.x > 8.0 && c.x < 42.0 && c.text.length <= 10 && 
+                    c.x > 8.0 && c.x < 45.0 && c.text.length <= 10 && 
                     !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','COLOUR','MODEL','NAME'].some(k => c.text.toUpperCase().includes(k)) &&
                     /^[0-9A-Z/\-\s]+$/.test(c.text.replace(/[^0-9A-Z/\-\s]/g,''))
                 );
@@ -77,7 +76,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('WEIGHT') || fullText.includes('SHIPPER')
                 );
 
-                let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 40.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 45.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 let isDataRow = !!(cols.find(c => c.x < 7.0 && /^[0-9]+$/.test(c.text))) || (hasQtyData && !!stylePart) || (hasQtyData && curS.length >= 3);
 
                 if (isDataRow && !isMetaRow) {
@@ -87,20 +86,14 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                         if (alternative) curS = alternative.text.trim();
                     }
 
-                    // --- 박스 수 자동 계산 ---
+                    // --- 박스 수 계산 ---
                     let ctnNums = cols.filter(c => c.x >= 0 && c.x < 7.0 && /^[0-9]+$/.test(c.text))
                                      .map(c => parseInt(c.text))
                                      .sort((a, b) => a - b);
                     if (ctnNums.length >= 2) curBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
                     else if (ctnNums.length === 1) curBoxes = 1;
 
-                    let directBoxCount = cols.find(c => c.x >= 35.0 && c.x < 45.0 && /^[0-9]+$/.test(c.text));
-                    if (directBoxCount) {
-                        const dbVal = parseInt(directBoxCount.text);
-                        if (dbVal > 0 && dbVal < 1000) curBoxes = dbVal;
-                    }
-
-                    // --- 상품명 및 색상 지능형 추출 ---
+                    // --- 상품명 및 색상 추출 ---
                     let dataCand = cols.find(c => c.x >= 6.0 && c.x < 30.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
@@ -111,8 +104,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                                 curC = pts[colorIdx];
                                 curN = pts.filter((_, i) => i !== colorIdx).join(' - ');
                             } else {
-                                curC = pts[0];
-                                curN = pts.slice(1).join(' - ');
+                                curC = pts[0]; curN = pts.slice(1).join(' - ');
                             }
                         } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
                             curC = r; curN = "";
@@ -125,7 +117,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 2.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 2.8 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
                             if (q > 0 && q < 5000) {
