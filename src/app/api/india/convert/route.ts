@@ -30,6 +30,11 @@ export async function POST(req: NextRequest) {
 
     const originalTotal = finalRawResults.reduce((acc, cur) => acc + cur.qty, 0);
 
+    // [보안/무결성] 비정상적인 수량 인플레이션 감지 (300만개 등 방지)
+    if (originalTotal > 100000) {
+        throw new Error(`비정상적인 총 수량이 감지되었습니다 (${originalTotal.toLocaleString()}개). PDF의 무게나 합계 정보가 수량으로 오인되었을 가능성이 있습니다. 로직을 재검토하십시오.`);
+    }
+
     // 2. 임시 엑셀 생성 (합산된 데이터로 생성하여 매칭 횟수 최소화)
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
