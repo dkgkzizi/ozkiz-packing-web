@@ -388,12 +388,16 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const isMatched = bestMatch && maxTotalScore > threshold;
         
         const dbOpt = isMatched ? extractOptionParts((bestMatch['옵션명'] || bestMatch['옵션'] || bestMatch['option'] || '').toString()) : null;
+        
+        // [수정] PDF 사이즈 보존: DB 옵션이 PDF 사이즈와 일치할 때만 교체하고, 아니면 PDF 원본 유지
+        const finalColor = (isMatched && dbOpt?.color && getColorScoreIndia(record.color, dbOpt.color, '') > 70) ? dbOpt.color : record.color;
+        const finalSize = (isMatched && dbOpt?.size && getSizeScoreIndia(record.size, dbOpt.size) > 70) ? dbOpt.size : record.size;
 
         const resultItem = {
             productCode: isMatched ? (bestMatch['상품코드'] || bestMatch['product_code']) : '미매칭',
             sheetName: isMatched ? (bestMatch['상품명'] || bestMatch['product_name']) : record.pdfName,
-            color: isMatched ? dbOpt?.color : record.color,
-            size: isMatched ? dbOpt?.size : record.size,
+            color: finalColor,
+            size: finalSize,
             qty: record.qty,
             originalKeys: [record.styleNo]
         };
