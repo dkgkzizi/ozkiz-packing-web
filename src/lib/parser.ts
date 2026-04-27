@@ -22,7 +22,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
     pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
       try {
         let results: PackingResult[] = [];
-        let sizes: Record<string, string> = {}; 
+        let sizeHeaders: {x: number, text: string}[] = []; 
         let curS = "", curN = "", curC = "";
 
         pdfData.Pages.forEach((page: any) => {
@@ -40,32 +40,27 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
             let sortedY = Object.keys(rowsRaw).sort((a:any,b:any)=>Number(a)-Number(b));
             sortedY.forEach(ry => {
                 let rawCols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
-                // 뭉친 텍스트 분해 (사이즈가 "100 110 120" 처럼 뭉쳐있는 경우 대응)
                 let cols: any[] = [];
                 rawCols.forEach(rc => {
-                    if (rc.text.includes('  ') || (rc.text.match(/[0-9]{3}/g)?.length || 0) > 1) {
+                    // 숫자 뭉침 대응 (순서 매칭을 위해 분리 필수)
+                    if (rc.text.includes(' ') || (rc.text.match(/[0-9]{2,3}/g)?.length || 0) > 1) {
                         let parts = rc.text.split(/\s+/);
-                        parts.forEach((p, i) => {
-                            if (p.trim()) cols.push({ x: rc.x + (i * 2), text: p.trim() });
-                        });
-                    } else {
-                        cols.push(rc);
-                    }
+                        parts.forEach((p, i) => { if (p.trim()) cols.push({ x: rc.x + (i * 0.1), text: p.trim() }); });
+                    } else { cols.push(rc); }
                 });
 
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // 1. 사이즈 헤더 감지 (유연성 최대화)
+                // 1. 사이즈 헤더 감지 (순서 기반 배열 생성)
                 let potSizes = cols.filter(c => {
                     const t = c.text.trim().toUpperCase();
                     const isNumSize = /^[0-9]{2,3}$/.test(t) && parseInt(t) >= 70 && parseInt(t) <= 190;
-                    const isWordSize = ['S','M','L','XL','FREE','OS'].some(s => t.includes(s));
-                    return c.x > 10.0 && (isNumSize || isWordSize) && !['DATE','PRICE','PCS','TOTAL'].some(k => t.includes(k));
+                    const isWordSize = ['S','M','L','XL','FREE','OS'].some(s => t === s);
+                    return c.x > 15.0 && (isNumSize || isWordSize);
                 });
                 
-                if (potSizes.length >= 2 && !fullText.startsWith('TOTAL') && !fullText.includes('SHIPPER')) {
-                    sizes = {}; 
-                    potSizes.forEach(sc => { sizes[sc.x] = sc.text.trim(); });
+                if (potSizes.length >= 3 && !fullText.startsWith('TOTAL') && !fullText.includes('SHIPPER')) {
+                    sizeHeaders = potSizes.sort((a,b) => a.x - b.x);
                     return; 
                 }
 
@@ -75,24 +70,27 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     if (sMatch && sMatch[1].length >= 3) curS = sMatch[1].trim();
                 }
 
-                // 3. 데이터 행 판별
+                // 3. 데이터 행 처리
                 const isMetaRow = fullText.startsWith('TOTAL') || fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('SHIPPER');
-                let hasQtyData = cols.some(c => Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 4.0) && /^[0-9]+$/.test(c.text.trim()));
-                let isDataRow = !isMetaRow && hasQtyData;
+                if (isMetaRow) return;
 
-                if (isDataRow) {
+                // 순서 기반 매칭을 위해 사이즈 영역의 숫자들만 추출
+                let qtyCols = cols.filter(c => c.x > 15.0 && /^[0-9]+$/.test(c.text.trim()));
+                let isDataRow = qtyCols.length > 0 && (curS.length >= 3 || cols.some(c => c.x < 15.0 && c.text.length >= 6));
+
+                if (isDataRow && sizeHeaders.length > 0) {
                     const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
                     let styleInRow = cols.find(c => c.x < 25.0 && styleRegex.test(c.text));
                     if (styleInRow) curS = styleInRow.text.trim();
 
                     let rowBoxes = 1;
-                    let ctnNums = cols.filter(c => c.x < 15.0 && /^[0-9]+$/.test(c.text))
-                                     .map(c => parseInt(c.text))
+                    let ctnNums = cols.filter(c => c.x < 12.0 && /^[0-9]+$/.test(c.text.trim()))
+                                     .map(c => parseInt(c.text.trim()))
                                      .sort((a, b) => a - b);
                     if (ctnNums.length >= 2) rowBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
-                    if (rowBoxes <= 0 || rowBoxes > 300) rowBoxes = 1;
+                    if (rowBoxes <= 0 || rowBoxes > 200) rowBoxes = 1;
 
-                    let dataCand = cols.find(c => c.x >= 8.0 && c.x < 35.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text) && !styleRegex.test(c.text));
+                    let dataCand = cols.find(c => c.x >= 10.0 && c.x < 35.0 && c.text.length > 3 && !sizeHeaders.some(h => h.text === c.text) && !styleRegex.test(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
                         let pts = r.split(/\s*[-–—]\s*/).map(p=>p.trim()).filter(p=>p.length > 0);
@@ -105,16 +103,19 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                             curC = r; curN = "";
                         } else { curN = r; curC = ""; }
                     }
-                    
                     if (!curN) curN = curS;
-                    
-                    Object.keys(sizes).forEach(sx => {
-                        let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.8 && /^[0-9]+$/.test(c.text.trim()));
-                        if (qtyCol) {
-                            let q = parseInt(qtyCol.text.trim()) || 0;
+
+                    // [핵심] 순서 기반 수량 매칭
+                    qtyCols.forEach(qc => {
+                        // 수량 컬럼의 x좌표와 가장 가까운 사이즈 헤더를 찾음
+                        let closestHeader = sizeHeaders.reduce((prev, curr) => 
+                            Math.abs(curr.x - qc.x) < Math.abs(prev.x - qc.x) ? curr : prev
+                        );
+                        
+                        if (Math.abs(closestHeader.x - qc.x) < 5.0) {
+                            let q = parseInt(qc.text.trim()) || 0;
                             if (q > 0 && q < 1000) {
-                                results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * rowBoxes });
+                                results.push({ style: curS, name: curN || curS, color: curC, size: closestHeader.text, qty: q * rowBoxes });
                             }
                         }
                     });
