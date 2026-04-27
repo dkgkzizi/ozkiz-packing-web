@@ -43,25 +43,23 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // 1. 스타일 번호 감지 (헤더 기반)
+                // 1. 스타일 번호 감지
                 if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
                     const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
                     if (sMatch && sMatch[1].length >= 3) curS = sMatch[1].trim();
                 }
 
-                // 2. 사이즈 헤더 감지 (범위 대폭 확대 및 100 사이즈 보정)
+                // 2. 사이즈 헤더 감지 (강화된 조건)
                 let potSizes = cols.filter(c => 
-                    c.x > 5.0 && c.x < 100.0 && c.text.length <= 10 && 
-                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','MODEL'].some(k => c.text.toUpperCase().includes(k)) &&
-                    /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                    c.x > 5.0 && c.x < 100.0 && c.text.length <= 8 && 
+                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','MODEL','COLOUR','NAME'].some(k => c.text.toUpperCase().includes(k)) &&
+                    /^[0-9]{3}$/.test(c.text.trim()) // 100, 110 처럼 3자리 숫자 형태만 우선 인정
                 );
                 
-                if (potSizes.length >= 2 && !fullText.includes('SHIPPER') && !fullText.includes('ADDRESS')) {
+                // 최소 4개 이상의 사이즈가 포착되어야 헤더로 인정 (데이터 행의 박스 번호나 스타일 번호 오인 방지)
+                if (potSizes.length >= 4 && !fullText.includes('SHIPPER')) {
                     sizes = {}; 
-                    potSizes.forEach(sc => { 
-                        const st = sc.text.trim();
-                        if (st && st.length < 8) sizes[sc.x] = st;
-                    });
+                    potSizes.forEach(sc => { sizes[sc.x] = sc.text.trim(); });
                     return; 
                 }
 
@@ -71,14 +69,12 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('SHIPPER')
                 );
 
-                // 수량 데이터가 있는지 확인
                 let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 100.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
-                // 행 번호(CTN NO)가 있거나, 스타일이 있는 상태에서 수량이 있으면 데이터 행으로 간주
-                let isDataRow = !!(cols.find(c => c.x < 10.0 && /^[0-9\.]+$/.test(c.text))) || (hasQtyData && curS.length >= 3);
+                let isDataRow = (hasQtyData && curS.length >= 3) || (cols.some(c => c.x < 10.0 && /^[0-9]+$/.test(c.text)) && hasQtyData);
 
                 if (isDataRow && !isMetaRow) {
                     // 데이터 행 내부의 스타일 번호 업데이트
-                    let styleInRow = cols.find(c => c.x >= 4.0 && c.x < 15.0 && c.text.length >= 5 && !c.text.includes(':') && !c.text.includes('SET') && !c.text.includes('PCS'));
+                    let styleInRow = cols.find(c => c.x >= 4.0 && c.x < 15.0 && c.text.length >= 5 && !c.text.includes(':') && !['SET','PCS','QTY','PCS'].some(k => c.text.toUpperCase().includes(k)));
                     if (styleInRow) curS = styleInRow.text.trim();
 
                     // 박스 수 계산
@@ -99,9 +95,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                             if (colorIdx !== -1) {
                                 curC = pts[colorIdx];
                                 curN = pts.filter((_, i) => i !== colorIdx).join(' - ');
-                            } else {
-                                curC = pts[0]; curN = pts.slice(1).join(' - ');
-                            }
+                            } else { curC = pts[0]; curN = pts.slice(1).join(' - '); }
                         } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
                             curC = r; curN = "";
                         } else { curN = r; curC = ""; }
@@ -111,7 +105,6 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        // 수량 컬럼 매칭 (허용 오차 3.0으로 확대)
                         let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
