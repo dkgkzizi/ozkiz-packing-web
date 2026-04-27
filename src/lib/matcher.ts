@@ -50,7 +50,8 @@ function decomposeHangul(str: string): string {
 
 function extractOptionParts(opt: string) {
     if (!opt) return { color: '', size: '' };
-    // [색상-사이즈] 또는 색상-사이즈 형식 대응
+    
+    // 1. [색상-사이즈] 또는 색상-사이즈 형식 대응
     const match = opt.match(/\[?([^\]\-]+)-([^\]]+)\]?/);
     if (match) {
         return {
@@ -58,7 +59,16 @@ function extractOptionParts(opt: string) {
             size: match[2].trim()
         };
     }
-    // 색상 / 사이즈 형식 대응
+
+    // 2. :색상, :사이즈 형식 대응 (신규 데이터 형식)
+    if (opt.includes(':') && opt.includes(',')) {
+        const parts = opt.split(',').map(p => p.replace(':', '').trim());
+        if (parts.length >= 2) {
+            return { color: parts[0], size: parts[1] };
+        }
+    }
+
+    // 3. 색상 / 사이즈 형식 대응
     const parts = opt.split(/[/-]/);
     if (parts.length >= 2) {
         return {
@@ -257,11 +267,11 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             dbRows = res.rows;
             
             if (dbRows.length < excelRecords.length * 0.5 && uniqueStyles.length > 0) {
-                const fullData = await client.query("SELECT * FROM products LIMIT 50000");
+                const fullData = await client.query("SELECT * FROM products LIMIT 100000");
                 dbRows = fullData.rows;
             }
         } else {
-            const data = await client.query("SELECT * FROM products LIMIT 10000");
+            const data = await client.query("SELECT * FROM products LIMIT 100000");
             dbRows = data.rows;
         }
     } finally {
@@ -327,7 +337,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 }
 
                 let baseMatchScore = Math.max(maxPartScore, getMatchScore(record.pdfName, row, barcodeCols));
-                if (baseMatchScore < 0.3) continue; // 최소한의 연관성도 없으면 제외
+                if (baseMatchScore < 0.25) continue; // 최소한의 연관성도 없으면 제외 (기존 0.3에서 하향)
                 
                 const colorScore = getColorScoreIndia(record.color, dbOption, dbName);
                 const sizeScore = getSizeScoreIndia(record.size, dbOption);
@@ -362,7 +372,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
         }
 
-        const threshold = type === 'india' ? 5000 : 600; 
+        const threshold = type === 'india' ? 4000 : 600; // 인도용 임계값 완화 (5000 -> 4000)
         const isMatched = bestMatch && maxTotalScore > threshold;
         
         const dbOpt = isMatched ? extractOptionParts((bestMatch['옵션명'] || bestMatch['옵션'] || bestMatch['option'] || '').toString()) : null;
