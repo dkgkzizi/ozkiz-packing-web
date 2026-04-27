@@ -15,10 +15,6 @@ export interface PackingResult {
   qty: number;
 }
 
-/**
- * 모든 인도 패킹리스트 레이아웃을 소화할 수 있는 범용 고성능 파서입니다.
- * 좌표 유연성과 헤더 인식 로직을 극대화했습니다.
- */
 export async function getRawPackingResults(buffer: Buffer): Promise<PackingResult[]> {
   return new Promise((resolve, reject) => {
     const pdfParser = new (PDFParser as any)();
@@ -37,7 +33,6 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
                 if (!txt) return;
                 let y = t.y;
-                // 세로 오차 범위를 소폭 조정하여 행 병합 최적화
                 let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.28);
                 if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
                 else rowsRaw[y] = [{ x: t.x, text: txt }];
@@ -47,108 +42,86 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
             sortedY.forEach(ry => {
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
+
+                // --- 1. 스타일 번호 지능형 추출 (Regex 기반 전방위 탐색) ---
+                // O25WE03U 같은 인도 패킹리스트 특유의 스타일 번호 패턴 (영문1-2+숫자2+영문1-2+숫자2-3)
+                const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
+                let stylePart = cols.find(c => styleRegex.test(c.text) && !c.text.includes(':') && c.text.length >= 6);
                 
-                // --- 1. 스타일 헤더 직접 감지 (STYLE NO: XXX, STYLE: XXX, MODEL: XXX 등) ---
-                if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
+                if (stylePart) {
+                    curS = stylePart.text.trim();
+                } else if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
                     const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
-                    if (sMatch && sMatch[1].length >= 3) {
-                        curS = sMatch[1].trim();
-                    } else {
-                        // 헤더는 있는데 뒤에 바로 안 붙어 있는 경우 주변 텍스트 확인
-                        const stylePart = cols.find(c => c.text.length > 5 && (c.x < 15.0) && !c.text.includes(':'));
-                        if (stylePart) curS = stylePart.text.trim();
-                    }
+                    if (sMatch && sMatch[1].length >= 5) curS = sMatch[1].trim();
                 }
 
-                // --- 2. 사이즈 헤더 감지 (데이터 행 여부와 관계없이 상시 감지) ---
-                // 사이즈는 보통 10.0~38.0 사이에 여러 개가 나열됨
+                // --- 2. 사이즈 헤더 감지 ---
                 let potSizes = cols.filter(c => 
                     c.x > 12.0 && c.x < 38.0 && c.text.length <= 10 && 
                     !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE'].some(k => c.text.toUpperCase().includes(k)) &&
                     /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
                 );
                 
-                // 스타일 번호가 없고, 사이즈 같은 숫자/글자가 2개 이상 보이면 사이즈 행으로 간주
                 if (potSizes.length >= 2 && !cols.some(c => c.x < 8.0 && c.text.length > 10)) {
                     sizes = {}; 
                     potSizes.forEach(sc => { sizes[sc.x] = sc.text; });
                     return; 
                 }
 
-                // --- 3. 데이터 행 처리 ---
+                // --- 3. 데이터 행 여부 판단 ---
                 const isMetaRow = (
                     fullText.includes('TOTAL') && (fullText.includes('KGS') || fullText.includes('PCS') || fullText.includes('CTNS')) ||
                     fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('WEIGHT') || fullText.includes('SHIPPER')
                 );
 
-                // 좌표 유연화: ctnF, ctnT 범위를 넓힘
-                let ctnF = cols.find(c => c.x > 0.0 && c.x < 4.0 && /^[0-9]+$/.test(c.text));
-                let ctnT = cols.find(c => c.x >= 1.5 && c.x < 6.0 && /^[0-9]+$/.test(c.text));
-                
-                // 스타일 번호 인식 범위를 4.0~12.0으로 확장 (이미지 기준)
-                // 'TOP AND BTM' 같은 일반 명칭이 스타일 번호로 오인되지 않도록 필터링 추가
-                let styleInZone = cols.find(c => 
-                    c.x >= 4.0 && c.x < 12.0 && c.text.length >= 5 && 
-                    !c.text.includes(':') &&
-                    !['TOP AND BTM', 'TOP & BTM', 'TOP/BTM', 'MADE IN', 'SET', 'PCS', 'TOTAL'].some(k => c.text.toUpperCase().includes(k))
-                );
-                
-                // 데이터 행 여부 판단: 박스 번호가 있거나, 스타일 정보와 수량 정보가 동시에 있을 때
                 let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 40.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
-                let isDataRow = !!(ctnF && ctnT) || (hasQtyData && !!styleInZone) || (hasQtyData && curS.length >= 3);
+                let isDataRow = !!(cols.find(c => c.x < 7.0 && /^[0-9]+$/.test(c.text))) || (hasQtyData && !!stylePart) || (hasQtyData && curS.length >= 3);
 
                 if (isDataRow && !isMetaRow) {
-                    if (styleInZone) curS = styleInZone.text;
-                    
-                    // --- 박스 수 자동 계산 시스템 ---
+                    const isGeneric = (s: string) => ['TOP AND BTM', 'MADE IN', 'SET', 'PCS', 'TOTAL'].some(k => s.toUpperCase().includes(k));
+                    if (isGeneric(curS) || curS.length < 5) {
+                        const alternative = cols.find(c => c.text.length >= 6 && !isGeneric(c.text) && /[0-9]/.test(c.text));
+                        if (alternative) curS = alternative.text.trim();
+                    }
+
+                    // --- 박스 수 자동 계산 ---
                     let ctnNums = cols.filter(c => c.x >= 0 && c.x < 7.0 && /^[0-9]+$/.test(c.text))
                                      .map(c => parseInt(c.text))
                                      .sort((a, b) => a - b);
-                    
                     if (ctnNums.length >= 2) curBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
                     else if (ctnNums.length === 1) curBoxes = 1;
-                    
-                    // TOTAL CTNS 컬럼 우선 인식
+
                     let directBoxCount = cols.find(c => c.x >= 35.0 && c.x < 45.0 && /^[0-9]+$/.test(c.text));
                     if (directBoxCount) {
                         const dbVal = parseInt(directBoxCount.text);
                         if (dbVal > 0 && dbVal < 1000) curBoxes = dbVal;
                     }
-                    if (curBoxes <= 0) curBoxes = 1;
 
                     // --- 상품명 및 색상 지능형 추출 ---
-                    // 색상은 보통 스타일 번호 다음(x: 6.0~30.0)에 위치함
                     let dataCand = cols.find(c => c.x >= 6.0 && c.x < 30.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
-                        // 하이픈, 엔다시, 엠다시 모두 대응
                         let pts = r.split(/\s*[-–—]\s*/).map(p=>p.trim()).filter(p=>p.length > 0);
-                        
                         if (pts.length >= 2) {
-                            // 어느 쪽이 색상인지 판별
                             let colorIdx = pts.findIndex(p => COLORS.some(cl => p.toUpperCase().includes(cl)));
                             if (colorIdx !== -1) {
                                 curC = pts[colorIdx];
                                 curN = pts.filter((_, i) => i !== colorIdx).join(' - ');
                             } else {
-                                // 색상 키워드가 없으면 첫 번째를 색상, 나머지를 상품명으로 임시 지정
                                 curC = pts[0];
                                 curN = pts.slice(1).join(' - ');
                             }
                         } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
-                            curC = r;
-                            curN = ""; // 색상만 있는 경우
+                            curC = r; curN = "";
                         } else {
-                            curN = r;
-                            curC = ""; // 상품명만 있는 경우
+                            curN = r; curC = "";
                         }
                     }
                     
-                    if (!curN) curN = curS; // 상품명이 없으면 스타일 번호라도 채움
+                    if (!curN) curN = curS;
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        // 수량 컬럼은 사이즈 헤더의 x좌표 근처에 위치함
                         let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
@@ -175,16 +148,13 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
 
 export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> {
   const results = await getRawPackingResults(buffer);
-  
   const aggregated: Record<string, any> = {};
   results.forEach(res => {
       const key = `${res.style}|${res.name}|${res.color}|${res.size}`;
       if (aggregated[key]) aggregated[key].qty += res.qty;
       else aggregated[key] = { ...res };
   });
-  
   const finalResults = Object.values(aggregated).sort((a: any, b: any) => a.style.localeCompare(b.style));
-
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Packing List');
   worksheet.columns = [
@@ -194,28 +164,15 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
       { header: '사이즈', key: 'size', width: 12 },
       { header: '총수량', key: 'qty', width: 12 }
   ];
-  
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
   worksheet.getRow(1).alignment = { horizontal: 'center' };
-
-  let totalQty = 0;
-  finalResults.forEach(res => {
-      worksheet.addRow(res);
-      totalQty += (res as any).qty;
-  });
-
-  const totalRow = worksheet.addRow({ style: '총 합계', qty: totalQty });
-  totalRow.font = { bold: true };
-  totalRow.getCell('qty').font = { color: { argb: 'FFFF0000' }, bold: true };
-  
+  finalResults.forEach(res => worksheet.addRow(res));
   worksheet.eachRow(row => {
       row.eachCell(cell => {
           cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
       });
   });
-
   return workbook;
 }
-// Final Universal fix: 1776137037629
