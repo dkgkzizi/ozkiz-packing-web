@@ -39,17 +39,31 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
 
             let sortedY = Object.keys(rowsRaw).sort((a:any,b:any)=>Number(a)-Number(b));
             sortedY.forEach(ry => {
-                let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
+                let rawCols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
+                // 뭉친 텍스트 분해 (사이즈가 "100 110 120" 처럼 뭉쳐있는 경우 대응)
+                let cols: any[] = [];
+                rawCols.forEach(rc => {
+                    if (rc.text.includes('  ') || (rc.text.match(/[0-9]{3}/g)?.length || 0) > 1) {
+                        let parts = rc.text.split(/\s+/);
+                        parts.forEach((p, i) => {
+                            if (p.trim()) cols.push({ x: rc.x + (i * 2), text: p.trim() });
+                        });
+                    } else {
+                        cols.push(rc);
+                    }
+                });
+
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // 1. 헤더 감지 (사이즈 헤더)
-                let potSizes = cols.filter(c => 
-                    c.x > 5.0 && 
-                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','MODEL','COLOR'].some(k => c.text.toUpperCase().includes(k)) &&
-                    (/^[0-9]{2,3}$/.test(c.text.trim()) || ['S','M','L','XL','FREE','OS'].some(s => c.text.toUpperCase().includes(s)))
-                );
+                // 1. 사이즈 헤더 감지 (유연성 최대화)
+                let potSizes = cols.filter(c => {
+                    const t = c.text.trim().toUpperCase();
+                    const isNumSize = /^[0-9]{2,3}$/.test(t) && parseInt(t) >= 70 && parseInt(t) <= 190;
+                    const isWordSize = ['S','M','L','XL','FREE','OS'].some(s => t.includes(s));
+                    return c.x > 10.0 && (isNumSize || isWordSize) && !['DATE','PRICE','PCS','TOTAL'].some(k => t.includes(k));
+                });
                 
-                if (potSizes.length >= 2 && !fullText.includes('TOTAL') && !fullText.includes('SHIPPER')) {
+                if (potSizes.length >= 2 && !fullText.startsWith('TOTAL') && !fullText.includes('SHIPPER')) {
                     sizes = {}; 
                     potSizes.forEach(sc => { sizes[sc.x] = sc.text.trim(); });
                     return; 
@@ -61,10 +75,10 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     if (sMatch && sMatch[1].length >= 3) curS = sMatch[1].trim();
                 }
 
-                // 3. 데이터 행 처리 (x좌표 제약 제거)
+                // 3. 데이터 행 판별
                 const isMetaRow = fullText.startsWith('TOTAL') || fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('SHIPPER');
-                let hasQtyData = cols.some(c => c.x > 10.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
-                let isDataRow = !isMetaRow && hasQtyData && (curS.length >= 3 || cols.some(c => c.x < 15.0 && c.text.length >= 5));
+                let hasQtyData = cols.some(c => Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 4.0) && /^[0-9]+$/.test(c.text.trim()));
+                let isDataRow = !isMetaRow && hasQtyData;
 
                 if (isDataRow) {
                     const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
@@ -76,9 +90,9 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                                      .map(c => parseInt(c.text))
                                      .sort((a, b) => a - b);
                     if (ctnNums.length >= 2) rowBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
-                    if (rowBoxes <= 0 || rowBoxes > 200) rowBoxes = 1;
+                    if (rowBoxes <= 0 || rowBoxes > 300) rowBoxes = 1;
 
-                    let dataCand = cols.find(c => c.x >= 10.0 && c.x < 40.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
+                    let dataCand = cols.find(c => c.x >= 8.0 && c.x < 35.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text) && !styleRegex.test(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
                         let pts = r.split(/\s*[-–—]\s*/).map(p=>p.trim()).filter(p=>p.length > 0);
@@ -96,7 +110,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.5 && /^[0-9]+$/.test(c.text.trim()));
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.8 && /^[0-9]+$/.test(c.text.trim()));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.trim()) || 0;
                             if (q > 0 && q < 1000) {
