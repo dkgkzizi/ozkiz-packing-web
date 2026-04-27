@@ -312,12 +312,17 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 for (const part of styleParts) {
                     const nPart = normalizeStr(part);
                     if (nPart && nPart.length >= 3) {
-                        // 바코드나 상품코드에 스타일 번호가 포함되어 있는지 확인 (가장 확실한 지표)
+                        // 바코드나 상품코드에 스타일 번호가 정확히 포함되어 있는지 확인
                         if (rowBarcode.includes(nPart) || rowProdCode.includes(nPart)) {
                             maxPartScore = 1.0;
                             break;
                         }
-                        // 유사도 계산 (오타 등 대비)
+                        // 스타일 번호가 바코드의 시작 부분인 경우 (강력한 매칭)
+                        if (rowBarcode.startsWith(nPart) || rowProdCode.startsWith(nPart)) {
+                            maxPartScore = 1.0;
+                            break;
+                        }
+                        // 유사도 계산
                         const sScore = getMatchScore(part, row, barcodeCols);
                         if (sScore > maxPartScore) maxPartScore = sScore;
                     }
@@ -334,7 +339,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     
                     for (const cv of colorVariants) {
                         const composite = recordStyle + cv + recordSize;
-                        if (rowBarcode.includes(composite)) {
+                        if (rowBarcode.includes(composite) || rowProdCode.includes(composite)) {
                             maxPartScore = 1.0;
                             break;
                         }
@@ -342,13 +347,13 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 }
 
                 let baseMatchScore = Math.max(maxPartScore, getMatchScore(record.pdfName, row, barcodeCols));
-                if (baseMatchScore < 0.25) continue; // 최소한의 연관성도 없으면 제외 (기존 0.3에서 하향)
+                if (baseMatchScore < 0.2) continue; // 스타일 일치가 강력하면 더 낮은 이름 점수도 허용
                 
                 const colorScore = getColorScoreIndia(record.color, dbOption, dbName);
                 const sizeScore = getSizeScoreIndia(record.size, dbOption);
                 const seasonScore = getSeasonScore(dbName);
                 
-                // 가중치 합산 (스타일 1000점 만점 + 색상/사이즈 보너스)
+                // 가중치 합산: 스타일 매칭(maxPartScore)이 1.0이면 기본 10000점 확보
                 const totalScore = (baseMatchScore * 10000) + (colorScore * 10) + (sizeScore * 10) + seasonScore;
                 
                 if (totalScore > maxTotalScore) {

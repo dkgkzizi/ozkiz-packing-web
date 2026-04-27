@@ -48,14 +48,15 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
                 
-                // --- 1. 스타일 헤더 직접 감지 (STYLE NO: XXX) ---
-                if (fullText.includes('STYLE NO')) {
-                    const stylePart = cols.find(c => c.text.toUpperCase().includes('STYLE') && c.text.includes(':')) 
-                                   || cols.find(c => c.text.length > 5 && (c.x < 15.0));
-                    if (stylePart) {
-                        const sMatch = fullText.match(/STYLE NO\s*:\s*([A-Z0-9-]+)/i);
-                        if (sMatch) curS = sMatch[1];
-                        else if (stylePart.text.length > 3) curS = stylePart.text.replace(/STYLE NO\s*:\s*/i, '').trim();
+                // --- 1. 스타일 헤더 직접 감지 (STYLE NO: XXX, STYLE: XXX, MODEL: XXX 등) ---
+                if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
+                    const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
+                    if (sMatch && sMatch[1].length >= 3) {
+                        curS = sMatch[1].trim();
+                    } else {
+                        // 헤더는 있는데 뒤에 바로 안 붙어 있는 경우 주변 텍스트 확인
+                        const stylePart = cols.find(c => c.text.length > 5 && (c.x < 15.0) && !c.text.includes(':'));
+                        if (stylePart) curS = stylePart.text.trim();
                     }
                 }
 
