@@ -32,7 +32,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
                 if (!txt) return;
                 let y = t.y;
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.28);
+                // Y축 오차 범위를 0.5로 넓혀서 행 인식을 더 유연하게 함
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.5);
                 if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
                 else rowsRaw[y] = [{ x: t.x, text: txt }];
             });
@@ -42,38 +43,42 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // 1. 사이즈 헤더 감지
+                // 1. 사이즈 헤더 감지 (좌표 제한 대폭 완화)
                 let potSizes = cols.filter(c => {
                     const t = c.text.trim().toUpperCase();
-                    return c.x > 15.0 && (/^[0-9]{2,3}$/.test(t) || ['S','M','L','FREE'].includes(t));
+                    const isNum = /^[0-9]{2,3}$/.test(t) && parseInt(t) >= 70 && parseInt(t) <= 190;
+                    const isWord = ['S','M','L','XL','FREE','OS'].some(w => t === w || t.includes(`(${w})`));
+                    return c.x > 8.0 && (isNum || isWord);
                 });
+                
                 if (potSizes.length >= 2 && !fullText.includes('TOTAL') && !fullText.includes('SHIPPER')) {
                     sizes = {}; 
                     potSizes.forEach(sc => { sizes[sc.x] = sc.text.trim(); });
                     return; 
                 }
 
-                // 2. 스타일 및 메타 정보
+                // 2. 스타일 및 데이터 식별
                 if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
                     const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
                     if (sMatch) curS = sMatch[1].trim();
                 }
 
-                const isMetaRow = fullText.startsWith('TOTAL') || fullText.includes('PAGE ') || fullText.includes('SHIPPER');
+                const isMetaRow = fullText.startsWith('TOTAL') || fullText.includes('PAGE ') || fullText.includes('DATE :');
                 if (isMetaRow) return;
 
-                // 3. 데이터 추출
-                let hasQty = cols.some(c => Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 3.0) && /^[0-9]+$/.test(c.text.trim()));
-                if (hasQty) {
+                // 수량 데이터 존재 여부
+                let qtyColCandidates = cols.filter(c => Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 4.0) && /^[0-9]+$/.test(c.text.trim()));
+                
+                if (qtyColCandidates.length > 0) {
                     const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
-                    let styleInRow = cols.find(c => c.x < 20.0 && styleRegex.test(c.text));
+                    let styleInRow = cols.find(c => c.x < 25.0 && styleRegex.test(c.text));
                     if (styleInRow) curS = styleInRow.text.trim();
 
-                    let boxNums = cols.filter(c => c.x < 12.0 && /^[0-9]+$/.test(c.text.trim())).map(c => parseInt(c.text));
+                    let boxNums = cols.filter(c => c.x < 15.0 && /^[0-9]+$/.test(c.text.trim())).map(c => parseInt(c.text));
                     let boxes = boxNums.length >= 2 ? (Math.max(...boxNums) - Math.min(...boxNums) + 1) : 1;
-                    if (boxes > 100) boxes = 1;
+                    if (boxes > 200) boxes = 1;
 
-                    let colorCand = cols.find(c => c.x >= 12.0 && c.x < 30.0 && c.text.length > 3 && !styleRegex.test(c.text));
+                    let colorCand = cols.find(c => c.x >= 10.0 && c.x < 40.0 && c.text.length > 3 && !styleRegex.test(c.text) && !Object.values(sizes).includes(c.text));
                     if (colorCand) {
                         let txt = colorCand.text.toUpperCase();
                         let foundColor = COLORS.find(cl => txt.includes(cl));
@@ -82,15 +87,13 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                             curN = colorCand.text.replace(foundColor, '').replace(/[-\s]/g, ' ').trim();
                         } else { curC = colorCand.text; curN = ""; }
                     }
+                    if (!curN) curN = curS;
 
-                    Object.keys(sizes).forEach(sx => {
-                        let sxNum = parseFloat(sx);
-                        let qCol = cols.find(c => Math.abs(c.x - sxNum) < 2.5 && /^[0-9]+$/.test(c.text.trim()));
-                        if (qCol) {
-                            let q = parseInt(qCol.text.trim());
-                            if (q > 0 && q < 500) {
-                                results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * boxes });
-                            }
+                    qtyColCandidates.forEach(qc => {
+                        let closestSx = Object.keys(sizes).reduce((prev, curr) => Math.abs(parseFloat(curr) - qc.x) < Math.abs(parseFloat(prev) - qc.x) ? curr : prev);
+                        let q = parseInt(qc.text.trim());
+                        if (q > 0 && q < 1000) {
+                            results.push({ style: curS, name: curN || curS, color: curC, size: sizes[closestSx], qty: q * boxes });
                         }
                     });
                 }
