@@ -316,7 +316,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     if (nPart && nPart.length >= 3) {
                         // 바코드나 상품코드에 스타일 번호가 정확히 포함되어 있는지 확인 (가장 강력한 지표)
                         if (rowBarcode.includes(nPart) || rowProdCode.includes(nPart)) {
-                            styleMatchBonus = 1000000; // 백만 점 보너스 (절대 매칭)
+                            styleMatchBonus = 10000000; // 보너스 대폭 상향 (천만 점)
                             maxPartScore = 1.0;
                             break;
                         }
