@@ -29,12 +29,12 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
             let rowsRaw: Record<string, any[]> = {};
             page.Texts.forEach((t: any) => {
                 let txt = "";
-                try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = (t.R[0].T).trim(); }
+                try { txt = decodeURIComponent(t.R[0].T).trim(); } catch(e) { txt = t.R[0].T.trim(); }
                 if (!txt) return;
-                let y = t.y;
-                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - y) < 0.45);
-                if (targetY) rowsRaw[targetY].push({ x: t.x, text: txt });
-                else rowsRaw[y] = [{ x: t.x, text: txt }];
+                let y = t.y.toFixed(2);
+                let targetY = Object.keys(rowsRaw).find(ry => Math.abs(parseFloat(ry) - parseFloat(y)) < 0.45);
+                if (targetY) rowsRaw[targetY].push({ x: parseFloat(t.x.toFixed(2)), text: txt });
+                else rowsRaw[y] = [{ x: parseFloat(t.x.toFixed(2)), text: txt }];
             });
 
             let sortedY = Object.keys(rowsRaw).sort((a:any,b:any)=>Number(a)-Number(b));
@@ -52,38 +52,33 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 
                 if (potSizes.length >= 2 && !fullText.includes('TOTAL') && !fullText.includes('SHIPPER')) {
                     sizes = {}; 
-                    potSizes.forEach(sc => { sizes[sc.x] = sc.text.trim(); });
+                    potSizes.forEach(sc => { sizes[sc.x.toString()] = sc.text.trim(); });
                     return; 
                 }
 
-                // 2. 스타일 식별
+                // 2. 스타일 식별 (x 좌표 7.0 ~ 12.0 부근)
                 const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
-                if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
-                    const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
-                    if (sMatch) curS = sMatch[1].trim();
-                }
+                let styleInRow = cols.find(c => c.x > 2.0 && c.x < 12.0 && styleRegex.test(c.text));
+                if (styleInRow) curS = styleInRow.text.trim();
 
                 const isMetaRow = fullText.startsWith('TOTAL') || fullText.includes('PAGE ') || fullText.includes('DATE :');
                 if (isMetaRow) return;
 
                 // 3. 데이터 행 추출
-                // 소수점(무게 정보)이 포함된 숫자는 수량에서 철저히 제외
+                // 수량: 사이즈 헤더 x좌표와 정확히 일치(오차 1.0 미만)하는 숫자만 추출
                 let qtyColCandidates = cols.filter(c => 
-                    Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 3.5) && 
+                    Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 1.0) && 
                     /^[0-9]+$/.test(c.text.trim()) && !c.text.includes('.')
                 );
                 
                 if (qtyColCandidates.length > 0) {
-                    let styleInRow = cols.find(c => c.x < 25.0 && styleRegex.test(c.text));
-                    if (styleInRow) curS = styleInRow.text.trim();
-
-                    // 박스 번호 (무게 정보 제외)
-                    let boxNums = cols.filter(c => c.x < 15.0 && /^[0-9]+$/.test(c.text.trim()) && !c.text.includes('.')).map(c => parseInt(c.text));
+                    // 박스 번호: x < 5.0 영역의 숫자만 추출 (CTN NO 영역 한정)
+                    let boxNums = cols.filter(c => c.x < 5.0 && /^[0-9]+$/.test(c.text.trim()) && !c.text.includes('.')).map(c => parseInt(c.text));
                     let boxes = boxNums.length >= 2 ? (Math.max(...boxNums) - Math.min(...boxNums) + 1) : 1;
-                    if (boxes > 250) boxes = 1;
+                    if (boxes <= 0 || boxes > 250) boxes = 1;
 
-                    // 색상 추출 (무게 정보가 있는 우측 영역은 절대 침범 금지)
-                    let colorCand = cols.find(c => c.x >= 10.0 && c.x < 28.0 && c.text.length > 2 && !styleRegex.test(c.text) && !Object.values(sizes).includes(c.text) && !c.text.includes('.'));
+                    // 색상: x 좌표 5.0 ~ 15.0 영역 내의 텍스트 추출
+                    let colorCand = cols.find(c => c.x >= 5.0 && c.x < 15.0 && c.text.length > 2 && !styleRegex.test(c.text) && !Object.values(sizes).includes(c.text) && !c.text.includes('.'));
                     if (colorCand) {
                         let txt = colorCand.text.toUpperCase();
                         let foundColor = COLORS.find(cl => txt.includes(cl));
@@ -94,13 +89,15 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     }
                     if (!curN) curN = curS;
 
-                    // 한 사이즈에 하나의 수량만 매칭 (중복 합산 방지)
+                    // 수량 매칭 및 저장
                     let matchedSizes = new Set();
                     qtyColCandidates.forEach(qc => {
                         let closestSx = Object.keys(sizes).reduce((prev, curr) => Math.abs(parseFloat(curr) - qc.x) < Math.abs(parseFloat(prev) - qc.x) ? curr : prev);
-                        if (!matchedSizes.has(closestSx)) {
+                        
+                        // 다시 한번 오차 1.0 미만인지 검증 (PCS PER CTN 등 우측 숫자 배제)
+                        if (Math.abs(parseFloat(closestSx) - qc.x) < 1.0 && !matchedSizes.has(closestSx)) {
                             let q = parseInt(qc.text.trim());
-                            if (q > 0 && q < 800) {
+                            if (q > 0 && q < 1000) {
                                 results.push({ style: curS, name: curN || curS, color: curC, size: sizes[closestSx], qty: q * boxes });
                                 matchedSizes.add(closestSx);
                             }
