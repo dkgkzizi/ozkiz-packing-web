@@ -68,9 +68,9 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 if (isMetaRow) return;
 
                 // 3. 데이터 행 추출
-                // 수량: 사이즈 헤더 x좌표와 일치(오차 1.8 미만으로 완화하여 정렬 틀어짐 방어)하는 숫자만 추출
+                // 수량: 사이즈 헤더 x좌표와 일치(오차 0.8 미만으로 제한하여 다른 열 숫자 배제)하는 숫자만 추출
                 let qtyColCandidates = cols.filter(c => 
-                    Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 1.8) && 
+                    Object.keys(sizes).some(sx => Math.abs(c.x - parseFloat(sx)) < 0.8) && 
                     /^[0-9]+$/.test(c.text.trim()) && !c.text.includes('.')
                 );
                 
@@ -97,8 +97,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     qtyColCandidates.forEach(qc => {
                         let closestSx = Object.keys(sizes).reduce((prev, curr) => Math.abs(parseFloat(curr) - qc.x) < Math.abs(parseFloat(prev) - qc.x) ? curr : prev);
                         
-                        // 다시 한번 오차 1.8 미만 검증
-                        if (Math.abs(parseFloat(closestSx) - qc.x) < 1.8 && !matchedSizes.has(closestSx)) {
+                        // 다시 한번 오차 0.8 미만 검증
+                        if (Math.abs(parseFloat(closestSx) - qc.x) < 0.8 && !matchedSizes.has(closestSx)) {
                             let q = parseInt(qc.text.trim());
                             if (q > 0 && q < 1000) {
                                 results.push({ style: curS, name: curN || curS, color: curC, size: sizes[closestSx], qty: q * boxes });
