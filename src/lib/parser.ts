@@ -85,7 +85,12 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let ctnT = cols.find(c => c.x >= 1.5 && c.x < 6.0 && /^[0-9]+$/.test(c.text));
                 
                 // 스타일 번호 인식 범위를 4.0~12.0으로 확장 (이미지 기준)
-                let styleInZone = cols.find(c => c.x >= 4.0 && c.x < 12.0 && c.text.length >= 5 && !c.text.includes(':'));
+                // 'TOP AND BTM' 같은 일반 명칭이 스타일 번호로 오인되지 않도록 필터링 추가
+                let styleInZone = cols.find(c => 
+                    c.x >= 4.0 && c.x < 12.0 && c.text.length >= 5 && 
+                    !c.text.includes(':') &&
+                    !['TOP AND BTM', 'TOP & BTM', 'TOP/BTM', 'MADE IN', 'SET', 'PCS', 'TOTAL'].some(k => c.text.toUpperCase().includes(k))
+                );
                 
                 // 데이터 행 여부 판단: 박스 번호가 있거나, 스타일 정보와 수량 정보가 동시에 있을 때
                 let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 40.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));

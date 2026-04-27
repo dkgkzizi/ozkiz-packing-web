@@ -111,6 +111,11 @@ function getSimilarity(s1: string, s2: string): number {
     const s2_dec = decomposeHangul(s2_clean);
     if (s1_dec === s2_dec) return 1.0;
 
+    // 인도 패킹리스트 특수 대응: 'TOP AND BTM', 'SET' 등은 한국어 '세트'와 동일시
+    const isGenericSet = (s: string) => s.includes('TOPANDBTM') || s.includes('SET');
+    if (isGenericSet(s1_clean) && s2_clean.includes('세트')) return 0.9;
+    if (isGenericSet(s2_clean) && s1_clean.includes('세트')) return 0.9;
+
     if (s1_clean && s2_clean && (s1_clean.length >= 3 || s2_clean.length >= 3)) {
         if (s1_clean.includes(s2_clean) || s2_clean.includes(s1_clean)) return 0.95;
     }
