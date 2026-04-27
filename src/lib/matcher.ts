@@ -31,7 +31,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         if (uniqueStyles.length > 0) {
             const patterns = uniqueStyles.map(s => `%${normalizeStr(s)}%`);
             const res = await client.query(`
-                SELECT "상품코드", "상품명", "바코드", "옵션명" FROM products 
+                SELECT * FROM products 
                 WHERE "바코드" ILIKE ANY($1) OR "상품코드" ILIKE ANY($1) OR "자체품번" ILIKE ANY($1)
             `, [patterns]);
             dbRows = res.rows;
