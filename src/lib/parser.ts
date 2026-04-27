@@ -43,25 +43,23 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // --- 1. 스타일 번호 지능형 추출 ---
+                // 1. 스타일 번호 추출 (Aggressive)
                 const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
                 let stylePart = cols.find(c => styleRegex.test(c.text) && !c.text.includes(':') && c.text.length >= 6);
-                
-                if (stylePart) {
-                    curS = stylePart.text.trim();
-                } else if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
+                if (stylePart) curS = stylePart.text.trim();
+                else if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
                     const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
                     if (sMatch && sMatch[1].length >= 5) curS = sMatch[1].trim();
                 }
 
-                // --- 2. 사이즈 헤더 감지 ---
+                // 2. 사이즈 헤더 감지 (가로 범위 100.0까지 확대)
                 let potSizes = cols.filter(c => 
-                    c.x > 8.0 && c.x < 45.0 && c.text.length <= 10 && 
+                    c.x > 8.0 && c.x < 100.0 && c.text.length <= 10 && 
                     !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','COLOUR','MODEL','NAME'].some(k => c.text.toUpperCase().includes(k)) &&
                     /^[0-9A-Z/\-\s]+$/.test(c.text.replace(/[^0-9A-Z/\-\s]/g,''))
                 );
                 
-                if (potSizes.length >= 2 && !cols.some(c => c.x < 5.0 && c.text.length > 15)) {
+                if (potSizes.length >= 2 && !cols.some(c => c.x < 5.0 && c.text.length > 20)) {
                     sizes = {}; 
                     potSizes.forEach(sc => { 
                         const sTxt = sc.text.trim();
@@ -70,14 +68,14 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     return; 
                 }
 
-                // --- 3. 데이터 행 여부 판단 ---
+                // 3. 데이터 행 판단 (가로 범위 확대 및 조건 유연화)
                 const isMetaRow = (
                     fullText.includes('TOTAL') && (fullText.includes('KGS') || fullText.includes('PCS') || fullText.includes('CTNS')) ||
-                    fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('WEIGHT') || fullText.includes('SHIPPER')
+                    fullText.includes('PAGE ') || fullText.includes('DATE :') || fullText.includes('SHIPPER')
                 );
 
-                let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 45.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
-                let isDataRow = !!(cols.find(c => c.x < 7.0 && /^[0-9]+$/.test(c.text))) || (hasQtyData && !!stylePart) || (hasQtyData && curS.length >= 3);
+                let hasQtyData = cols.some(c => c.x >= 12.0 && c.x < 100.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                let isDataRow = !!(cols.find(c => c.x < 10.0 && /^[0-9\.]+$/.test(c.text))) || (hasQtyData && curS.length >= 3);
 
                 if (isDataRow && !isMetaRow) {
                     const isGeneric = (s: string) => ['TOP AND BTM', 'MADE IN', 'SET', 'PCS', 'TOTAL'].some(k => s.toUpperCase().includes(k));
@@ -86,15 +84,15 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                         if (alternative) curS = alternative.text.trim();
                     }
 
-                    // --- 박스 수 계산 ---
-                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 7.0 && /^[0-9]+$/.test(c.text))
+                    // 박스 수 계산
+                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 10.0 && /^[0-9]+$/.test(c.text))
                                      .map(c => parseInt(c.text))
                                      .sort((a, b) => a - b);
                     if (ctnNums.length >= 2) curBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
                     else if (ctnNums.length === 1) curBoxes = 1;
 
-                    // --- 상품명 및 색상 추출 ---
-                    let dataCand = cols.find(c => c.x >= 6.0 && c.x < 30.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
+                    // 상품명/색상 추출
+                    let dataCand = cols.find(c => c.x >= 6.0 && c.x < 35.0 && c.text.length > 3 && !Object.values(sizes).includes(c.text));
                     if (dataCand) {
                         let r = dataCand.text;
                         let pts = r.split(/\s*[-–—]\s*/).map(p=>p.trim()).filter(p=>p.length > 0);
@@ -108,26 +106,18 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                             }
                         } else if (COLORS.some(cl => r.toUpperCase().includes(cl))) {
                             curC = r; curN = "";
-                        } else {
-                            curN = r; curC = "";
-                        }
+                        } else { curN = r; curC = ""; }
                     }
                     
                     if (!curN) curN = curS;
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 2.8 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 3.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
                             if (q > 0 && q < 5000) {
-                                results.push({ 
-                                    style: curS, 
-                                    name: curN || curS, 
-                                    color: curC, 
-                                    size: sizes[sx], 
-                                    qty: q * curBoxes 
-                                });
+                                results.push({ style: curS, name: curN || curS, color: curC, size: sizes[sx], qty: q * curBoxes });
                             }
                         }
                     });
