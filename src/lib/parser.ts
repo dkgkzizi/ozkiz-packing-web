@@ -42,44 +42,45 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                 let cols = rowsRaw[ry].sort((a:any,b:any) => a.x - b.x);
                 let fullText = cols.map(c => c.text.toUpperCase()).join(' ');
 
-                // 1. 스타일 번호 감지
-                if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
-                    const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
-                    if (sMatch && sMatch[1].length >= 3) curS = sMatch[1].trim();
-                }
-
-                // 2. 사이즈 헤더 감지 (더욱 엄격한 필터링)
+                // 1. 사이즈 헤더 감지 (유연한 패턴 매칭)
                 let potSizes = cols.filter(c => 
-                    c.x > 30.0 && c.x < 100.0 && // 사이즈는 보통 중간 이후에 위치
+                    c.x > 15.0 && c.x < 100.0 && 
+                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','MODEL','COLOUR','NAME'].some(k => c.text.toUpperCase().includes(k)) &&
                     (
-                        /^[0-9]{3}$/.test(c.text.trim()) || // 100, 110...
-                        ['S','M','L','XL','XXL','FREE','OS'].includes(c.text.trim().toUpperCase())
+                        /^[0-9]{2,3}/.test(c.text.trim()) || // 90, 100, 100(2XL) 등
+                        ['S','M','L','XL','XXL','FREE','OS'].some(s => c.text.toUpperCase().includes(s))
                     )
                 );
                 
-                if (potSizes.length >= 3 && !fullText.includes('TOTAL') && !fullText.includes('SHIPPER')) {
+                if (potSizes.length >= 2 && !fullText.startsWith('TOTAL') && !fullText.includes('SHIPPER')) {
                     sizes = {}; 
                     potSizes.forEach(sc => { sizes[sc.x] = sc.text.trim(); });
                     return; 
                 }
 
-                // 3. 데이터 행 처리
+                // 2. 스타일 번호 감지
+                if (fullText.includes('STYLE') || fullText.includes('MODEL')) {
+                    const sMatch = fullText.match(/(?:STYLE|MODEL)\s*(?:NO)?\s*[:\.]?\s*([A-Z0-9-]+)/i);
+                    if (sMatch && sMatch[1].length >= 3) curS = sMatch[1].trim();
+                }
+
+                // 3. 데이터 행 판단 (가로 범위 15.0으로 하향 조정)
                 const isMetaRow = (
-                    fullText.includes('TOTAL') || fullText.includes('PAGE ') || 
+                    fullText.startsWith('TOTAL') || fullText.includes('PAGE ') || 
                     fullText.includes('DATE :') || fullText.includes('SHIPPER')
                 );
 
-                let hasQtyData = cols.some(c => c.x >= 30.0 && c.x < 100.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                let hasQtyData = cols.some(c => c.x >= 15.0 && c.x < 100.0 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                 let isDataRow = !isMetaRow && hasQtyData && (curS.length >= 3 || cols.some(c => c.x < 15.0 && c.text.length >= 5));
 
                 if (isDataRow) {
-                    // 데이터 행 내부 스타일 추출 최적화
-                    let styleInRow = cols.find(c => c.x >= 4.0 && c.x < 15.0 && c.text.length >= 6 && !c.text.includes(':') && /[0-9]/.test(c.text));
+                    // 행 내부 스타일 추출 최적화
+                    let styleInRow = cols.find(c => c.x >= 4.0 && c.x < 20.0 && c.text.length >= 6 && !c.text.includes(':') && /[0-9]/.test(c.text));
                     if (styleInRow) curS = styleInRow.text.trim();
 
-                    // 박스 수 계산 (매 행마다 독립 계산하여 이월 방지)
+                    // 박스 수 계산 (매 행마다 독립 계산)
                     let rowBoxes = 1;
-                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 10.0 && /^[0-9]+$/.test(c.text))
+                    let ctnNums = cols.filter(c => c.x >= 0 && c.x < 12.0 && /^[0-9]+$/.test(c.text))
                                      .map(c => parseInt(c.text))
                                      .sort((a, b) => a - b);
                     if (ctnNums.length >= 2) rowBoxes = (ctnNums[ctnNums.length - 1] - ctnNums[0] + 1);
