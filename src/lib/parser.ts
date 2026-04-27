@@ -57,14 +57,17 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
 
                 // --- 2. 사이즈 헤더 감지 ---
                 let potSizes = cols.filter(c => 
-                    c.x > 12.0 && c.x < 38.0 && c.text.length <= 10 && 
-                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE'].some(k => c.text.toUpperCase().includes(k)) &&
-                    /^[0-9A-Z/\-]+$/.test(c.text.replace(/[^0-9A-Z/\-]/g,''))
+                    c.x > 8.0 && c.x < 42.0 && c.text.length <= 10 && 
+                    !['SIZE','QTY','PCS','TOTAL','PER','BOX','CTN','NT.WT','GR.WT','KGS','DATE','PRICE','STYLE','COLOUR','MODEL','NAME'].some(k => c.text.toUpperCase().includes(k)) &&
+                    /^[0-9A-Z/\-\s]+$/.test(c.text.replace(/[^0-9A-Z/\-\s]/g,''))
                 );
                 
-                if (potSizes.length >= 2 && !cols.some(c => c.x < 8.0 && c.text.length > 10)) {
+                if (potSizes.length >= 2 && !cols.some(c => c.x < 5.0 && c.text.length > 15)) {
                     sizes = {}; 
-                    potSizes.forEach(sc => { sizes[sc.x] = sc.text; });
+                    potSizes.forEach(sc => { 
+                        const sTxt = sc.text.trim();
+                        if (sTxt && sTxt.length < 8) sizes[sc.x] = sTxt;
+                    });
                     return; 
                 }
 
@@ -122,7 +125,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                     
                     Object.keys(sizes).forEach(sx => {
                         let sxNum = parseFloat(sx);
-                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 1.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
+                        let qtyCol = cols.find(c => Math.abs(c.x - sxNum) < 2.5 && /^[0-9]+$/.test(c.text.replace(/[^0-9]/g,'')));
                         if (qtyCol) {
                             let q = parseInt(qtyCol.text.replace(/[^0-9]/g,'')) || 0;
                             if (q > 0 && q < 5000) {
