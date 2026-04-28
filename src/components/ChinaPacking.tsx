@@ -668,14 +668,15 @@ export default function ChinaPacking() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {results.filter((item: any) => {
+                        {results.map((item: any, originalIndex: number) => ({ item, originalIndex }))
+                          .filter(({ item }: any) => {
                             const s = item.originSheet || '';
                             const group = s.includes('롤라루') ? '그로잉업' : '오즈키즈';
                             return group === activeTab;
-                        }).map((item, idx, displayedResults) => {
-                          const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].style;
+                        }).map(({ item, originalIndex }: any, idx: number, displayedResults: any[]) => {
+                          const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].item.style;
                           return (
-                            <React.Fragment key={idx}>
+                            <React.Fragment key={originalIndex}>
                               {isNewGroup && (
                                 <tr className="bg-slate-50/30">
                                   <td colSpan={4} className="h-2 border-t border-slate-100"></td>
@@ -683,7 +684,7 @@ export default function ChinaPacking() {
                               )}
                               <tr 
                                 onClick={() => {
-                                    setEditingIndex(idx);
+                                    setEditingIndex(originalIndex);
                                     setSearchTerm('');
                                     setIsModalOpen(true);
                                     setSearchResults([]);
@@ -707,8 +708,21 @@ export default function ChinaPacking() {
                                    </div>
                                 </td>
                                 <td className="p-4 text-center">
-                                   <div className="bg-red-50 text-red-600 p-1.5 rounded-lg inline-block shadow-sm">
-                                       <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                   <div className="flex items-center justify-center gap-2">
+                                       <div className="bg-red-50 text-red-600 p-1.5 rounded-lg shadow-sm">
+                                           <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                       </div>
+                                       <button 
+                                           onClick={(e) => {
+                                               e.stopPropagation();
+                                               const newResults = results.filter((_, i) => i !== originalIndex);
+                                               setResults(newResults);
+                                           }}
+                                           className="bg-white text-slate-300 hover:bg-red-100 hover:text-red-600 p-1.5 rounded-lg shadow-sm transition-all border border-slate-100 hover:border-red-200"
+                                           title="목록에서 제외"
+                                       >
+                                           <X className="w-3.5 h-3.5" strokeWidth={3} />
+                                       </button>
                                    </div>
                                 </td>
                               </tr>
