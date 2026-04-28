@@ -9,18 +9,16 @@ export async function GET(req: NextRequest) {
 
     const client = await pool.connect();
     try {
-        // 검색어 토큰화 (공백 기준)
+        // 검색어 토큰화 (단순 ILIKE 검색으로 성능 최적화)
         const tokens = query.trim().split(/\s+/).filter(t => t.length > 0);
         
         if (tokens.length === 0) return NextResponse.json({ success: true, items: [] });
 
-        // 모든 토큰이 상품명, 옵션, 상품코드 중 어디든 포함되어야 함 (공백 무시 검색)
-        // CONCAT을 사용하여 NULL 부작용 방지
-        const whereConditions = tokens.map((_, i) => `REPLACE(CONCAT("상품명", "옵션", "상품코드"), ' ', '') ILIKE $${i + 1}`).join(' AND ');
-        const params = tokens.map(t => `%${t.replace(/\s+/g, '')}%`);
+        const whereConditions = tokens.map((_, i) => `("상품명" ILIKE $${i + 1} OR "상품코드" ILIKE $${i + 1} OR "바코드" ILIKE $${i + 1})`).join(' AND ');
+        const params = tokens.map(t => `%${t}%`);
 
         const res = await client.query(`
-            SELECT "상품코드", "상품명", "옵션" 
+            SELECT "상품코드", "상품명", "바코드" 
             FROM products 
             WHERE ${whereConditions}
             ORDER BY 
@@ -40,7 +38,7 @@ export async function GET(req: NextRequest) {
             items: res.rows.map(r => ({
                 productCode: r.상품코드,
                 matchedName: r.상품명,
-                option: r.옵션
+                option: r.바코드
             }))
         });
     } catch (error: any) {

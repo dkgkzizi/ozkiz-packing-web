@@ -27,12 +27,14 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     const client = await pool.connect();
     let dbRows: any[] = [];
     try {
-        const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 3)));
+        const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 2)));
         if (uniqueStyles.length > 0) {
             const patterns = uniqueStyles.map(s => `%${normalizeStr(s)}%`);
             const res = await client.query(`
                 SELECT * FROM products 
-                WHERE "바코드" ILIKE ANY($1) OR "상품코드" ILIKE ANY($1)
+                WHERE REGEXP_REPLACE("바코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1) 
+                   OR REGEXP_REPLACE("상품코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
+                   OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
             `, [patterns]);
             dbRows = res.rows;
         }
@@ -42,10 +44,11 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
     const finalResults = excelRecords.map(record => {
         const nStyle = normalizeStr(record.styleNo);
-        // [핵심] 스타일 번호가 바코드나 상품코드에 포함된 상품만 검색
+        // [핵심] 스타일 번호가 바코드나 상품코드, 상품명에 포함된 상품만 검색
         const bestMatch = dbRows.find(row => 
             normalizeStr(row['바코드']).includes(nStyle) || 
-            normalizeStr(row['상품코드']).includes(nStyle)
+            normalizeStr(row['상품코드']).includes(nStyle) ||
+            normalizeStr(row['상품명']).includes(nStyle)
         );
 
         return {
