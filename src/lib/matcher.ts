@@ -141,7 +141,8 @@ const COLOR_MAP: Record<string, string[]> = {
             color: record.color, 
             size: record.size,   
             qty: record.qty,
-            originalStyle: record.styleNo
+            originalStyle: record.styleNo,
+            originSheet: record.sheetName
         };
     });
 
@@ -155,7 +156,8 @@ const COLOR_MAP: Record<string, string[]> = {
         { header: '사이즈', key: 'size', width: 12 },
         { header: '작업수량', key: 'qty', width: 15 },
         { header: '메모', key: 'memo', width: 25 },
-        { header: '시트명', key: 'originSheet', width: 20 }
+        { header: '시트명', key: 'originSheet', width: 20 },
+        { header: '원래스타일', key: 'originalStyle', width: 20 }
     ];
 
     const hRow = outWs.getRow(1);
@@ -170,7 +172,8 @@ const COLOR_MAP: Record<string, string[]> = {
             size: r.size,
             qty: r.qty,
             memo: `${memoDate}_인도 입고`,
-            originSheet: r.originSheet
+            originSheet: r.originSheet,
+            originalStyle: r.originalStyle
         });
     });
 

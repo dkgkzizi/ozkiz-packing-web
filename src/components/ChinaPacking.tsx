@@ -76,12 +76,13 @@ export default function ChinaPacking() {
     }
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
 
-    // 시트별로 그룹화
+    // 시트별(UI 그룹별)로 그룹화
     const groups: { [key: string]: PackingItem[] } = {};
     items.forEach(item => {
         const sheet = (item as any).originSheet || '기본';
-        if (!groups[sheet]) groups[sheet] = [];
-        groups[sheet].push(item);
+        const groupName = sheet.includes('롤라루') ? '그로잉업' : '오즈키즈';
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push(item);
     });
 
     for (const sheetName of Object.keys(groups)) {

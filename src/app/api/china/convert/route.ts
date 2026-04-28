@@ -32,9 +32,9 @@ export async function POST(req: NextRequest) {
         const q = parseInt(row.getCell(5).text) || 0;
         matchedTotal += q;
         
-        // matcher.ts가 저장한 데이터를 기반으로 구성 (7열은 메모, 8열은 originSheet 등)
-        const originalKey = row.getCell(7).text || "";
-        const styleName = originalKey.split('|')[0] || row.getCell(2).text;
+        // matcher.ts가 저장한 데이터를 기반으로 구성 
+        // 6열: 메모, 7열: 시트명(originSheet), 8열: 원래스타일(originalStyle)
+        const styleName = row.getCell(8).text || row.getCell(2).text;
 
         finalItems.push({
             matchedCode: row.getCell(1).text,
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
             qty: q,
             pdfQty: q,
             style: styleName,
-            originSheet: row.getCell(8).text || row.getCell(7).text || '', // originSheet는 8번째 컬럼에 매핑 예정
+            originSheet: row.getCell(7).text || '', // originSheet는 7번째 컬럼
             imageUrl: null 
         });
     });
