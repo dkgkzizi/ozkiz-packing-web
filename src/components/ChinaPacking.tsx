@@ -164,37 +164,52 @@ export default function ChinaPacking() {
                       if (c === '품명') nameCol = cellIdx;
                       else if (c === '칼라' || c === '색상') colorCol = cellIdx;
                       else if (c === '합계' || c === '소계' || c === '총계' || c === '수량') totalCol = cellIdx;
-                      else if (c.includes('사이즈') && c.includes('수량')) sizeStartCol = cellIdx;
+                      else if (c === '사이즈') sizeStartCol = cellIdx;
                   });
                   
-                  // 사이즈 컬럼들의 시작 위치 찾기
-                  if (sizeStartCol === -1 && colorCol !== -1) {
-                      for (let i = colorCol + 1; i < row.length; i++) {
-                          const hStr = String(row[i]).trim();
-                          if (hStr && (hStr.match(/[0-9]/) || !isNaN(parseInt(hStr.replace(/[^0-9]/g, ''))))) {
-                              sizeStartCol = i;
+                  // 사이즈 매트릭스 레이아웃인지 판단
+                  let isMatrix = false;
+                  let matrixSizeStart = -1;
+                  const nextRow = jsonData[idx + 1] || [];
+                  
+                  if (colorCol !== -1) {
+                      for (let i = colorCol + 1; i < Math.max(row.length, nextRow.length); i++) {
+                          if (i === totalCol) continue;
+                          const hStr = String(row[i] || "").trim();
+                          const nStr = String(nextRow[i] || "").trim();
+                          if ((hStr.match(/[0-9]/) || nStr.match(/[0-9]/)) && !hStr.includes('수량') && !nStr.includes('수량')) {
+                              matrixSizeStart = i;
+                              isMatrix = true;
                               break;
                           }
                       }
                   }
                   
-                  if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
-                  
-                  sizeEndCol = row.length - 1;
-                  if (sizeStartCol !== -1 && totalCol !== -1) {
-                      if (sizeStartCol < totalCol) {
+                  if (isMatrix) {
+                      sizeStartCol = matrixSizeStart;
+                      sizeEndCol = 200; // 충분히 큰 값
+                      if (totalCol !== -1 && sizeStartCol < totalCol) {
                           sizeEndCol = totalCol - 1;
                       }
+                  } else {
+                      // 수직(단일) 사이즈 레이아웃
+                      sizeEndCol = sizeStartCol;
                   }
                   
-                  if (nameCol !== -1) { // Removed nameCol > 5 restriction to allow single tables
-                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol });
+                  if (nameCol !== -1) {
+                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix } as any);
                   }
               }
           });
 
+          // 매트릭스 도표가 있는 시트라면, 중복 수집을 막기 위해 수직 요약 도표는 제거
+          const hasMatrix = headerRows.some((h: any) => h.isMatrix);
+          if (hasMatrix) {
+              headerRows = headerRows.filter((h: any) => h.isMatrix);
+          }
+
           // 2. 각 헤더 아래 데이터 추출
-          headerRows.forEach(header => {
+          headerRows.forEach((header: any) => {
               let lastName = "";
               
               // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
@@ -214,7 +229,9 @@ export default function ChinaPacking() {
                   let currentName = String(row[header.nameCol] || "").trim();
                   
                   // 섹션 종료 조건 (비고, 합계, 또는 완전히 빈 행)
-                  if (currentName.includes('비고') || currentName === '합계' || currentName === 'TOTAL') break;
+                  const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
+                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') break;
+                  
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
                   if (!rowStr && !currentName) break; 
 
@@ -231,7 +248,7 @@ export default function ChinaPacking() {
                   let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
                   
                   // if totalQty is 0 or totalCol is -1, try to sum from sizes
-                  if (totalQty === 0 && header.sizeStartCol !== -1 && header.sizeEndCol !== -1) {
+                  if (totalQty === 0 && header.sizeStartCol !== -1 && header.sizeEndCol !== -1 && header.isMatrix) {
                       for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                           if (!isNaN(sVal)) totalQty += sVal;
@@ -264,7 +281,7 @@ export default function ChinaPacking() {
                               style: currentName, 
                               name: currentName, 
                               color: color, 
-                              size: "FREE", 
+                              size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
                               qty: totalQty,
                               originSheet: sheetName
                           });
