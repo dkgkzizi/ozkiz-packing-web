@@ -74,6 +74,23 @@ const COLOR_MAP: Record<string, string[]> = {
 
     const finalResults: any[] = [];
 
+    const currentMonth = new Date().getMonth() + 1;
+    const isSS = currentMonth >= 2 && currentMonth <= 8;
+    const ssKeywords = ['여름', '반팔', 'S/S', 'SS', '나시', '수영복', '비치', '봄', '얇은', '7부', '5부'];
+    const fwKeywords = ['겨울', '가을', '기모', 'F/W', 'FW', '패딩', '융털', '긴팔', '플리스', '뽀글이', '니트', '쮸리', '벨벳'];
+
+    function getSeasonScore(name: string): number {
+        let modifier = 0;
+        if (isSS) {
+            fwKeywords.forEach(kw => { if (name.includes(kw)) modifier -= 100; });
+            ssKeywords.forEach(kw => { if (name.includes(kw)) modifier += 20; });
+        } else {
+            ssKeywords.forEach(kw => { if (name.includes(kw)) modifier -= 100; });
+            fwKeywords.forEach(kw => { if (name.includes(kw)) modifier += 20; });
+        }
+        return modifier;
+    }
+
     for (const [nStyle, group] of Object.entries(groupedRecords)) {
         // 1. 해당 그룹(styleNo)과 연관된 모든 후보 상품명 수집
         const candidateBaseNames = new Set<string>();
@@ -88,7 +105,7 @@ const COLOR_MAP: Record<string, string[]> = {
         });
 
         let bestBaseName: string | null = null;
-        let bestBaseScore = -1;
+        let bestBaseScore = -1000;
         let bestBaseMaxCode = "";
 
         // 2. 각 후보 상품명에 대해 그룹 전체의 일치도 점수를 계산
@@ -103,6 +120,9 @@ const COLOR_MAP: Record<string, string[]> = {
                     maxCodeForThisBase = r['상품코드'];
                 }
             });
+
+            // 시즌 점수 반영
+            totalGroupScore += getSeasonScore(baseName);
 
             group.forEach(record => {
                 let bestRecordScore = 0;
@@ -215,7 +235,8 @@ const COLOR_MAP: Record<string, string[]> = {
             });
 
             // 그룹 단위로 묶였으므로 엄격한 25점 컷을 낮추거나 미달이어도 동일 상품명 부여
-            const isValidMatch = bestMatch && bestBaseScore > 0;
+            // 베스트스코어가 양수이면(기본일치라도 있으면) 통과
+            const isValidMatch = bestMatch !== null;
 
             finalResults.push({
                 productCode: isValidMatch ? bestMatch['상품코드'] : '미매칭',
@@ -230,7 +251,15 @@ const COLOR_MAP: Record<string, string[]> = {
         });
     }
 
-    finalResults.sort((a, b) => a.originalIndex - b.originalIndex);
+    // 상품별 -> 색상별 -> 사이즈별 정렬
+    finalResults.sort((a, b) => {
+        if (a.sheetName !== b.sheetName) return (a.sheetName || '').localeCompare(b.sheetName || '');
+        if (a.color !== b.color) return (a.color || '').localeCompare(b.color || '');
+        const sizeA = parseInt(a.size) || 0;
+        const sizeB = parseInt(b.size) || 0;
+        if (sizeA !== sizeB) return sizeA - sizeB;
+        return (a.size || '').localeCompare(b.size || '');
+    });
 
     const outWb = new ExcelJS.Workbook();
     const outWs = outWb.addWorksheet('매칭결과');
