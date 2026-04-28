@@ -228,10 +228,40 @@ export default function ChinaPacking() {
                   
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건 (비고, 합계, 또는 완전히 빈 행)
+                  // 섹션 종료 조건 1 (명시적)
                   const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
                   if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') break;
                   
+                  // 섹션 종료 조건 2 (암묵적: 맨 좌측이 완전히 비어있는 행이 도표의 마지막일 경우 합계행으로 간주)
+                  const allLeftEmpty = !row.slice(0, header.sizeStartCol).join('').replace(/\s/g, '');
+                  if (allLeftEmpty) {
+                      let hasMoreItemsInThisTable = false;
+                      for (let nextIdx = rIdx + 1; nextIdx < jsonData.length; nextIdx++) {
+                          const nextRowData = jsonData[nextIdx];
+                          if (!nextRowData || !Array.isArray(nextRowData)) continue;
+                          
+                          const nextRowStr = nextRowData.join('').replace(/\s/g, '');
+                          if (!nextRowStr) continue; // 빈 행 무시
+                          
+                          // 새로운 도표 헤더를 만나면 현재 도표는 끝난 것임
+                          if (nextRowStr.includes('품명') && (nextRowStr.includes('합계') || nextRowStr.includes('수량'))) {
+                              break;
+                          }
+                          
+                          // 좌측에 의미 있는 텍스트(품명, 칼라 등)가 있다면 아직 도표 진행 중임
+                          const nextLeftStr = nextRowData.slice(0, header.sizeStartCol).join('').replace(/\s/g, '');
+                          if (nextLeftStr && !nextLeftStr.includes('합계') && !nextLeftStr.includes('TOTAL') && !nextLeftStr.includes('비고')) {
+                              hasMoreItemsInThisTable = true;
+                              break;
+                          }
+                      }
+                      
+                      // 뒤에 더 이상 아이템이 없다면 이것은 맨 아래 합계행임
+                      if (!hasMoreItemsInThisTable) {
+                          break;
+                      }
+                  }
+
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
                   if (!rowStr && !currentName) break; 
 
@@ -543,31 +573,56 @@ export default function ChinaPacking() {
                         <div className="flex items-center gap-4">
                             <div className="text-center">
                                 <p className="text-[9px] font-bold text-red-300 uppercase mb-0.5">Original Qty</p>
-                                <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
+                                <p className="text-xl font-black text-slate-900">
+                                  {results ? results.filter((item: any) => {
+                                      const s = item.originSheet || '';
+                                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                                  }).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal}
+                                </p>
                             </div>
                             <div className="w-px h-8 bg-red-200" />
                             <div className="text-center">
                                 <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">DB Matched</p>
-                                <p className="text-xl font-black text-red-600">{verification.matchedTotal}</p>
+                                <p className="text-xl font-black text-red-600">
+                                  {results ? results.filter((item: any) => {
+                                      const s = item.originSheet || '';
+                                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                                  }).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal}
+                                </p>
                             </div>
                         </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-slate-500'}`}>
-                        {verification.originalTotal === verification.matchedTotal ? (
+                    {(() => {
+                        const activeOriginal = results ? results.filter((item: any) => {
+                            const s = item.originSheet || '';
+                            return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                        }).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal;
+                        const activeMatched = results ? results.filter((item: any) => {
+                            const s = item.originSheet || '';
+                            return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                        }).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal;
+                        const isVerified = activeOriginal === activeMatched && activeOriginal > 0;
+                        return (
                             <>
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Verified</span>
+                                <div className={`flex items-center gap-2 justify-end mb-1 ${isVerified ? 'text-green-600' : 'text-slate-500'}`}>
+                                    {isVerified ? (
+                                        <>
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            <span className="text-xs font-black uppercase italic tracking-tighter">Verified</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <AlertCircle className="w-4 h-4" />
+                                            <span className="text-xs font-black uppercase italic tracking-tighter">Variance Check</span>
+                                        </>
+                                    )}
+                                </div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Factory-to-Cloud Stream</p>
                             </>
-                        ) : (
-                            <>
-                                <AlertCircle className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Variance Check</span>
-                            </>
-                        )}
-                    </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Factory-to-Cloud Stream</p>
+                        );
+                    })()}
                   </div>
                </motion.div>
              )}
