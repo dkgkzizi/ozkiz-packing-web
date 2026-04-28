@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDomesticPackingResults } from '@/lib/domestic-parser';
-import { matchExcelBuffer } from '@/lib/matcher';
+import { matchExcelBuffer } from '@/lib/domestic-matcher';
 import ExcelJS from 'exceljs';
 
 export async function POST(req: NextRequest) {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 마스터 매칭 (Supabase 연동)
-    const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer), 'domestic');
+    const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer), 'domestic', file.name);
     const matchedWs = matchedWb.worksheets[0];
 
     // 4. 프론트엔드용 JSON 및 검증 데이터 추출
