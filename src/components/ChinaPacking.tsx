@@ -43,6 +43,7 @@ export default function ChinaPacking() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PackingItem[] | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('');
   const [verification, setVerification] = useState<VerificationData | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,7 +168,7 @@ export default function ChinaPacking() {
                   // 사이즈 수량 시작 위치가 명시되지 않은 경우 합계 다음 컬럼부터 탐색
                   if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
                   
-                  if (nameCol !== -1 && nameCol > 5) { // 인도/국내와 섞이지 않도록 오른쪽 도표(index > 5)만 타겟팅
+                  if (nameCol !== -1) { // Removed nameCol > 5 restriction to allow single tables
                       headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol });
                   }
               }
@@ -269,6 +270,11 @@ export default function ChinaPacking() {
           });
           
           setResults(sortedResults);
+          
+          const sheets = Array.from(new Set(sortedResults.map((r: any) => r.originSheet || '기본')));
+          const defaultTab = sheets.find(s => s.includes('오즈') || s === 'OZ 오즈') || sheets[0] || '';
+          setActiveTab(defaultTab);
+          
           setVerification({
               originalTotal: data.originalTotal,
               matchedTotal: data.matchedTotal,
@@ -460,7 +466,7 @@ export default function ChinaPacking() {
               <motion.button 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results, verification?.fileName || '중국패킹')} 
+                  onClick={() => generateAndDownload(results.filter((r: any) => (r.originSheet || '기본') === activeTab), verification?.fileName || '중국패킹')} 
                   className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
               >
                 <Download className="w-5 h-5" />
@@ -512,11 +518,24 @@ export default function ChinaPacking() {
                </motion.div>
              )}
 
-             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+             <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-red-600" />
                   China Production Stream
                 </h3>
+                {results && (
+                  <div className="flex gap-2 bg-slate-50 p-1 rounded-xl">
+                    {Array.from(new Set(results.map((r: any) => r.originSheet || '기본'))).map((tab: any) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === tab ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                )}
              </div>
 
              <div className="flex-1 overflow-auto custom-scrollbar">
@@ -537,8 +556,8 @@ export default function ChinaPacking() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {results.map((item, idx) => {
-                          const isNewGroup = idx > 0 && item.style !== results[idx - 1].style;
+                        {results.filter((item: any) => (item.originSheet || '기본') === activeTab).map((item, idx, displayedResults) => {
+                          const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].style;
                           return (
                             <React.Fragment key={idx}>
                               {isNewGroup && (
