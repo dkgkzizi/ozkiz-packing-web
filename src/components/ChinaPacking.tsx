@@ -179,8 +179,12 @@ export default function ChinaPacking() {
               let lastName = "";
               
               // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
+              const headerRowData = jsonData[header.rowIdx];
               const nextRow = jsonData[header.rowIdx + 1];
-              const isTwoStepHeader = nextRow && nextRow.some(c => !isNaN(parseInt(String(c))));
+              // 현재 헤더행의 사이즈 컬럼 부분에 숫자가 하나라도 있다면 투스텝 헤더가 아님
+              const currentHeaderHasSizes = headerRowData.slice(header.sizeStartCol).some(c => String(c).match(/[0-9]/));
+              const isTwoStepHeader = !currentHeaderHasSizes && nextRow && nextRow.slice(header.sizeStartCol).some(c => String(c).match(/[0-9]/));
+              
               const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
               const dataStartRowIdx = isTwoStepHeader ? header.rowIdx + 2 : header.rowIdx + 1;
 
@@ -271,8 +275,11 @@ export default function ChinaPacking() {
           
           setResults(sortedResults);
           
-          const sheets = Array.from(new Set(sortedResults.map((r: any) => r.originSheet || '기본')));
-          const defaultTab = sheets.find(s => s.includes('오즈') || s === 'OZ 오즈') || sheets[0] || '';
+          const groups = Array.from(new Set(sortedResults.map((r: any) => {
+              const s = r.originSheet || '';
+              return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
+          })));
+          const defaultTab = groups.includes('오즈키즈') ? '오즈키즈' : (groups[0] || '');
           setActiveTab(defaultTab);
           
           setVerification({
@@ -466,7 +473,10 @@ export default function ChinaPacking() {
               <motion.button 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results.filter((r: any) => (r.originSheet || '기본') === activeTab), verification?.fileName || '중국패킹')} 
+                  onClick={() => generateAndDownload(results.filter((r: any) => {
+                      const s = r.originSheet || '';
+                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                  }), verification?.fileName || '중국패킹')} 
                   className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
               >
                 <Download className="w-5 h-5" />
@@ -525,7 +535,10 @@ export default function ChinaPacking() {
                 </h3>
                 {results && (
                   <div className="flex gap-2 bg-slate-50 p-1 rounded-xl">
-                    {Array.from(new Set(results.map((r: any) => r.originSheet || '기본'))).map((tab: any) => (
+                    {Array.from(new Set(results.map((r: any) => {
+                        const s = r.originSheet || '';
+                        return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
+                    }))).map((tab: any) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -556,7 +569,11 @@ export default function ChinaPacking() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {results.filter((item: any) => (item.originSheet || '기본') === activeTab).map((item, idx, displayedResults) => {
+                        {results.filter((item: any) => {
+                            const s = item.originSheet || '';
+                            const group = s.includes('롤라루') ? '그로잉업' : '오즈키즈';
+                            return group === activeTab;
+                        }).map((item, idx, displayedResults) => {
                           const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].style;
                           return (
                             <React.Fragment key={idx}>
