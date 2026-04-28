@@ -107,8 +107,8 @@ export default function DomesticPacking() {
       
       if (data.success) {
           const sortedResult = data.items.sort((a: any, b: any) => {
-            if (a.style !== b.style) return a.style.localeCompare(b.style);
-            if (a.color !== b.color) return a.color.localeCompare(b.color);
+            if (a.matchedName !== b.matchedName) return (a.matchedName || "").localeCompare(b.matchedName || "");
+            if (a.color !== b.color) return (a.color || "").localeCompare(b.color || "");
             return getSizeScore(a.size || "") - getSizeScore(b.size || "");
           });
           setResults(sortedResult);
@@ -225,8 +225,8 @@ export default function DomesticPacking() {
 
     // 3. 정렬 상태 유지 (색상 -> 사이즈 순으로 자동 세팅)
     const sortedResults = newResults.sort((a: any, b: any) => {
-      if (a.style !== b.style) return a.style.localeCompare(b.style);
-      if (a.color !== b.color) return a.color.localeCompare(b.color);
+      if (a.matchedName !== b.matchedName) return (a.matchedName || "").localeCompare(b.matchedName || "");
+      if (a.color !== b.color) return (a.color || "").localeCompare(b.color || "");
       return getSizeScore(a.size || "") - getSizeScore(b.size || "");
     });
 
