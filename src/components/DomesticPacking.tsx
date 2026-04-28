@@ -133,13 +133,20 @@ export default function DomesticPacking() {
     return isNaN(num) ? 999 : num;
   };
 
-  const handleSearch = async (val: string) => {
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleSearch = (val: string) => {
     setSearchTerm(val);
+    
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    
     if (val.length < 2) {
       setSearchResults([]);
       return;
     }
+    
     setSearchLoading(true);
+    searchTimeoutRef.current = setTimeout(async () => {
     try {
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
       const data = await res.json();
@@ -175,6 +182,7 @@ export default function DomesticPacking() {
     } finally {
       setSearchLoading(false);
     }
+    }, 300);
   };
 
   const selectProduct = (selectedItem: any) => {

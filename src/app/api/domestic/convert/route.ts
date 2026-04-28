@@ -37,14 +37,15 @@ export async function POST(req: NextRequest) {
         if (i === 1) return;
         const q = parseInt(row.getCell(5).text) || 0;
         matchedTotal += q;
-        const originalKey = row.getCell(7).text || "";
-        const styleName = originalKey.split('|')[0] || row.getCell(2).text;
+        const originSheet = row.getCell(7).value?.toString() || "";
+        const originalStyle = row.getCell(8).value?.toString() || "";
+        const styleName = originalStyle || originSheet.split('|')[0] || row.getCell(2).value?.toString() || "";
 
         finalItems.push({
-            matchedCode: row.getCell(1).text,
-            matchedName: row.getCell(2).text,
-            color: row.getCell(3).text,
-            size: row.getCell(4).text,
+            matchedCode: row.getCell(1).value?.toString() || "",
+            matchedName: row.getCell(2).value?.toString() || "",
+            color: row.getCell(3).value?.toString() || "",
+            size: row.getCell(4).value?.toString() || "",
             qty: q,
             pdfQty: q,
             style: styleName
