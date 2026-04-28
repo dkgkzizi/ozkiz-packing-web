@@ -14,11 +14,11 @@ export async function GET(req: NextRequest) {
         
         if (tokens.length === 0) return NextResponse.json({ success: true, items: [] });
 
-        const whereConditions = tokens.map((_, i) => `("상품명" ILIKE $${i + 1} OR "상품코드" ILIKE $${i + 1} OR "바코드" ILIKE $${i + 1})`).join(' AND ');
+        const whereConditions = tokens.map((_, i) => `("상품명" ILIKE $${i + 1} OR "상품코드" ILIKE $${i + 1} OR "바코드" ILIKE $${i + 1} OR "옵션" ILIKE $${i + 1})`).join(' AND ');
         const params = tokens.map(t => `%${t}%`);
 
         const res = await client.query(`
-            SELECT "상품코드", "상품명", "바코드" 
+            SELECT "상품코드", "상품명", "옵션" 
             FROM products 
             WHERE ${whereConditions}
             ORDER BY 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
             items: res.rows.map(r => ({
                 productCode: r.상품코드,
                 matchedName: r.상품명,
-                option: r.바코드
+                option: r.옵션
             }))
         });
     } catch (error: any) {

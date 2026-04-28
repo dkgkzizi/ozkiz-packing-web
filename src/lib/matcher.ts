@@ -31,7 +31,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         if (uniqueStyles.length > 0) {
             const patterns = uniqueStyles.map(s => `%${normalizeStr(s)}%`);
             const res = await client.query(`
-                SELECT * FROM products 
+                SELECT "상품명", "상품코드", "바코드", "옵션" FROM products 
                 WHERE REGEXP_REPLACE("바코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1) 
                    OR REGEXP_REPLACE("상품코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
                    OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
@@ -73,36 +73,37 @@ const COLOR_MAP: Record<string, string[]> = {
             const dbName = normalizeStr(row['상품명']);
             const dbCode = normalizeStr(row['상품코드']);
             const dbBarcode = normalizeStr(row['바코드']);
+            const dbOption = normalizeStr(row['옵션'] || '');
 
             // 1. 기본 매칭 (스타일/상품명 일치)
-            if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle)) {
+            if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
                 score += 10;
             } else {
                 return; // 기본 조건 불만족 시 스킵
             }
 
-            // 2. 사이즈 매칭 (바코드 열에 사이즈가 명확히 포함되어 있는지)
+            // 2. 사이즈 매칭
             if (record.size) {
                 const nSize = normalizeStr(record.size);
-                if (nSize && dbBarcode.includes(nSize)) {
+                if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
                     score += 20;
                 }
             }
 
-            // 3. 색상 매칭 (바코드 열에 색상 단어가 포함되어 있는지)
+            // 3. 색상 매칭
             if (record.color) {
                 const nColor = normalizeStr(record.color);
                 const upperColor = record.color.trim().toUpperCase();
                 let matchedColor = false;
                 
-                if (nColor && dbBarcode.includes(nColor)) {
+                if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor))) {
                     score += 15;
                     matchedColor = true;
                 }
                 
                 if (!matchedColor && COLOR_MAP[upperColor]) {
                     for (let syn of COLOR_MAP[upperColor]) {
-                        if (dbBarcode.includes(normalizeStr(syn))) {
+                        if (dbBarcode.includes(normalizeStr(syn)) || dbOption.includes(normalizeStr(syn))) {
                             score += 15;
                             matchedColor = true;
                             break;
@@ -113,7 +114,7 @@ const COLOR_MAP: Record<string, string[]> = {
                 if (!matchedColor) {
                     for (let engColor in COLOR_MAP) {
                         if (COLOR_MAP[engColor].some(kc => kc === record.color.trim())) {
-                            if (dbBarcode.includes(normalizeStr(engColor))) {
+                            if (dbBarcode.includes(normalizeStr(engColor)) || dbOption.includes(normalizeStr(engColor))) {
                                 score += 15;
                                 matchedColor = true;
                                 break;
