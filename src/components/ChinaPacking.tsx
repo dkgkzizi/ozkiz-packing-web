@@ -157,19 +157,37 @@ export default function ChinaPacking() {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
               if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1;
+                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim();
                       if (c === '품명') nameCol = cellIdx;
                       else if (c === '칼라' || c === '색상') colorCol = cellIdx;
-                      else if (c === '합계' || c === '소계' || c === '총계') totalCol = cellIdx;
+                      else if (c === '합계' || c === '소계' || c === '총계' || c === '수량') totalCol = cellIdx;
                       else if (c.includes('사이즈') && c.includes('수량')) sizeStartCol = cellIdx;
                   });
-                  // 사이즈 수량 시작 위치가 명시되지 않은 경우 합계 다음 컬럼부터 탐색
+                  
+                  // 사이즈 컬럼들의 시작 위치 찾기
+                  if (sizeStartCol === -1 && colorCol !== -1) {
+                      for (let i = colorCol + 1; i < row.length; i++) {
+                          const hStr = String(row[i]).trim();
+                          if (hStr && (hStr.match(/[0-9]/) || !isNaN(parseInt(hStr.replace(/[^0-9]/g, ''))))) {
+                              sizeStartCol = i;
+                              break;
+                          }
+                      }
+                  }
+                  
                   if (sizeStartCol === -1 && totalCol !== -1) sizeStartCol = totalCol + 1;
                   
+                  sizeEndCol = row.length - 1;
+                  if (sizeStartCol !== -1 && totalCol !== -1) {
+                      if (sizeStartCol < totalCol) {
+                          sizeEndCol = totalCol - 1;
+                      }
+                  }
+                  
                   if (nameCol !== -1) { // Removed nameCol > 5 restriction to allow single tables
-                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol });
+                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol });
                   }
               }
           });
@@ -209,11 +227,19 @@ export default function ChinaPacking() {
                   if (!currentName) continue;
                   
                   const color = String(row[header.colorCol] || "").trim();
-                  const totalQty = parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
+                  let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+                  
+                  // if totalQty is 0 or totalCol is -1, try to sum from sizes
+                  if (totalQty === 0 && header.sizeStartCol !== -1 && header.sizeEndCol !== -1) {
+                      for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
+                          const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                          if (!isNaN(sVal)) totalQty += sVal;
+                      }
+                  }
                   
                   if (totalQty > 0) {
                       let foundSizes = false;
-                      for (let sIdx = header.sizeStartCol; sIdx < row.length; sIdx++) {
+                      for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
                           if (sVal > 0) {
                               // 올바른 행에서 사이즈 명칭 가져오기
