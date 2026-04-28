@@ -20,7 +20,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             pdfName: row.getCell(2).text.trim(),
             color: row.getCell(3).text.trim(),
             size: row.getCell(4).text.trim(),
-            qty: parseInt(row.getCell(5).value as any) || 0
+            qty: parseInt(row.getCell(5).value as any) || 0,
+            sheetName: row.getCell(6).text.trim() || fileName
         });
     });
 
@@ -153,7 +154,8 @@ const COLOR_MAP: Record<string, string[]> = {
         { header: '색상', key: 'color', width: 15 },
         { header: '사이즈', key: 'size', width: 12 },
         { header: '작업수량', key: 'qty', width: 15 },
-        { header: '메모', key: 'memo', width: 25 }
+        { header: '메모', key: 'memo', width: 25 },
+        { header: '시트명', key: 'originSheet', width: 20 }
     ];
 
     const hRow = outWs.getRow(1);
@@ -167,7 +169,8 @@ const COLOR_MAP: Record<string, string[]> = {
             color: r.color,
             size: r.size,
             qty: r.qty,
-            memo: `${memoDate}_인도 입고`
+            memo: `${memoDate}_인도 입고`,
+            originSheet: r.originSheet
         });
     });
 

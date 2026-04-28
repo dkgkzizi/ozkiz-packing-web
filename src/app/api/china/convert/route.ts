@@ -15,15 +15,15 @@ export async function POST(req: NextRequest) {
     // 2. 임시 엑셀 생성 (매칭 엔진 입력용)
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
-    tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY']);
-    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty]));
+    tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY', 'SHEET']);
+    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '']));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 마스터 매칭 (Supabase 연동)
     const matchedWb = await matchExcelBuffer(Buffer.from(tempBuffer), 'china', fileName);
     const matchedWs = matchedWb.worksheets[0];
 
-    // 4. 최종 데이터 구성 (이미지 URL 포함)
+    // 4. 최종 데이터 구성
     const finalItems: any[] = [];
     let matchedTotal = 0;
     
@@ -32,8 +32,7 @@ export async function POST(req: NextRequest) {
         const q = parseInt(row.getCell(5).text) || 0;
         matchedTotal += q;
         
-        // 매칭된 원본 데이터(Supabase)에서 이미지 URL 추출 시도
-        // matcher.ts가 저장한 데이터를 기반으로 구성
+        // matcher.ts가 저장한 데이터를 기반으로 구성 (7열은 메모, 8열은 originSheet 등)
         const originalKey = row.getCell(7).text || "";
         const styleName = originalKey.split('|')[0] || row.getCell(2).text;
 
@@ -45,6 +44,7 @@ export async function POST(req: NextRequest) {
             qty: q,
             pdfQty: q,
             style: styleName,
+            originSheet: row.getCell(8).text || row.getCell(7).text || '', // originSheet는 8번째 컬럼에 매핑 예정
             imageUrl: null 
         });
     });

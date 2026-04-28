@@ -63,12 +63,8 @@ export default function ChinaPacking() {
   };
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('중국매칭결과');
-    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
     let filePart = "";
-    // 파일명에서 8자리 숫자(날짜) 찾기 (ex: 20260418)
     const dateMatch = cleanFileName.match(/[0-9]{8}/);
     if (dateMatch) {
       const fullDate = dateMatch[0];
@@ -77,33 +73,55 @@ export default function ChinaPacking() {
     } else {
       filePart = cleanFileName;
     }
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
 
-    const finalMemo = `${dateStr}_${filePart} 중국 패킹 입고`;
-
-    worksheet.columns = [
-      { header: '상품코드', key: 'matchedCode', width: 20 },
-      { header: '상품명', key: 'matchedName', width: 40 },
-      { header: '색상', key: 'color', width: 15 },
-      { header: '사이즈', key: 'size', width: 12 },
-      { header: '작업수량', key: 'qty', width: 15 },
-      { header: '메모', key: 'memo', width: 25 }
-    ];
-
-    const hRow = worksheet.getRow(1);
-    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; // Signature China Red
-
-    items.forEach(item => worksheet.addRow({ ...item, memo: finalMemo }));
-    
-    worksheet.eachRow(row => {
-        row.eachCell(cell => {
-            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        });
+    // 시트별로 그룹화
+    const groups: { [key: string]: PackingItem[] } = {};
+    items.forEach(item => {
+        const sheet = (item as any).originSheet || '기본';
+        if (!groups[sheet]) groups[sheet] = [];
+        groups[sheet].push(item);
     });
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
+    for (const sheetName of Object.keys(groups)) {
+        const groupItems = groups[sheetName];
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('중국매칭결과');
+        
+        // 탭 이름이 포함되도록 메모와 파일명 구성
+        const sheetPrefix = sheetName !== '기본' ? `${sheetName}_` : '';
+        const finalMemo = `${dateStr}_${filePart} ${sheetPrefix}중국 패킹 입고`;
+
+        worksheet.columns = [
+          { header: '상품코드', key: 'matchedCode', width: 20 },
+          { header: '상품명', key: 'matchedName', width: 40 },
+          { header: '색상', key: 'color', width: 15 },
+          { header: '사이즈', key: 'size', width: 12 },
+          { header: '작업수량', key: 'qty', width: 15 },
+          { header: '메모', key: 'memo', width: 25 }
+        ];
+
+        const hRow = worksheet.getRow(1);
+        hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; 
+
+        groupItems.forEach(item => worksheet.addRow({ ...item, memo: finalMemo }));
+        
+        worksheet.eachRow(row => {
+            row.eachCell(cell => {
+                cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        // 시트명이 있으면 파일명에도 반영
+        const outFileName = sheetName !== '기본' ? `${dateStr}_${cleanFileName}_${sheetName}_매칭완료.xlsx` : `${dateStr}_${cleanFileName}_매칭완료.xlsx`;
+        saveAs(new Blob([buffer]), outFileName);
+        
+        // 여러 파일을 받을 때 브라우저 딜레이를 주기 위해 약간 대기
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
   };
 
   const handleProcess = async () => {
@@ -202,7 +220,8 @@ export default function ChinaPacking() {
                                   name: currentName, 
                                   color: color, 
                                   size: sHeader, 
-                                  qty: sVal 
+                                  qty: sVal,
+                                  originSheet: sheetName
                               });
                               foundSizes = true;
                           }
@@ -214,7 +233,8 @@ export default function ChinaPacking() {
                               name: currentName, 
                               color: color, 
                               size: "FREE", 
-                              qty: totalQty 
+                              qty: totalQty,
+                              originSheet: sheetName
                           });
                       }
                   }
