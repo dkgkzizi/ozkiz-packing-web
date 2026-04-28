@@ -103,6 +103,8 @@ export default function IndiaPacking() {
               matchedTotal: data.matchedTotal,
               fileName: data.fileName
           });
+          // 자동으로 다운로드 실행
+          generateAndDownload(data.items, data.fileName || '인도패킹');
       } else alert(data.message);
     } catch (e) { alert('처리 중 오류'); } finally { setLoading(false); }
   };
