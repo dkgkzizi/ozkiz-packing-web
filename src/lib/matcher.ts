@@ -32,21 +32,25 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     try {
         const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 2)));
         if (uniqueStyles.length > 0) {
-            const patterns = uniqueStyles.map(s => `%${normalizeStr(s)}%`);
-            const res = await client.query(`
-                SELECT "상품명", "상품코드", "바코드", "옵션" FROM products 
-                WHERE REGEXP_REPLACE("바코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1) 
-                   OR REGEXP_REPLACE("상품코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
-                   OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
-            `, [patterns]);
-            dbRows = res.rows;
-
-            // AI 학습 이력 조회
             const historyRes = await client.query(`
                 SELECT original_style, product_code FROM matching_history 
                 WHERE original_style = ANY($1)
             `, [uniqueStyles]);
             historyRows = historyRes.rows;
+
+            // 학습된 코드가 있으면 해당 코드들도 조회 대상에 명시적으로 추가
+            const learnedCodes = Array.from(new Set(historyRows.map(h => h.product_code)));
+            
+            const res = await client.query(`
+                SELECT "상품명", "상품코드", "바코드", "옵션" FROM products 
+                WHERE (
+                    REGEXP_REPLACE("바코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1) 
+                    OR REGEXP_REPLACE("상품코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
+                    OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
+                    OR "상품코드" = ANY($2)
+                )
+            `, [patterns, learnedCodes.length > 0 ? learnedCodes : ['EMPTY_PLACEHOLDER']]);
+            dbRows = res.rows;
         }
     } finally {
         client.release();
@@ -94,16 +98,24 @@ const COLOR_MAP: Record<string, string[]> = {
             }
 
             // 1. 기본 매칭 (스타일/상품명 일치)
+            let isBaseMatch = false;
             if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
                 score += 10;
+                isBaseMatch = true;
             } else {
                 // '아쿠아슈즈-요요' -> '아쿠아-요요' 매칭을 위해 '슈즈', '신발' 등 노이즈 제거 후 재시도
                 const cleanedStyle = nStyle.replace(/슈즈|신발|샌들|장화|구두/g, '');
                 if (cleanedStyle.length >= 2 && (dbName.includes(cleanedStyle) || dbCode.includes(cleanedStyle))) {
                     score += 8; // 노이즈 제거 매칭은 약간 낮은 점수
-                } else if (!learned) {
-                    return; // 학습 데이터도 없고 기본 조건도 불만족 시 스킵
+                    isBaseMatch = true;
                 }
+            }
+
+            // 학습 데이터가 없고 이름 매칭도 실패했다면 제외
+            // 학습 데이터가 있더라도 (학습된 코드와 다름) AND (이름 매칭 실패)라면 제외
+            const isLearnedCodeMatch = learned && row['상품코드'] === learned.product_code;
+            if (!isLearnedCodeMatch && !isBaseMatch) {
+                return;
             }
 
             // 2. 사이즈 매칭
