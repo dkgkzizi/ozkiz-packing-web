@@ -211,6 +211,7 @@ export default function ChinaPacking() {
           // 2. 각 헤더 아래 데이터 추출
           headerRows.forEach((header: any) => {
               let lastName = "";
+              let lastColor = "";
               
               // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
               const headerRowData = jsonData[header.rowIdx];
@@ -269,12 +270,18 @@ export default function ChinaPacking() {
                   if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
+                      if (currentName !== lastName) lastColor = ""; // 신규 상품이면 색상 초기화
                       lastName = currentName;
                   }
 
                   if (!currentName) continue;
                   
-                  const color = String(row[header.colorCol] || "").trim();
+                  let color = String(row[header.colorCol] || "").trim();
+                  if (!color && lastColor) {
+                      color = lastColor;
+                  } else {
+                      lastColor = color;
+                  }
                   let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
                   
                   // if totalQty is 0 or totalCol is -1, try to sum from sizes

@@ -1,38 +1,27 @@
-const pg = require('pg');
-const { Pool } = pg;
-
-const connectionString = 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres';
-
+const { Pool } = require('pg');
 const pool = new Pool({
-  connectionString: connectionString,
-  ssl: { rejectUnauthorized: false }
+    connectionString: 'postgresql://postgres.qsqtoufuwplgmzyvzwvd:openhan1234db@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres',
+    ssl: { rejectUnauthorized: false }
 });
 
-async function testSearch() {
-    const client = await pool.connect();
+async function run() {
     try {
-        const query = '모기';
-        const tokens = [query];
-        const whereConditions = tokens.map((_, i) => `REPLACE("상품명" || COALESCE("옵션", '') || "상품코드", ' ', '') ILIKE $${i + 1}`).join(' AND ');
-        const params = tokens.map(t => `%${t.replace(/\s+/g, '')}%`);
+        console.log('--- Sample Options ---');
+        const res = await pool.query('SELECT "옵션" FROM products WHERE "옵션" IS NOT NULL LIMIT 20');
+        console.log(res.rows.map(r => r.옵션));
 
-        console.log('SQL:', `SELECT "상품코드", "상품명", "옵션" FROM products WHERE ${whereConditions} LIMIT 5`);
-        console.log('Params:', params);
+        console.log('\n--- Searching for 블랙 and 100 ---');
+        const res2 = await pool.query('SELECT "상품코드", "상품명", "옵션" FROM products WHERE "옵션" ILIKE $1 AND "옵션" ILIKE $2 LIMIT 5', ['%블랙%', '%100%']);
+        console.log('Results (블랙/100):', JSON.stringify(res2.rows, null, 2));
 
-        const res = await client.query(`
-            SELECT "상품코드", "상품명", "옵션" 
-            FROM products 
-            WHERE ${whereConditions}
-            LIMIT 5
-        `, params);
+        console.log('\n--- Searching for "TOP AND BTM" as name ---');
+        const res3 = await pool.query('SELECT "상품코드", "상품명", "옵션" FROM products WHERE "상품명" ILIKE $1 LIMIT 5', ['%TOP%']);
+        console.log('Results (TOP):', JSON.stringify(res3.rows, null, 2));
 
-        console.log('Results Count:', res.rows.length);
-        res.rows.forEach(r => console.log(r));
-
+    } catch (e) {
+        console.error(e);
     } finally {
-        client.release();
         await pool.end();
     }
 }
-
-testSearch().catch(console.error);
+run();
