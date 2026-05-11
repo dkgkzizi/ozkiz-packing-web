@@ -27,6 +27,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
     const client = await pool.connect();
     let dbRows: any[] = [];
+    let historyRows: any[] = [];
+
     try {
         const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 2)));
         if (uniqueStyles.length > 0) {
@@ -38,6 +40,13 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                    OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
             `, [patterns]);
             dbRows = res.rows;
+
+            // AI 학습 이력 조회
+            const historyRes = await client.query(`
+                SELECT original_style, product_code FROM matching_history 
+                WHERE original_style = ANY($1)
+            `, [uniqueStyles]);
+            historyRows = historyRes.rows;
         }
     } finally {
         client.release();
@@ -65,6 +74,9 @@ const COLOR_MAP: Record<string, string[]> = {
 };
 
     const finalResults = excelRecords.map(record => {
+        // 학습 데이터 존재 여부 확인
+        const learned = historyRows.find(h => h.original_style === record.styleNo);
+        
         const nStyle = normalizeStr(record.styleNo);
         let bestMatch = null;
         let bestScore = -1;
@@ -76,11 +88,22 @@ const COLOR_MAP: Record<string, string[]> = {
             const dbBarcode = normalizeStr(row['바코드']);
             const dbOption = normalizeStr(row['옵션'] || '');
 
+            // 0. AI 학습 가산점 (과거에 사용자가 선택한 이력이 있다면 최우선)
+            if (learned && row['상품코드'] === learned.product_code) {
+                score += 100;
+            }
+
             // 1. 기본 매칭 (스타일/상품명 일치)
             if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
                 score += 10;
             } else {
-                return; // 기본 조건 불만족 시 스킵
+                // '아쿠아슈즈-요요' -> '아쿠아-요요' 매칭을 위해 '슈즈', '신발' 등 노이즈 제거 후 재시도
+                const cleanedStyle = nStyle.replace(/슈즈|신발|샌들|장화|구두/g, '');
+                if (cleanedStyle.length >= 2 && (dbName.includes(cleanedStyle) || dbCode.includes(cleanedStyle))) {
+                    score += 8; // 노이즈 제거 매칭은 약간 낮은 점수
+                } else if (!learned) {
+                    return; // 학습 데이터도 없고 기본 조건도 불만족 시 스킵
+                }
             }
 
             // 2. 사이즈 매칭
@@ -150,8 +173,8 @@ const COLOR_MAP: Record<string, string[]> = {
         });
 
         // 완벽한 매칭(상품명+색상+사이즈)이 아니면(점수가 너무 낮으면) 실패 처리 방어
-        // 보통 색상이나 사이즈 중 하나라도 일치하면 25점 이상이 됨.
-        const isValidMatch = bestMatch && bestScore >= 25;
+        // 학습된 데이터의 경우 100점 이상이므로 무조건 통과
+        const isValidMatch = bestMatch && (bestScore >= 100 || bestScore >= 25);
 
         return {
             productCode: isValidMatch ? bestMatch['상품코드'] : '미매칭',

@@ -509,6 +509,18 @@ export default function ChinaPacking() {
       setEditingIndex(null);
       setSearchTerm('');
       setSearchResults([]);
+
+      // 4. AI 학습: 수동 매칭 결과를 DB에 저장하여 다음에 자동으로 잡도록 함
+      // (UI 반응성을 위해 비동기로 호출하고 결과 대기는 하지 않음)
+      fetch('/api/china/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalStyle: results[editingIndex].style,
+          matchedName: selectedItem.matchedName,
+          productCode: selectedItem.productCode
+        })
+      }).catch(err => console.error("Learning failed:", err));
     } catch (e) {
       console.error("Group selection error:", e);
       // 에러 발생 시 최소한 선택한 항목 하나라도 반영 (Fallback)
