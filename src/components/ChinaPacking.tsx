@@ -753,28 +753,30 @@ export default function ChinaPacking() {
             </button>
 
             {results && (
-              <motion.button 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  onClick={() => generateAndDownload(results.filter((r: any) => {
-                      const s = r.originSheet || '';
-                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
-                  }), verification?.fileName || '중국패킹')} 
-                  className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
-              >
-                <Download className="w-5 h-5" />
-                Download Final Excel
-              </motion.button>
-              
-              <motion.button 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  onClick={handlePrint}
-                  className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
-              >
-                <RefreshCcw className="w-5 h-5" />
-                Print Pallet Labels
-              </motion.button>
+              <>
+                <motion.button 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => generateAndDownload(results.filter((r: any) => {
+                        const s = r.originSheet || '';
+                        return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                    }), verification?.fileName || '중국패킹')} 
+                    className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                >
+                  <Download className="w-5 h-5" />
+                  Download Final Excel
+                </motion.button>
+                
+                <motion.button 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={handlePrint}
+                    className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                >
+                  <RefreshCcw className="w-5 h-5" />
+                  Print Pallet Labels
+                </motion.button>
+              </>
             )}
           </div>
         </div>
