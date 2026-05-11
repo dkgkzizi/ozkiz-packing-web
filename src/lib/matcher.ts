@@ -34,7 +34,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         if (uniqueStyles.length > 0) {
             const patterns = uniqueStyles.map(s => `%${normalizeStr(s)}%`);
             const historyRes = await client.query(`
-                SELECT original_style, product_code FROM matching_history 
+                SELECT original_style, product_code, matched_name FROM matching_history 
                 WHERE original_style = ANY($1)
             `, [uniqueStyles]);
             historyRows = historyRes.rows;
