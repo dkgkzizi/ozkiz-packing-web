@@ -31,6 +31,7 @@ type PackingItem = {
   qty: number;
   pdfQty: number;
   style: string;
+  boxNo?: string;
 };
 
 type VerificationData = {
@@ -158,13 +159,14 @@ export default function ChinaPacking() {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
               if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1;
+                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim();
                       if (c === '품명') nameCol = cellIdx;
                       else if (c === '칼라' || c === '색상') colorCol = cellIdx;
                       else if (c === '합계' || c === '소계' || c === '총계' || c === '수량') totalCol = cellIdx;
                       else if (c === '사이즈') sizeStartCol = cellIdx;
+                      else if (c.toUpperCase().includes('NO') || c.includes('박스') || c.includes('번호')) boxCol = cellIdx;
                   });
                   
                   // 사이즈 매트릭스 레이아웃인지 판단
@@ -307,7 +309,8 @@ export default function ChinaPacking() {
                                   color: color, 
                                   size: sHeader, 
                                   qty: sVal,
-                                  originSheet: sheetName
+                                  originSheet: sheetName,
+                                  boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
                               });
                               foundSizes = true;
                           }
@@ -320,7 +323,8 @@ export default function ChinaPacking() {
                               color: color, 
                               size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
                               qty: totalQty,
-                              originSheet: sheetName
+                              originSheet: sheetName,
+                              boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
                           });
                       }
                   }
@@ -606,6 +610,16 @@ export default function ChinaPacking() {
               >
                 <Download className="w-5 h-5" />
                 Download Final Excel
+              </motion.button>
+              
+              <motion.button 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  onClick={handlePrint}
+                  className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+              >
+                <RefreshCcw className="w-5 h-5" />
+                Print Pallet Labels
               </motion.button>
             )}
           </div>
