@@ -541,6 +541,160 @@ export default function ChinaPacking() {
     }
   };
 
+  const handlePrint = () => {
+    if (!results) return;
+
+    // 현재 탭에 해당하는 데이터만 필터링
+    const currentItems = results.filter((r: any) => {
+        const s = r.originSheet || '';
+        return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+    });
+
+    // 박스 번호별로 그룹화 (박스 범위 1-1, 2-13 등을 파싱하기 위함)
+    const boxGroups: { boxNo: string, products: string[], boxCount: number, start: number, end: number }[] = [];
+    let currentBoxNo = "";
+    
+    currentItems.forEach(item => {
+        if (!item.boxNo) return;
+        
+        if (item.boxNo !== currentBoxNo) {
+            const parts = item.boxNo.split('-').map(p => parseInt(p.trim()));
+            let start = 0, end = 0, count = 0;
+            
+            if (parts.length === 2) {
+                start = parts[0];
+                end = parts[1];
+                count = end - start + 1;
+            } else if (parts.length === 1 && !isNaN(parts[0])) {
+                start = parts[0];
+                end = parts[0];
+                count = 1;
+            }
+
+            boxGroups.push({
+                boxNo: item.boxNo,
+                products: [item.matchedName.split('-')[1] || item.matchedName],
+                boxCount: count,
+                start,
+                end
+            });
+            currentBoxNo = item.boxNo;
+        } else {
+            const lastGroup = boxGroups[boxGroups.length - 1];
+            const pName = item.matchedName.split('-')[1] || item.matchedName;
+            if (!lastGroup.products.includes(pName)) {
+                lastGroup.products.push(pName);
+            }
+        }
+    });
+
+    // 카테고리 결정 (신발 vs 의류)
+    const isShoes = activeTab.includes('신발') || currentItems.some(it => it.matchedName.includes('아쿠아') || it.matchedName.includes('슈즈') || it.matchedName.includes('샌들'));
+    const boxesPerPallet = isShoes ? 16 : 14;
+    const categoryName = isShoes ? '신발' : '의류';
+
+    // 파레트 생성
+    const pallets: any[] = [];
+    let currentPalletBoxes: any[] = [];
+    let currentTotalInPallet = 0;
+
+    boxGroups.forEach(group => {
+        if (currentTotalInPallet + group.boxCount > boxesPerPallet && currentPalletBoxes.length > 0) {
+            // 현재 파레트 마감
+            pallets.push({
+                no: pallets.length + 1,
+                range: `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
+                products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
+                totalBox: currentTotalInPallet
+            });
+            currentPalletBoxes = [];
+            currentTotalInPallet = 0;
+        }
+        
+        currentPalletBoxes.push(group);
+        currentTotalInPallet += group.boxCount;
+    });
+
+    // 마지막 파레트 추가
+    if (currentPalletBoxes.length > 0) {
+        pallets.push({
+            no: pallets.length + 1,
+            range: `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
+            products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
+            totalBox: currentTotalInPallet
+        });
+    }
+
+    // 파일명에서 확장자 제거
+    const cleanFileName = (verification?.fileName || file?.name || '중국패킹').replace(/\.[^/.]+$/, "");
+
+    // 프린트용 윈도우 생성
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const html = `
+      <html>
+        <head>
+          <title>${categoryName} 파레트 라벨 출력</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
+            .pallet-card {
+              width: 210mm;
+              height: 148mm;
+              border: 10px double black;
+              margin: 10mm auto;
+              padding: 20px;
+              box-sizing: border-box;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              page-break-after: always;
+              position: relative;
+            }
+            .header { font-size: 24px; font-weight: 900; }
+            .range { 
+                font-size: 120px; 
+                font-weight: 900; 
+                text-align: center; 
+                flex: 1; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center;
+                letter-spacing: -5px;
+            }
+            .footer { 
+                font-size: 20px; 
+                font-weight: 700; 
+                text-align: center; 
+                border-top: 1px solid #eee;
+                padding-top: 20px;
+            }
+            @media print {
+              .pallet-card { margin: 0; border-width: 15px; }
+              body { -webkit-print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          ${pallets.map(p => `
+            <div class="pallet-card">
+              <div class="header">${cleanFileName}_${p.no}파레트</div>
+              <div class="range">${p.range}</div>
+              <div class="footer">
+                ${p.products} (${p.totalBox} Box)
+              </div>
+            </div>
+          `).join('')}
+          <script>window.print();</script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
       <header className="mb-12">
