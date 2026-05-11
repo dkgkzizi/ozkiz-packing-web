@@ -93,9 +93,16 @@ const COLOR_MAP: Record<string, string[]> = {
             const dbBarcode = normalizeStr(row['바코드']);
             const dbOption = normalizeStr(row['옵션'] || '');
 
-            // 0. AI 학습 가산점 (과거에 사용자가 선택한 이력이 있다면 최우선)
+            // 0. AI 학습 가중치 (과거에 매칭했던 '상품명'을 공유하는 모든 SKU에 가산점 부여)
+            // 특정 코드 하나에만 몰표를 주는 대신, 해당 상품 그룹 전체를 후보군으로 끌어올리고
+            // 그 안에서 사이즈와 색상이 가장 잘 맞는 개별 코드가 선택되게 합니다.
+            if (learned && row['상품명'] === learned.matched_name) {
+                score += 50;
+            }
+
+            // 만약 이전 학습과 상품코드까지 완벽히 일치한다면 추가 가산점 (최우선 후보)
             if (learned && row['상품코드'] === learned.product_code) {
-                score += 100;
+                score += 20;
             }
 
             // 1. 기본 매칭 (스타일/상품명 일치)
