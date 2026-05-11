@@ -100,11 +100,6 @@ const COLOR_MAP: Record<string, string[]> = {
                 score += 50;
             }
 
-            // 만약 이전 학습과 상품코드까지 완벽히 일치한다면 추가 가산점 (최우선 후보)
-            if (learned && row['상품코드'] === learned.product_code) {
-                score += 20;
-            }
-
             // 1. 기본 매칭 (스타일/상품명 일치)
             let isBaseMatch = false;
             if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
