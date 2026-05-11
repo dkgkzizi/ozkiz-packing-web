@@ -125,6 +125,24 @@ const COLOR_MAP: Record<string, string[]> = {
                 }
             }
 
+            // 4. 카테고리 우선순위 (의류 vs 잡화)
+            // 숫자 사이즈(100~160 등)가 있는 경우, 잡화보다는 의류 카테고리를 우선 매칭합니다.
+            const cleanSize = record.size.replace(/[^0-9]/g, '');
+            const isNumericSize = cleanSize.length >= 2 && parseInt(cleanSize) >= 80;
+            
+            if (isNumericSize) {
+                const clothingKws = ['세트', '원피스', '상의', '하의', '아우터', '팬츠', '티셔츠', '가디건', '자켓', '코트', '레깅스', '슈트', '복'];
+                const accessoryKws = ['잡화', '모자', '가방', '양말', '헤어', '악세', '소품', '스카프', '목도리', '밴드'];
+                
+                const dbNameStr = row['상품명'] || '';
+                if (clothingKws.some(kw => dbNameStr.includes(kw))) {
+                    score += 10; // 의류 가산점
+                }
+                if (accessoryKws.some(kw => dbNameStr.includes(kw))) {
+                    score -= 15; // 잡화 감점 (숫자 사이즈일 때)
+                }
+            }
+
             if (score > bestScore) {
                 bestScore = score;
                 bestMatch = row;
