@@ -441,56 +441,88 @@ export default function ChinaPacking() {
     }
   };
 
-  const selectProduct = (selectedItem: any) => {
+  const selectProduct = async (selectedItem: any) => {
     if (editingIndex === null || !results) return;
     
-    // 1. 현재 수정하려는 행 정보 (스타일 초정규화)
-    const normalize = (s: string) => s.replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
-    const targetStyleNormalized = normalize(results[editingIndex].style);
-    const newResults = [...results];
+    setSearchLoading(true);
+    try {
+      // 1. 선택된 상품의 상품명으로 모든 옵션 데이터를 다시 조회 (사이즈/색상 전체 확보)
+      // 검색 필터링에 의해 누락된 다른 사이즈들을 찾기 위해 상품명으로 전체 재조회합니다.
+      const res = await fetch(`/api/china/search?q=${encodeURIComponent(selectedItem.matchedName)}`);
+      const data = await res.json();
+      const allOptions = data.success ? data.items : [selectedItem];
 
-    // 2. 같은 스타일을 공유하는 모든 행을 스마트하게 연쇄 교정
-    newResults.forEach((resItem, idx) => {
-      const currentStyleNormalized = normalize(resItem.style);
-      
-      if (currentStyleNormalized === targetStyleNormalized) {
-        if (idx === editingIndex) {
-          // **핵심**: 지금 클릭한 행은 무조건 정확히 선택한 아이템으로 업데이트
-          newResults[idx] = {
-            ...resItem,
-            matchedCode: selectedItem.productCode,
-            matchedName: selectedItem.matchedName
-          };
-        } else {
-          const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
-          const bestMatchOption = searchResults.find(opt => {
-            const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
-            return optRaw.includes(resSize);
-          });
+      const normalize = (s: string) => (s || "").replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
+      const targetStyleNormalized = normalize(results[editingIndex].style);
+      const newResults = [...results];
 
-          if (bestMatchOption) {
+      // 2. 같은 스타일(REF)을 공유하는 모든 행을 스마트하게 연쇄 교정
+      newResults.forEach((resItem, idx) => {
+        const currentStyleNormalized = normalize(resItem.style);
+        
+        if (currentStyleNormalized === targetStyleNormalized) {
+          if (idx === editingIndex) {
+            // 사용자가 직접 클릭한 행은 선택한 상품으로 즉시 업데이트
             newResults[idx] = {
               ...resItem,
-              matchedCode: bestMatchOption.productCode,
-              matchedName: bestMatchOption.matchedName
+              matchedCode: selectedItem.productCode,
+              matchedName: selectedItem.matchedName
             };
+          } else {
+            // 같은 그룹 내 다른 사이즈/색상 행들도 지능적으로 매칭
+            const resSize = normalize(resItem.size);
+            const resColor = normalize(resItem.color);
+            
+            // 우선순위 1: 색상과 사이즈가 모두 일치하는 옵션 찾기
+            let match = allOptions.find((opt: any) => {
+              const optNorm = normalize(opt.option);
+              const sizeMatch = optNorm.includes(resSize);
+              const colorMatch = resColor === "" || optNorm.includes(resColor);
+              return sizeMatch && colorMatch;
+            });
+            
+            // 우선순위 2: 색상이 안 맞으면 사이즈만이라도 일치하는 옵션 찾기
+            if (!match) {
+              match = allOptions.find((opt: any) => normalize(opt.option).includes(resSize));
+            }
+
+            if (match) {
+              newResults[idx] = {
+                ...resItem,
+                matchedCode: match.productCode,
+                matchedName: match.matchedName
+              };
+            }
           }
         }
-      }
-    });
+      });
 
-    // 3. 정렬 상태 유지
-    const sortedResults = newResults.sort((a: any, b: any) => {
-      if (a.style !== b.style) return a.style.localeCompare(b.style);
-      if (a.color !== b.color) return a.color.localeCompare(b.color);
-      return getSizeScore(a.size);
-    });
+      // 3. 정렬 상태 유지하며 결과 반영
+      const sortedResults = [...newResults].sort((a: any, b: any) => {
+        if (a.style !== b.style) return a.style.localeCompare(b.style);
+        if (a.color !== b.color) return a.color.localeCompare(b.color);
+        return getSizeScore(a.size) - getSizeScore(b.size);
+      });
 
-    setResults(sortedResults);
-    setIsModalOpen(false);
-    setEditingIndex(null);
-    setSearchTerm('');
-    setSearchResults([]);
+      setResults(sortedResults);
+      setIsModalOpen(false);
+      setEditingIndex(null);
+      setSearchTerm('');
+      setSearchResults([]);
+    } catch (e) {
+      console.error("Group selection error:", e);
+      // 에러 발생 시 최소한 선택한 항목 하나라도 반영 (Fallback)
+      const fallbackResults = [...results];
+      fallbackResults[editingIndex] = {
+        ...fallbackResults[editingIndex],
+        matchedCode: selectedItem.productCode,
+        matchedName: selectedItem.matchedName
+      };
+      setResults(fallbackResults);
+      setIsModalOpen(false);
+    } finally {
+      setSearchLoading(false);
+    }
   };
 
   return (
