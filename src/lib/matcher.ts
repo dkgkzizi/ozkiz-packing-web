@@ -39,8 +39,9 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             `, [uniqueStyles]);
             historyRows = historyRes.rows;
 
-            // 학습된 코드가 있으면 해당 코드들도 조회 대상에 명시적으로 추가
+            // 학습된 코드가 있으면 해당 코드들과 '상품명' 전체를 조회 대상에 명시적으로 추가
             const learnedCodes = Array.from(new Set(historyRows.map(h => h.product_code)));
+            const learnedNames = Array.from(new Set(historyRows.map(h => h.matched_name)));
             
             const res = await client.query(`
                 SELECT "상품명", "상품코드", "바코드", "옵션" FROM products 
@@ -49,8 +50,13 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     OR REGEXP_REPLACE("상품코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
                     OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
                     OR "상품코드" = ANY($2)
+                    OR "상품명" = ANY($3)
                 )
-            `, [patterns, learnedCodes.length > 0 ? learnedCodes : ['EMPTY_PLACEHOLDER']]);
+            `, [
+                patterns, 
+                learnedCodes.length > 0 ? learnedCodes : ['EMPTY_PLACEHOLDER'],
+                learnedNames.length > 0 ? learnedNames : ['EMPTY_PLACEHOLDER']
+            ]);
             dbRows = res.rows;
         }
     } finally {
