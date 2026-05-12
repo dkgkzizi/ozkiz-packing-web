@@ -17,7 +17,10 @@ import {
   RefreshCcw,
   Edit2,
   ArrowRightLeft,
-  ShieldCheck
+  ShieldCheck,
+  Settings,
+  Tag,
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -55,6 +58,45 @@ export default function ChinaPacking() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  
+  // Keyword Settings State
+  const [isSettingOpen, setIsSettingOpen] = useState(false);
+  const [shoeKeywords, setShoeKeywords] = useState<string[]>([]);
+  const [clothingKeywords, setClothingKeywords] = useState<string[]>([]);
+  const [newShoeKey, setNewShoeKey] = useState('');
+  const [newClothingKey, setNewClothingKey] = useState('');
+
+  // Load/Save Keywords
+  React.useEffect(() => {
+    const savedShoe = localStorage.getItem('india_shoe_keywords');
+    const savedClothing = localStorage.getItem('india_clothing_keywords');
+    
+    if (savedShoe) {
+      setShoeKeywords(JSON.parse(savedShoe));
+    } else {
+      const defaults = ['아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '요요', 'SHOE', 'SANDAL', 'JELLY', '젤리', '신발', 'SHOES'];
+      setShoeKeywords(defaults);
+      localStorage.setItem('india_shoe_keywords', JSON.stringify(defaults));
+    }
+    
+    if (savedClothing) {
+      setClothingKeywords(JSON.parse(savedClothing));
+    } else {
+      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '소라블룸', '라벨르', '리틀가든', '블루벨', '플라워', '가디건', '후드', '의류', 'CLOTHING'];
+      setClothingKeywords(defaults);
+      localStorage.setItem('india_clothing_keywords', JSON.stringify(defaults));
+    }
+  }, []);
+
+  const saveKeywords = (type: 'shoe' | 'clothing', list: string[]) => {
+    if (type === 'shoe') {
+      setShoeKeywords(list);
+      localStorage.setItem('india_shoe_keywords', JSON.stringify(list));
+    } else {
+      setClothingKeywords(list);
+      localStorage.setItem('india_clothing_keywords', JSON.stringify(list));
+    }
+  };
 
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
@@ -528,14 +570,11 @@ export default function ChinaPacking() {
         const name = (item.matchedName || "").toUpperCase().trim();
         const originalName = (item.style || "").toUpperCase().trim(); 
         
-        const shoeKeywords = ['아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '요요', 'SHOE', 'SANDAL'];
-        const clothingKeywords = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '소라블룸', '라벨르', '리틀가든', '블루벨', '플라워'];
-
-        // 1. 상품명에 의류 키워드가 있으면 무조건 의류
-        if (clothingKeywords.some(key => name.includes(key) || originalName.includes(key))) return '의류';
+        // 1. 사용자 정의 의류 키워드가 있으면 의류
+        if (clothingKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()))) return '의류';
         
-        // 2. 상품명에 신발 키워드가 있으면 무조건 신발
-        if (shoeKeywords.some(key => name.includes(key) || originalName.includes(key))) return '신발';
+        // 2. 사용자 정의 신발 키워드가 있으면 신발
+        if (shoeKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()))) return '신발';
         
         // 3. 시트명 확인 (보조 수단)
         const sheetName = (item.originSheet || "").toUpperCase().trim();
@@ -904,10 +943,19 @@ export default function ChinaPacking() {
              )}
 
              <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-red-600" />
-                  China Production Stream
-                </h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-red-600" />
+                    China Production Stream
+                  </h3>
+                  <button 
+                    onClick={() => setIsSettingOpen(true)}
+                    className="p-1.5 bg-slate-50 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all border border-slate-100 group"
+                    title="분류 키워드 설정"
+                  >
+                    <Settings className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-500" />
+                  </button>
+                </div>
                 {results && (
                   <div className="flex gap-2 bg-slate-50 p-1 rounded-xl">
                     {Array.from(new Set(results.map((r: any) => {
@@ -1110,6 +1158,242 @@ export default function ChinaPacking() {
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
                    China Integration System v3.1
                  </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Keyword Settings Modal */}
+      <AnimatePresence>
+        {isSettingOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsSettingOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-4">
+                  <div className="bg-red-50 p-3 rounded-2xl">
+                    <Settings className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">분류 키워드 설정</h3>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Classification Keywords</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsSettingOpen(false)} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto space-y-10 custom-scrollbar">
+                {/* Shoe Keywords Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Flag className="w-4 h-4 text-pink-500" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">신발 (Shoes) 키워드</h4>
+                  </div>
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      {shoeKeywords.map((kw, i) => (
+                        <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm hover:border-pink-300 transition-colors">
+                          {kw}
+                          <button onClick={() => saveKeywords('shoe', shoeKeywords.filter(k => k !== kw))} className="hover:text-red-500">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" value={newShoeKey} onChange={(e) => setNewShoeKey(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter' && newShoeKey.trim()) { saveKeywords('shoe', [...shoeKeywords, newShoeKey.trim()]); setNewShoeKey(''); }}}
+                        placeholder="새 신발 키워드 입력..."
+                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => { if(newShoeKey.trim()) { saveKeywords('shoe', [...shoeKeywords, newShoeKey.trim()]); setNewShoeKey(''); }}}
+                      className="px-6 py-4 bg-pink-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-pink-600 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      추가
+                    </button>
+                  </div>
+                </div>
+
+                {/* Clothing Keywords Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Flag className="w-4 h-4 text-green-500" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">의류 (Clothing) 키워드</h4>
+                  </div>
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      {clothingKeywords.map((kw, i) => (
+                        <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm hover:border-green-300 transition-colors">
+                          {kw}
+                          <button onClick={() => saveKeywords('clothing', clothingKeywords.filter(k => k !== kw))} className="hover:text-red-500">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" value={newClothingKey} onChange={(e) => setNewClothingKey(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter' && newClothingKey.trim()) { saveKeywords('clothing', [...clothingKeywords, newClothingKey.trim()]); setNewClothingKey(''); }}}
+                        placeholder="새 의류 키워드 입력..."
+                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => { if(newClothingKey.trim()) { saveKeywords('clothing', [...clothingKeywords, newClothingKey.trim()]); setNewClothingKey(''); }}}
+                      className="px-6 py-4 bg-green-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-green-600 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      추가
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button 
+                  onClick={() => setIsSettingOpen(false)}
+                  className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg"
+                >
+                  설정 완료
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Keyword Settings Modal */}
+      <AnimatePresence>
+        {isSettingOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsSettingOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-4">
+                  <div className="bg-red-50 p-3 rounded-2xl">
+                    <Settings className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">분류 키워드 설정</h3>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Classification Keywords</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsSettingOpen(false)} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto space-y-10 custom-scrollbar">
+                {/* Shoe Keywords Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Flag className="w-4 h-4 text-pink-500" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">신발 (Shoes) 키워드</h4>
+                  </div>
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      {shoeKeywords.map((kw, i) => (
+                        <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm hover:border-pink-300 transition-colors">
+                          {kw}
+                          <button onClick={() => saveKeywords('shoe', shoeKeywords.filter(k => k !== kw))} className="hover:text-red-500">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" value={newShoeKey} onChange={(e) => setNewShoeKey(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter' && newShoeKey.trim()) { saveKeywords('shoe', [...shoeKeywords, newShoeKey.trim()]); setNewShoeKey(''); }}}
+                        placeholder="새 신발 키워드 입력..."
+                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => { if(newShoeKey.trim()) { saveKeywords('shoe', [...shoeKeywords, newShoeKey.trim()]); setNewShoeKey(''); }}}
+                      className="px-6 py-4 bg-pink-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-pink-600 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      추가
+                    </button>
+                  </div>
+                </div>
+
+                {/* Clothing Keywords Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Flag className="w-4 h-4 text-green-500" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">의류 (Clothing) 키워드</h4>
+                  </div>
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      {clothingKeywords.map((kw, i) => (
+                        <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm hover:border-green-300 transition-colors">
+                          {kw}
+                          <button onClick={() => saveKeywords('clothing', clothingKeywords.filter(k => k !== kw))} className="hover:text-red-500">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" value={newClothingKey} onChange={(e) => setNewClothingKey(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter' && newClothingKey.trim()) { saveKeywords('clothing', [...clothingKeywords, newClothingKey.trim()]); setNewClothingKey(''); }}}
+                        placeholder="새 의류 키워드 입력..."
+                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => { if(newClothingKey.trim()) { saveKeywords('clothing', [...clothingKeywords, newClothingKey.trim()]); setNewClothingKey(''); }}}
+                      className="px-6 py-4 bg-green-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-green-600 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      추가
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button 
+                  onClick={() => setIsSettingOpen(false)}
+                  className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg"
+                >
+                  설정 완료
+                </button>
               </div>
             </motion.div>
           </div>
