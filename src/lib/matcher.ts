@@ -22,7 +22,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             size: row.getCell(4).text.trim(),
             qty: parseInt(row.getCell(5).value as any) || 0,
             sheetName: row.getCell(6).text.trim() || fileName,
-            boxNo: row.getCell(7).text.trim() || ''
+            boxNo: row.getCell(7).text.trim() || '',
+            boxCount: row.getCell(8).text.trim() || ''
         });
     });
 
@@ -206,7 +207,8 @@ const COLOR_MAP: Record<string, string[]> = {
             qty: record.qty,
             originalStyle: record.styleNo,
             originSheet: record.sheetName,
-            boxNo: record.boxNo
+            boxNo: record.boxNo,
+            boxCount: record.boxCount
         };
     });
 
@@ -222,7 +224,8 @@ const COLOR_MAP: Record<string, string[]> = {
         { header: '메모', key: 'memo', width: 25 },
         { header: '시트명', key: 'originSheet', width: 20 },
         { header: '원래스타일', key: 'originalStyle', width: 20 },
-        { header: '박스번호', key: 'boxNo', width: 15 }
+        { header: '박스번호', key: 'boxNo', width: 15 },
+        { header: '박스수', key: 'boxCount', width: 10 }
     ];
 
     const hRow = outWs.getRow(1);
@@ -239,7 +242,8 @@ const COLOR_MAP: Record<string, string[]> = {
             memo: `${memoDate}_인도 입고`,
             originSheet: r.originSheet,
             originalStyle: r.originalStyle,
-            boxNo: r.boxNo
+            boxNo: r.boxNo,
+            boxCount: r.boxCount
         });
     });
 

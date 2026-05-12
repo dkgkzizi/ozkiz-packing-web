@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     // 2. 임시 엑셀 생성 (매칭 엔진 입력용)
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
-    tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY', 'SHEET', 'BOX NO']);
-    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '', r.boxNo || '']));
+    tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY', 'SHEET', 'BOX NO', 'CT']);
+    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '', r.boxNo || '', r.boxCount || '']));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 마스터 매칭 (Supabase 연동)
@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
             pdfQty: q,
             style: styleName,
             originSheet: row.getCell(7).text || '',
-            boxNo: row.getCell(9).text || '', // 박스 번호 복원
+            boxNo: row.getCell(9).text || '', 
+            boxCount: row.getCell(10).text || '', // C/T 컬럼 복원
             imageUrl: null 
         });
     });

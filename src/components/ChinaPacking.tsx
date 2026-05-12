@@ -153,20 +153,21 @@ export default function ChinaPacking() {
           if (jsonData.length === 0) return;
 
           // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
-          const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number }[] = [];
+          const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number, boxCol: number, ctCol: number }[] = [];
           
           jsonData.forEach((row, idx) => {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
               if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1;
+                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1, ctCol = -1;
                   row.forEach((cell, cellIdx) => {
-                      const c = String(cell || "").trim();
+                      const c = String(cell || "").trim().toUpperCase();
                       if (c === '품명') nameCol = cellIdx;
                       else if (c === '칼라' || c === '색상') colorCol = cellIdx;
                       else if (c === '합계' || c === '소계' || c === '총계' || c === '수량') totalCol = cellIdx;
                       else if (c === '사이즈') sizeStartCol = cellIdx;
-                      else if (c.toUpperCase().includes('NO') || c.includes('박스') || c.includes('번호')) boxCol = cellIdx;
+                      else if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) boxCol = cellIdx;
+                      else if (c === 'C/T' || c.includes('박스수') || c.includes('BOX수') || c.includes('수량(BOX)')) ctCol = cellIdx;
                   });
                   
                   // 사이즈 매트릭스 레이아웃인지 판단
@@ -199,7 +200,7 @@ export default function ChinaPacking() {
                   }
                   
                   if (nameCol !== -1) {
-                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix } as any);
+                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix, boxCol, ctCol } as any);
                   }
               }
           });
@@ -266,7 +267,8 @@ export default function ChinaPacking() {
                                   size: sHeader, 
                                   qty: sVal,
                                   originSheet: sheetName,
-                                  boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
+                                  boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "",
+                                  boxCount: header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0
                               });
                               foundSizes = true;
                           }
@@ -280,7 +282,8 @@ export default function ChinaPacking() {
                               size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
                               qty: totalQty,
                               originSheet: sheetName,
-                              boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
+                              boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "",
+                              boxCount: header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0
                           });
                       }
                   }
@@ -528,22 +531,36 @@ export default function ChinaPacking() {
         const cat = getCategory(item);
         
         if (bNo !== currentBoxNo) {
-            // 하이픈(-), 물결(~), 점(.) 등을 구분자로 사용
-            const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
             let start = 0, end = 0, count = 1;
             
-            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[parts.length - 1])) {
-                start = parts[0];
-                end = parts[parts.length - 1];
-                count = end - start + 1;
-            } else if (parts.length === 1 && !isNaN(parts[0])) {
-                start = parts[0];
-                end = parts[0];
-                count = 1;
+            // C/T 데이터가 있으면 우선 사용
+            if (item.ct && !isNaN(item.ct)) {
+                count = item.ct;
+                // 범위 분석은 라벨 표시용으로만 수행
+                const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+                if (parts.length >= 2) {
+                    start = parts[0];
+                    end = parts[parts.length - 1];
+                } else {
+                    const numericOnly = bNo.replace(/[^0-9]/g, '');
+                    start = end = parseInt(numericOnly) || idx + 1;
+                }
             } else {
-                const numericOnly = bNo.replace(/[^0-9]/g, '');
-                start = end = parseInt(numericOnly) || idx + 1;
-                count = 1;
+                // C/T가 없을 경우 기존처럼 범위 분석
+                const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+                if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[parts.length - 1])) {
+                    start = parts[0];
+                    end = parts[parts.length - 1];
+                    count = end - start + 1;
+                } else if (parts.length === 1 && !isNaN(parts[0])) {
+                    start = parts[0];
+                    end = parts[0];
+                    count = 1;
+                } else {
+                    const numericOnly = bNo.replace(/[^0-9]/g, '');
+                    start = end = parseInt(numericOnly) || idx + 1;
+                    count = 1;
+                }
             }
 
             boxGroups.push({
