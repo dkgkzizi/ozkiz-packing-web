@@ -204,12 +204,6 @@ export default function ChinaPacking() {
               }
           });
 
-          // 매트릭스 도표가 있는 시트라면, 중복 수집을 막기 위해 수직 요약 도표는 제거
-          const hasMatrix = headerRows.some((h: any) => h.isMatrix);
-          if (hasMatrix) {
-              headerRows = headerRows.filter((h: any) => h.isMatrix);
-          }
-
           // 2. 각 헤더 아래 데이터 추출
           headerRows.forEach((header: any) => {
               let lastName = "";
@@ -579,7 +573,8 @@ export default function ChinaPacking() {
         const cat = getCategory(item);
         
         if (bNo !== currentBoxNo) {
-            const parts = bNo.split('-').map(p => parseInt(p.trim()));
+            // 하이픈(-) 또는 물결표(~) 모두 지원
+            const parts = bNo.split(/[-~]/).map(p => parseInt(p.trim()));
             let start = 0, end = 0, count = 0;
             
             if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
