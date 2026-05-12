@@ -274,12 +274,24 @@ export default function ChinaPacking() {
                                 let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
                                 if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
                                 
+                                // 박스 범위(count)가 있고, 합계가 sVal * count와 같다면 전체 수량으로 보정
+                                let finalQty = sVal;
+                                const parts = boxNoVal.split(/[^0-9]+/).filter(p => p.length > 0).map(p => parseInt(p));
+                                if (parts.length === 2) {
+                                    const bCount = parts[1] - parts[0] + 1;
+                                    if (bCount > 1 && totalQty === sVal * bCount) {
+                                        finalQty = totalQty;
+                                    } else if (bCount > 1 && totalQty === 0) {
+                                        finalQty = sVal * bCount;
+                                    }
+                                }
+
                                 clientExtractedData.push({ 
                                     style: currentName, 
                                     name: currentName, 
                                     color: color, 
                                     size: sHeader, 
-                                    qty: sVal,
+                                    qty: finalQty,
                                     originSheet: sheetName,
                                     boxNo: boxNoVal
                                 });
@@ -289,12 +301,13 @@ export default function ChinaPacking() {
                       }
                       
                       if (!foundSizes && (totalQty > 0 || boxNoVal)) {
+                          let finalQty = totalQty || 0;
                           clientExtractedData.push({ 
                               style: currentName, 
                               name: currentName, 
                               color: color, 
                               size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
-                              qty: totalQty || 0,
+                              qty: finalQty,
                               originSheet: sheetName,
                               boxNo: boxNoVal
                           });
@@ -524,22 +537,24 @@ export default function ChinaPacking() {
     // 2. 범용 카테고리 판별 함수 (신발 vs 의류)
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase().trim();
-        const originalName = (item.style || "").toUpperCase().trim(); // 엑셀 원본 명칭
+        const originalName = (item.style || "").toUpperCase().trim(); 
         const sheetName = (item.originSheet || "").toUpperCase().trim();
-        const sizeStr = (item.size || "").toUpperCase().trim();
         
-        // A. 시트명 기반 판별 (가장 확실함)
+        // A. 의류 키워드 (오분류 방지를 위해 최우선 체크)
+        const clothKeywords = [
+            '세트', '원피스', '티셔츠', '팬츠', '치마', '레깅스', '가디건', '자켓', '코트', '수트', 
+            '내의', '잠옷', '수영복', '블라우스', '남방', '니트', '바지', '상의', '하의'
+        ];
+        if (clothKeywords.some(key => name.includes(key) || originalName.includes(key))) {
+            return '의류';
+        }
+
+        // B. 시트명 기반 판별
         if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루') || sheetName.includes('ROLLARU')) {
             return '신발';
         }
 
-        // B. 사이즈 범위 기반 판별 (신발은 보통 140~240 사이의 숫자 사용)
-        const numericSize = parseInt(sizeStr.replace(/[^0-9]/g, ''));
-        if (!isNaN(numericSize) && numericSize >= 140 && numericSize <= 260) {
-            return '신발';
-        }
-        
-        // C. 키워드 기반 판별
+        // C. 신발 키워드
         const shoeKeywords = [
             '아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '신발',
             '요요', 'AQUA', 'SHOE', 'SANDAL', 'SLIPPER', 'SNEAKER', 'BOOTS'
