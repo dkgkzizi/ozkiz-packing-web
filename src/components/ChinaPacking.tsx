@@ -221,52 +221,27 @@ export default function ChinaPacking() {
 
               for (let rIdx = dataStartRowIdx; rIdx < jsonData.length; rIdx++) {
                   const row = jsonData[rIdx];
-                  if (!row || !Array.isArray(row)) break;
+                  if (!row || !Array.isArray(row)) continue; // break 대신 continue
                   
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건 1 (명시적)
-                  const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
-                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') break;
+                  // 섹션 종료 조건 완화: 명백한 종료 문구가 있을 때만 중단
+                  const rowStrAll = row.join('').replace(/\s/g, '');
+                  if (!rowStrAll) continue; // 완전히 빈 줄은 건너뜀
                   
-                  // 섹션 종료 조건 2 (암묵적: 맨 좌측이 완전히 비어있는 행이 도표의 마지막일 경우 합계행으로 간주)
-                  const allLeftEmpty = !row.slice(0, header.sizeStartCol).join('').replace(/\s/g, '');
-                  if (allLeftEmpty) {
-                      let hasMoreItemsInThisTable = false;
-                      for (let nextIdx = rIdx + 1; nextIdx < jsonData.length; nextIdx++) {
-                          const nextRowData = jsonData[nextIdx];
-                          if (!nextRowData || !Array.isArray(nextRowData)) continue;
-                          
-                          const nextRowStr = nextRowData.join('').replace(/\s/g, '');
-                          if (!nextRowStr) continue; // 빈 행 무시
-                          
-                          // 새로운 도표 헤더를 만나면 현재 도표는 끝난 것임
-                          if (nextRowStr.includes('품명') && (nextRowStr.includes('합계') || nextRowStr.includes('수량'))) {
-                              break;
-                          }
-                          
-                          // 좌측에 의미 있는 텍스트(품명, 칼라 등)가 있다면 아직 도표 진행 중임
-                          const nextLeftStr = nextRowData.slice(0, header.sizeStartCol).join('').replace(/\s/g, '');
-                          if (nextLeftStr && !nextLeftStr.includes('합계') && !nextLeftStr.includes('TOTAL') && !nextLeftStr.includes('비고')) {
-                              hasMoreItemsInThisTable = true;
-                              break;
-                          }
-                      }
-                      
-                      // 뒤에 더 이상 아이템이 없다면 이것은 맨 아래 합계행임
-                      if (!hasMoreItemsInThisTable) {
-                          break;
-                      }
+                  const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
+                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') {
+                      // 실제 합계행이면 종료하되, 뒤에 데이터가 더 있는지 한번 더 확인
+                      const nextRowsHaveData = jsonData.slice(rIdx + 1, rIdx + 5).some(nr => nr && nr.join('').trim().length > 0);
+                      if (!nextRowsHaveData) break;
+                      else continue;
                   }
-
-                  const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
-                  if (!rowStr && !currentName) break; 
-
+                  
                   // 병합된 명칭 핸들링
                   if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
-                      if (currentName !== lastName) lastColor = ""; // 신규 상품이면 색상 초기화
+                      if (currentName !== lastName) lastColor = "";
                       lastName = currentName;
                   }
 
@@ -278,9 +253,9 @@ export default function ChinaPacking() {
                   } else {
                       lastColor = color;
                   }
+                  
                   let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
                   
-                  // if totalQty is 0 or totalCol is -1, try to sum from sizes
                   if (totalQty === 0 && header.sizeStartCol !== -1 && header.sizeEndCol !== -1 && header.isMatrix) {
                       for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
@@ -288,37 +263,40 @@ export default function ChinaPacking() {
                       }
                   }
                   
-                  if (totalQty > 0) {
+                  const boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+
+                  if (totalQty > 0 || boxNoVal) {
                       let foundSizes = false;
-                      for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
-                          const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                          if (sVal > 0) {
-                              // 올바른 행에서 사이즈 명칭 가져오기
-                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
-                              if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
-                              
-                              clientExtractedData.push({ 
-                                  style: currentName, 
-                                  name: currentName, 
-                                  color: color, 
-                                  size: sHeader, 
-                                  qty: sVal,
-                                  originSheet: sheetName,
-                                  boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
-                              });
-                              foundSizes = true;
-                          }
+                      if (header.isMatrix) {
+                        for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
+                            const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                            if (sVal > 0) {
+                                let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                                if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
+                                
+                                clientExtractedData.push({ 
+                                    style: currentName, 
+                                    name: currentName, 
+                                    color: color, 
+                                    size: sHeader, 
+                                    qty: sVal,
+                                    originSheet: sheetName,
+                                    boxNo: boxNoVal
+                                });
+                                foundSizes = true;
+                            }
+                        }
                       }
                       
-                      if (!foundSizes && totalQty > 0) {
+                      if (!foundSizes && (totalQty > 0 || boxNoVal)) {
                           clientExtractedData.push({ 
                               style: currentName, 
                               name: currentName, 
                               color: color, 
                               size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
-                              qty: totalQty,
+                              qty: totalQty || 0,
                               originSheet: sheetName,
-                              boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
+                              boxNo: boxNoVal
                           });
                       }
                   }
