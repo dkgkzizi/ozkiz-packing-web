@@ -206,7 +206,7 @@ export default function ChinaPacking() {
                       const c = String(cell || "").trim().toUpperCase();
                       if (c === '품명') nameCol = cellIdx;
                       else if (c === '칼라' || c === '색상') colorCol = cellIdx;
-                      else if (c === '합계' || c === '소계' || c === '총계' || c === '수량') totalCol = cellIdx;
+                      else if (c === '합계' || c === '소계' || c === '총계' || c === '수량' || c === '총수량') totalCol = cellIdx;
                       else if (c === '사이즈') sizeStartCol = cellIdx;
                       else if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) boxCol = cellIdx;
                       else if (c === 'C/T' || c.includes('박스수') || c.includes('BOX수') || c.includes('수량(BOX)')) ctCol = cellIdx;
@@ -312,33 +312,49 @@ export default function ChinaPacking() {
                   const boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0;
 
                   if (totalQty > 0 || boxNoVal) {
-                      let foundSizes = false;
-                      for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
-                          const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                          if (sVal > 0) {
-                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
-                              if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
-                              
+                      if (header.isMatrix) {
+                          let foundSizes = false;
+                          for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
+                              const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                              if (sVal > 0) {
+                                  let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                                  if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
+                                  
+                                  clientExtractedData.push({ 
+                                      style: currentName, 
+                                      name: currentName, 
+                                      color: color, 
+                                      size: sHeader, 
+                                      qty: sVal,
+                                      originSheet: sheetName,
+                                      boxNo: boxNoVal,
+                                      boxCount: boxCountVal
+                                  });
+                                  foundSizes = true;
+                              }
+                          }
+                          
+                          if (!foundSizes && (totalQty > 0 || boxNoVal)) {
                               clientExtractedData.push({ 
                                   style: currentName, 
                                   name: currentName, 
                                   color: color, 
-                                  size: sHeader, 
-                                  qty: sVal,
+                                  size: "FREE", 
+                                  qty: totalQty,
                                   originSheet: sheetName,
                                   boxNo: boxNoVal,
                                   boxCount: boxCountVal
                               });
-                              foundSizes = true;
                           }
-                      }
-                      
-                      if (!foundSizes && (totalQty > 0 || boxNoVal)) {
+                      } else {
+                          // 수직 레이아웃 (사이즈가 세로로 나열된 형태)
+                          const sizeStr = header.sizeStartCol !== -1 ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE";
+                          // 수직 레이아웃일 때는 포장수량(총수량)을 수량으로 사용
                           clientExtractedData.push({ 
                               style: currentName, 
                               name: currentName, 
                               color: color, 
-                              size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
+                              size: sizeStr, 
                               qty: totalQty,
                               originSheet: sheetName,
                               boxNo: boxNoVal,
