@@ -74,7 +74,7 @@ export default function ChinaPacking() {
     if (savedShoe) {
       setShoeKeywords(JSON.parse(savedShoe));
     } else {
-      const defaults = ['아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '요요', 'SHOE', 'SANDAL', 'JELLY', '젤리', '신발', 'SHOES'];
+      const defaults = ['아쿠아슈즈', '아쿠아', '젤리슈즈', '젤리', '샌들', '장화', '슬립온', '운동화', '구두', '부츠', '워커', '힐', '신발', 'SHOES', 'SHOE', 'SANDAL', 'JELLY'];
       setShoeKeywords(defaults);
       localStorage.setItem('india_shoe_keywords', JSON.stringify(defaults));
     }
@@ -82,7 +82,7 @@ export default function ChinaPacking() {
     if (savedClothing) {
       setClothingKeywords(JSON.parse(savedClothing));
     } else {
-      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '소라블룸', '라벨르', '리틀가든', '블루벨', '플라워', '가디건', '후드', '의류', 'CLOTHING'];
+      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '가디건', '후드', '레깅스', '한복', '의류', 'CLOTHING'];
       setClothingKeywords(defaults);
       localStorage.setItem('india_clothing_keywords', JSON.stringify(defaults));
     }
@@ -1301,7 +1301,9 @@ export default function ChinaPacking() {
                   </div>
                   <div>
                     <h3 className="text-xl font-black text-slate-900 tracking-tight">분류 키워드 설정</h3>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Classification Keywords</p>
+                    <p className="text-[9px] font-bold text-red-500 uppercase tracking-widest mt-1">
+                      ※ 상품명 전체가 아닌 &apos;아쿠아슈즈&apos;, &apos;원피스&apos; 등 분류 키워드만 입력하세요.
+                    </p>
                   </div>
                 </div>
                 <button onClick={() => setIsSettingOpen(false)} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 transition-colors">
