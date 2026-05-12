@@ -241,8 +241,8 @@ export default function ChinaPacking() {
                   
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
                   if (!rowStr && !currentName) {
-                      // 빈 행이 나왔을 때, 진짜 끝인지 아니면 단순히 병합된 행인지 확인
-                      const hasMoreDataBelow = jsonData.slice(rIdx + 1, rIdx + 5).some(nr => nr && nr.join('').trim().length > 0);
+                      // 데이터 누락을 방지하기 위해 빈 행이 나와도 훨씬 더 깊게 탐색 (5 -> 50)
+                      const hasMoreDataBelow = jsonData.slice(rIdx + 1, rIdx + 50).some(nr => nr && nr.join('').trim().length > 0);
                       if (!hasMoreDataBelow) break;
                       else continue;
                   }
@@ -527,14 +527,22 @@ export default function ChinaPacking() {
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase().trim();
         const originalName = (item.style || "").toUpperCase().trim(); 
-        const sheetName = (item.originSheet || "").toUpperCase().trim();
         
-        // 시트명 또는 키워드 기반 판별 (가장 안정적임)
-        if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루')) return '신발';
-
         const shoeKeywords = ['아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '요요', 'SHOE', 'SANDAL'];
-        const isShoe = shoeKeywords.some(key => name.includes(key) || originalName.includes(key));
-        return isShoe ? '신발' : '의류';
+        const clothingKeywords = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '소라블룸', '라벨르', '리틀가든', '블루벨', '플라워'];
+
+        // 1. 상품명에 의류 키워드가 있으면 무조건 의류
+        if (clothingKeywords.some(key => name.includes(key) || originalName.includes(key))) return '의류';
+        
+        // 2. 상품명에 신발 키워드가 있으면 무조건 신발
+        if (shoeKeywords.some(key => name.includes(key) || originalName.includes(key))) return '신발';
+        
+        // 3. 시트명 확인 (보조 수단)
+        const sheetName = (item.originSheet || "").toUpperCase().trim();
+        if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루')) return '신발';
+        if (sheetName.includes('의류') || sheetName.includes('CLOTHING')) return '의류';
+
+        return '의류'; 
     };
 
     // 2. 박스 번호(start 기준)로 정렬하여 순서 보장
