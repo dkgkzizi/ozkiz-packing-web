@@ -224,19 +224,19 @@ export default function ChinaPacking() {
                   const row = jsonData[rIdx];
                   if (!row || !Array.isArray(row)) break;
                   
-                  // 다음 도표의 헤더를 만나면 현재 섹션 종료
+                  // 다음 도표의 공식 헤더(최소 3개 이상 필드 일치)를 만나면 현재 섹션 종료
                   const rowStrAll = row.join('|');
-                  if (rIdx > dataStartRowIdx && rowStrAll.includes('품명') && (rowStrAll.includes('합계') || rowStrAll.includes('수량'))) {
+                  if (rIdx > dataStartRowIdx && rowStrAll.includes('품명') && rowStrAll.includes('칼라') && (rowStrAll.includes('합계') || rowStrAll.includes('수량'))) {
                       break;
                   }
 
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건 (합계행 등)
+                  // 섹션 종료 조건 대신 행 건너뛰기 로직으로 변경 (데이터 유실 방지)
                   const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
-                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') {
-                      // 합계행 이후에 바로 다음 데이터가 올 수도 있으므로 주의
-                      break; 
+                  if (leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계' || leftColsStr.includes('소계')) {
+                      // 합계 행은 데이터로 수집하지 않지만, 루프를 멈추지는 않음
+                      continue; 
                   }
                   
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
