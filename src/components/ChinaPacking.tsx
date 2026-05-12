@@ -221,22 +221,17 @@ export default function ChinaPacking() {
 
               for (let rIdx = dataStartRowIdx; rIdx < jsonData.length; rIdx++) {
                   const row = jsonData[rIdx];
-                  if (!row || !Array.isArray(row)) continue; // break 대신 continue
+                  if (!row || !Array.isArray(row)) break;
                   
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건 완화: 명백한 종료 문구가 있을 때만 중단
-                  const rowStrAll = row.join('').replace(/\s/g, '');
-                  if (!rowStrAll) continue; // 완전히 빈 줄은 건너뜀
-                  
+                  // 섹션 종료 조건
                   const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
-                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') {
-                      // 실제 합계행이면 종료하되, 뒤에 데이터가 더 있는지 한번 더 확인
-                      const nextRowsHaveData = jsonData.slice(rIdx + 1, rIdx + 5).some(nr => nr && nr.join('').trim().length > 0);
-                      if (!nextRowsHaveData) break;
-                      else continue;
-                  }
+                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') break;
                   
+                  const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
+                  if (!rowStr && !currentName) break; 
+
                   // 병합된 명칭 핸들링
                   if (!currentName && lastName) {
                       currentName = lastName;
@@ -256,60 +251,36 @@ export default function ChinaPacking() {
                   
                   let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
                   
-                  if (totalQty === 0 && header.sizeStartCol !== -1 && header.sizeEndCol !== -1 && header.isMatrix) {
+                  if (totalQty > 0) {
+                      let foundSizes = false;
                       for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                          if (!isNaN(sVal)) totalQty += sVal;
-                      }
-                  }
-                  
-                  const boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
-
-                  if (totalQty > 0 || boxNoVal) {
-                      let foundSizes = false;
-                      if (header.isMatrix) {
-                        for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
-                            const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                            if (sVal > 0) {
-                                let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
-                                if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
-                                
-                                // 박스 범위(count)가 있고, 합계가 sVal * count와 같다면 전체 수량으로 보정
-                                let finalQty = sVal;
-                                const parts = boxNoVal.split(/[^0-9]+/).filter(p => p.length > 0).map(p => parseInt(p));
-                                if (parts.length === 2) {
-                                    const bCount = parts[1] - parts[0] + 1;
-                                    if (bCount > 1 && totalQty === sVal * bCount) {
-                                        finalQty = totalQty;
-                                    } else if (bCount > 1 && totalQty === 0) {
-                                        finalQty = sVal * bCount;
-                                    }
-                                }
-
-                                clientExtractedData.push({ 
-                                    style: currentName, 
-                                    name: currentName, 
-                                    color: color, 
-                                    size: sHeader, 
-                                    qty: finalQty,
-                                    originSheet: sheetName,
-                                    boxNo: boxNoVal
-                                });
-                                foundSizes = true;
-                            }
-                        }
+                          if (sVal > 0) {
+                              let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                              if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
+                              
+                              clientExtractedData.push({ 
+                                  style: currentName, 
+                                  name: currentName, 
+                                  color: color, 
+                                  size: sHeader, 
+                                  qty: sVal,
+                                  originSheet: sheetName,
+                                  boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
+                              });
+                              foundSizes = true;
+                          }
                       }
                       
-                      if (!foundSizes && (totalQty > 0 || boxNoVal)) {
-                          let finalQty = totalQty || 0;
+                      if (!foundSizes && totalQty > 0) {
                           clientExtractedData.push({ 
                               style: currentName, 
                               name: currentName, 
                               color: color, 
                               size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
-                              qty: finalQty,
+                              qty: totalQty,
                               originSheet: sheetName,
-                              boxNo: boxNoVal
+                              boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : ""
                           });
                       }
                   }
@@ -534,32 +505,15 @@ export default function ChinaPacking() {
         return;
     }
 
-    // 2. 범용 카테고리 판별 함수 (신발 vs 의류)
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase().trim();
         const originalName = (item.style || "").toUpperCase().trim(); 
         const sheetName = (item.originSheet || "").toUpperCase().trim();
         
-        // A. 의류 키워드 (오분류 방지를 위해 최우선 체크)
-        const clothKeywords = [
-            '세트', '원피스', '티셔츠', '팬츠', '치마', '레깅스', '가디건', '자켓', '코트', '수트', 
-            '내의', '잠옷', '수영복', '블라우스', '남방', '니트', '바지', '상의', '하의'
-        ];
-        if (clothKeywords.some(key => name.includes(key) || originalName.includes(key))) {
-            return '의류';
-        }
+        // 시트명 또는 키워드 기반 판별 (가장 안정적임)
+        if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루')) return '신발';
 
-        // B. 시트명 기반 판별
-        if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루') || sheetName.includes('ROLLARU')) {
-            return '신발';
-        }
-
-        // C. 신발 키워드
-        const shoeKeywords = [
-            '아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '신발',
-            '요요', 'AQUA', 'SHOE', 'SANDAL', 'SLIPPER', 'SNEAKER', 'BOOTS'
-        ];
-
+        const shoeKeywords = ['아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '요요', 'SHOE', 'SANDAL'];
         const isShoe = shoeKeywords.some(key => name.includes(key) || originalName.includes(key));
         return isShoe ? '신발' : '의류';
     };
@@ -574,22 +528,22 @@ export default function ChinaPacking() {
         const cat = getCategory(item);
         
         if (bNo !== currentBoxNo) {
-            // 숫자가 아닌 모든 문자(공백, 하이픈, 물결 등)를 구분자로 사용
-            const parts = bNo.split(/[^0-9]+/).filter(p => p.length > 0).map(p => parseInt(p));
-            let start = 0, end = 0, count = 0;
+            // 하이픈(-), 물결(~), 점(.) 등을 구분자로 사용
+            const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+            let start = 0, end = 0, count = 1;
             
-            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[parts.length - 1])) {
                 start = parts[0];
-                end = parts[1];
+                end = parts[parts.length - 1];
                 count = end - start + 1;
             } else if (parts.length === 1 && !isNaN(parts[0])) {
                 start = parts[0];
                 end = parts[0];
                 count = 1;
             } else {
-                count = 1;
                 const numericOnly = bNo.replace(/[^0-9]/g, '');
                 start = end = parseInt(numericOnly) || idx + 1;
+                count = 1;
             }
 
             boxGroups.push({
