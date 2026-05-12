@@ -545,19 +545,17 @@ export default function ChinaPacking() {
 
     // 2. 카테고리 판별 함수 (신발 vs 의류)
     const getCategory = (item: any) => {
-        const name = (item.matchedName || "").toUpperCase();
-        const originalName = (item.style || "").toUpperCase(); // 엑셀 원본 명칭
+        const name = (item.matchedName || "").toUpperCase().trim();
+        const originalName = (item.style || "").toUpperCase().trim(); // 엑셀 원본 명칭
         
-        // 신발 키워드 확장 및 원본 명칭 교차 검증
-        if (name.includes('아쿠아') || name.includes('슈즈') || name.includes('샌들') || 
-            name.includes('슬리퍼') || name.includes('운동화') || name.includes('단화') || 
-            name.includes('부츠') || name.includes('장화') ||
-            originalName.includes('아쿠아') || originalName.includes('슈즈') || 
-            originalName.includes('샌들') || originalName.includes('AQUA') || 
-            originalName.includes('SHOE') || originalName.includes('SANDAL')) {
-            return '신발';
-        }
-        return '의류';
+        // 신발 키워드 및 '요요' 추가
+        const shoeKeywords = [
+            '아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', 
+            '요요', 'AQUA', 'SHOE', 'SANDAL', 'SLIPPER', 'SNEAKER'
+        ];
+
+        const isShoe = shoeKeywords.some(key => name.includes(key) || originalName.includes(key));
+        return isShoe ? '신발' : '의류';
     };
 
     // 3. 박스 번호별로 그룹화하되, 해당 박스의 카테고리도 함께 저장
@@ -570,8 +568,8 @@ export default function ChinaPacking() {
         const cat = getCategory(item);
         
         if (bNo !== currentBoxNo) {
-            // 하이픈(-) 또는 물결표(~) 모두 지원
-            const parts = bNo.split(/[-~]/).map(p => parseInt(p.trim()));
+            // 숫자가 아닌 모든 문자(공백, 하이픈, 물결 등)를 구분자로 사용
+            const parts = bNo.split(/[^0-9]+/).filter(p => p.length > 0).map(p => parseInt(p));
             let start = 0, end = 0, count = 0;
             
             if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
