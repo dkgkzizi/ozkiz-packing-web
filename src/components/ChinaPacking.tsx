@@ -224,14 +224,28 @@ export default function ChinaPacking() {
                   const row = jsonData[rIdx];
                   if (!row || !Array.isArray(row)) break;
                   
+                  // 다음 도표의 헤더를 만나면 현재 섹션 종료
+                  const rowStrAll = row.join('|');
+                  if (rIdx > dataStartRowIdx && rowStrAll.includes('품명') && (rowStrAll.includes('합계') || rowStrAll.includes('수량'))) {
+                      break;
+                  }
+
                   let currentName = String(row[header.nameCol] || "").trim();
                   
-                  // 섹션 종료 조건
+                  // 섹션 종료 조건 (합계행 등)
                   const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
-                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') break;
+                  if (leftColsStr.includes('비고') || leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계') {
+                      // 합계행 이후에 바로 다음 데이터가 올 수도 있으므로 주의
+                      break; 
+                  }
                   
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
-                  if (!rowStr && !currentName) break; 
+                  if (!rowStr && !currentName) {
+                      // 빈 행이 나왔을 때, 진짜 끝인지 아니면 단순히 병합된 행인지 확인
+                      const hasMoreDataBelow = jsonData.slice(rIdx + 1, rIdx + 5).some(nr => nr && nr.join('').trim().length > 0);
+                      if (!hasMoreDataBelow) break;
+                      else continue;
+                  }
 
                   // 병합된 명칭 핸들링
                   if (!currentName && lastName) {
@@ -251,8 +265,10 @@ export default function ChinaPacking() {
                   }
                   
                   let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
-                  
-                  if (totalQty > 0) {
+                  const boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+                  const boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0;
+
+                  if (totalQty > 0 || boxNoVal) {
                       let foundSizes = false;
                       for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
                           const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
@@ -267,14 +283,14 @@ export default function ChinaPacking() {
                                   size: sHeader, 
                                   qty: sVal,
                                   originSheet: sheetName,
-                                  boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "",
-                                  boxCount: header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0
+                                  boxNo: boxNoVal,
+                                  boxCount: boxCountVal
                               });
                               foundSizes = true;
                           }
                       }
                       
-                      if (!foundSizes && totalQty > 0) {
+                      if (!foundSizes && (totalQty > 0 || boxNoVal)) {
                           clientExtractedData.push({ 
                               style: currentName, 
                               name: currentName, 
@@ -282,8 +298,8 @@ export default function ChinaPacking() {
                               size: (!header.isMatrix && header.sizeStartCol !== -1) ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE", 
                               qty: totalQty,
                               originSheet: sheetName,
-                              boxNo: header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "",
-                              boxCount: header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0
+                              boxNo: boxNoVal,
+                              boxCount: boxCountVal
                           });
                       }
                   }
