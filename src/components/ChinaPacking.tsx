@@ -537,12 +537,21 @@ export default function ChinaPacking() {
         return isShoe ? '신발' : '의류';
     };
 
+    // 2. 박스 번호(start 기준)로 정렬하여 순서 보장
+    const sortedItems = [...currentItems].sort((a, b) => {
+        const getStart = (val: string) => {
+            if (!val) return 999999;
+            const parts = val.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+            return parts[0] || 999999;
+        };
+        return getStart(a.boxNo) - getStart(b.boxNo);
+    });
+
     // 3. 박스 번호별로 그룹화하되, 해당 박스의 카테고리도 함께 저장
     const boxGroups: { boxNo: string, products: string[], boxCount: number, start: number, end: number, category: string }[] = [];
     let currentBoxNo = "";
-    let virtualBoxCount = 1;
     
-    currentItems.forEach((item, idx) => {
+    sortedItems.forEach((item, idx) => {
         const cat = getCategory(item);
         const bNo = item.boxNo;
         if (!bNo) return; 

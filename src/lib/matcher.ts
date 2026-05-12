@@ -11,19 +11,44 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     await workbook.xlsx.load(buffer as any);
     const sheet = workbook.worksheets[0];
     const excelRecords: any[] = [];
+    let lastStyle = "";
+    let lastName = "";
+    let lastSheet = "";
+
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
-        const styleNo = row.getCell(1).text.trim();
-        if (!styleNo || styleNo.includes('합계')) return;
+        
+        let styleNo = row.getCell(1).text.trim();
+        let pdfName = row.getCell(2).text.trim();
+        const color = row.getCell(3).text.trim();
+        const size = row.getCell(4).text.trim();
+        const qty = parseInt(row.getCell(5).value as any) || 0;
+        let sheetName = row.getCell(6).text.trim() || fileName;
+        const boxNo = row.getCell(7).text.trim() || '';
+        const boxCount = row.getCell(8).text.trim() || '';
+
+        // 병합 셀 대응: 비어 있으면 이전 행의 값 사용
+        if (!styleNo && lastStyle) styleNo = lastStyle;
+        if (!pdfName && lastName) pdfName = lastName;
+        if (!sheetName && lastSheet) sheetName = lastSheet;
+
+        if (styleNo) lastStyle = styleNo;
+        if (pdfName) lastName = pdfName;
+        if (sheetName) lastSheet = sheetName;
+
+        // 스타일이 없거나 합계행인 경우 제외 (단, 박스번호가 있으면 수집 시도)
+        if (!styleNo && !boxNo) return;
+        if (styleNo.includes('합계') || pdfName.includes('합계')) return;
+
         excelRecords.push({
-            styleNo: styleNo,
-            pdfName: row.getCell(2).text.trim(),
-            color: row.getCell(3).text.trim(),
-            size: row.getCell(4).text.trim(),
-            qty: parseInt(row.getCell(5).value as any) || 0,
-            sheetName: row.getCell(6).text.trim() || fileName,
-            boxNo: row.getCell(7).text.trim() || '',
-            boxCount: row.getCell(8).text.trim() || ''
+            styleNo,
+            pdfName,
+            color,
+            size,
+            qty,
+            sheetName,
+            boxNo,
+            boxCount
         });
     });
 
