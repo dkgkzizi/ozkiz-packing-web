@@ -15,8 +15,9 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
     let lastName = "";
     let lastSheet = "";
 
-    sheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
+    for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+        const row = sheet.getRow(rowNumber);
+        if (!row) continue;
         
         let styleNo = row.getCell(1).text.trim();
         let pdfName = row.getCell(2).text.trim();
@@ -36,12 +37,13 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         if (pdfName) lastName = pdfName;
         if (sheetName) lastSheet = sheetName;
 
-        // 스타일이 없거나 합계행인 경우 제외 (단, 박스번호가 있으면 수집 시도)
-        if (!styleNo && !boxNo) return;
-        if (styleNo.includes('합계') || pdfName.includes('합계')) return;
+        // 박스 번호가 있는 행은 절대 버리지 않음 (데이터 유실 방지)
+        if (!styleNo && !boxNo) continue;
+        if (styleNo && styleNo.includes('합계')) continue;
+        if (pdfName && pdfName.includes('합계')) continue;
 
         excelRecords.push({
-            styleNo,
+            styleNo: styleNo || 'UNKNOWN',
             pdfName,
             color,
             size,
@@ -50,7 +52,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             boxNo,
             boxCount
         });
-    });
+    }
 
     const client = await pool.connect();
     let dbRows: any[] = [];
