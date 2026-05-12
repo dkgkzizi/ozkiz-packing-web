@@ -123,6 +123,11 @@ const COLOR_MAP: Record<string, string[]> = {
 
             // 시즌 점수 반영
             totalGroupScore += getSeasonScore(baseName);
+            
+            // 정확히 일치하는 이름에 압도적인 가산점 부여
+            if (normalizeStr(baseName) === nStyle) {
+                totalGroupScore += 500;
+            }
 
             group.forEach(record => {
                 let bestRecordScore = 0;

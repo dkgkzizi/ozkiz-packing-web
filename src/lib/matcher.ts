@@ -137,13 +137,19 @@ const COLOR_MAP: Record<string, string[]> = {
 
             // 1. 기본 매칭 (스타일/상품명 일치)
             let isBaseMatch = false;
-            if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
+            if (dbName === nStyle || dbCode === nStyle || dbBarcode === nStyle) {
+                score += 30; // 정확히 일치하는 경우 높은 가산점
+                isBaseMatch = true;
+            } else if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
                 score += 10;
                 isBaseMatch = true;
             } else {
                 // '아쿠아슈즈-요요' -> '아쿠아-요요' 매칭을 위해 '슈즈', '신발' 등 노이즈 제거 후 재시도
                 const cleanedStyle = nStyle.replace(/슈즈|신발|샌들|장화|구두/g, '');
-                if (cleanedStyle.length >= 2 && (dbName.includes(cleanedStyle) || dbCode.includes(cleanedStyle))) {
+                if (cleanedStyle.length >= 2 && (dbName === cleanedStyle || dbCode === cleanedStyle)) {
+                    score += 20;
+                    isBaseMatch = true;
+                } else if (cleanedStyle.length >= 2 && (dbName.includes(cleanedStyle) || dbCode.includes(cleanedStyle))) {
                     score += 8; // 노이즈 제거 매칭은 약간 낮은 점수
                     isBaseMatch = true;
                 }

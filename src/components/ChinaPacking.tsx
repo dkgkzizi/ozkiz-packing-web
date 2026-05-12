@@ -248,7 +248,7 @@ export default function ChinaPacking() {
           });
 
           // 2. 각 헤더 아래 데이터 추출
-          headerRows.forEach((header: any) => {
+          headerRows.forEach((header: any, hIdx: number) => {
               let lastName = "";
               let lastColor = "";
               
@@ -261,8 +261,9 @@ export default function ChinaPacking() {
               
               const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
               const dataStartRowIdx = isTwoStepHeader ? header.rowIdx + 2 : header.rowIdx + 1;
+              const nextHeaderRowIdx = hIdx + 1 < headerRows.length ? headerRows[hIdx + 1].rowIdx : jsonData.length;
 
-              for (let rIdx = dataStartRowIdx; rIdx < jsonData.length; rIdx++) {
+              for (let rIdx = dataStartRowIdx; rIdx < nextHeaderRowIdx; rIdx++) {
                   const row = jsonData[rIdx];
                   if (!row || !Array.isArray(row)) break;
                   
@@ -569,16 +570,16 @@ export default function ChinaPacking() {
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase().trim();
         const originalName = (item.style || "").toUpperCase().trim(); 
-        
-        // 1. 사용자 정의 의류 키워드가 있으면 의류
-        if (clothingKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()))) return '의류';
-        
-        // 2. 사용자 정의 신발 키워드가 있으면 신발
-        if (shoeKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()))) return '신발';
-        
-        // 3. 시트명 확인 (보조 수단)
         const sheetName = (item.originSheet || "").toUpperCase().trim();
-        if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루')) return '신발';
+        
+        // 1. 신발 키워드 우선 체크 (신발이 의류로 오분류되는 것 방지)
+        if (shoeKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()) || sheetName.includes(key.toUpperCase()))) return '신발';
+        if (sheetName.includes('롤라루')) return '신발';
+        
+        // 2. 의류 키워드 체크
+        if (clothingKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()) || sheetName.includes(key.toUpperCase()))) return '의류';
+        
+        // 3. 기본값
         if (sheetName.includes('의류') || sheetName.includes('CLOTHING')) return '의류';
 
         return '의류'; 
@@ -594,122 +595,106 @@ export default function ChinaPacking() {
         return getStart(a.boxNo) - getStart(b.boxNo);
     });
 
-    // 3. 박스 번호별로 그룹화하되, 해당 박스의 카테고리도 함께 저장
-    const boxGroups: { boxNo: string, products: string[], boxCount: number, start: number, end: number, category: string }[] = [];
-    let currentBoxNo = "";
-    
-    sortedItems.forEach((item, idx) => {
-        const cat = getCategory(item);
-        const bNo = item.boxNo;
-        if (!bNo) return; 
+    // 3. 박스 단위로 데이터 구조 재편 (혼합 박스 중복 카운팅 방지)
+    const boxMap = new Map<string, {
+        boxNo: string,
+        start: number,
+        end: number,
+        count: number,
+        items: any[],
+        category: string
+    }>();
 
-        if (bNo !== currentBoxNo) {
-            let count = parseInt(String(item.boxCount || "0")) || 0;
-            const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
-            let start = 0, end = 0;
-            
-            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[parts.length - 1])) {
-                start = parts[0];
-                end = parts[parts.length - 1];
-                if (count <= 0) count = end - start + 1;
-            } else if (parts.length === 1 && !isNaN(parts[0])) {
-                start = parts[0];
-                end = parts[0];
-                if (count <= 0) count = 1;
-            } else {
-                const numericOnly = bNo.replace(/[^0-9]/g, '');
-                start = end = parseInt(numericOnly) || 0;
-                if (count <= 0) count = 1;
-            }
+    sortedItems.forEach(item => {
+        const bNo = String(item.boxNo || "").trim();
+        if (!bNo) return;
 
-            if (start === 0) return; 
+        const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+        const start = parts[0] || 0;
+        const end = parts[parts.length - 1] || start;
+        let count = parseInt(String(item.boxCount || "0")) || (end - start + 1);
+        if (count === 0 && start > 0) count = 1;
 
-            boxGroups.push({
+        if (!boxMap.has(bNo)) {
+            boxMap.set(bNo, {
                 boxNo: bNo,
-                products: [item.matchedName.split('-')[1] || item.matchedName],
-                boxCount: count,
                 start,
                 end,
-                category: cat
+                count,
+                items: [item],
+                category: getCategory(item)
             });
-            currentBoxNo = bNo;
         } else {
-            const lastGroup = boxGroups[boxGroups.length - 1];
-            if (lastGroup) {
-                const pName = item.matchedName.split('-')[1] || item.matchedName;
-                if (!lastGroup.products.includes(pName)) {
-                    lastGroup.products.push(pName);
-                }
-                if (cat === '신발') lastGroup.category = '신발';
-            }
+            const entry = boxMap.get(bNo)!;
+            entry.items.push(item);
+            if (getCategory(item) === '신발') entry.category = '신발';
         }
     });
 
-    // 4. 카테고리별 파레트 생성 함수
-    const createPallets = (groups: typeof boxGroups, boxesPerPallet: number, label: string) => {
+    const createPallets = (boxes: any[], boxesPerPallet: number, label: string) => {
         const pallets: any[] = [];
         let currentPalletItems: any[] = [];
-        let currentTotalInPallet = 0;
+        let currentPalletCount = 0;
 
         const pushPallet = () => {
             if (currentPalletItems.length === 0) return;
-            const start = currentPalletItems[0].start;
-            const end = currentPalletItems[currentPalletItems.length - 1].end;
+            const first = currentPalletItems[0];
+            const last = currentPalletItems[currentPalletItems.length - 1];
+            
             pallets.push({
                 no: pallets.length + 1,
-                range: start === end ? `${start}` : `${start} ~ ${end}`,
-                totalBox: currentTotalInPallet,
-                products: Array.from(new Set(currentPalletItems.flatMap(i => i.products))).join(', '),
+                range: first.start === last.end ? `${first.start}` : `${first.start} ~ ${last.end}`,
+                totalBox: currentPalletCount,
+                products: Array.from(new Set(currentPalletItems.flatMap(b => b.items.map(it => {
+                    const name = it.matchedName || "";
+                    return name.split('-')[1] || name;
+                })))).filter(n => n).slice(0, 5).join(', '),
                 category: label
             });
             currentPalletItems = [];
-            currentTotalInPallet = 0;
+            currentPalletCount = 0;
         };
 
-        groups.forEach((group) => {
-            let boxesLeftInGroup = group.boxCount;
-            let groupStart = group.start;
-
-            while (boxesLeftInGroup > 0) {
-                const spaceInPallet = boxesPerPallet - currentTotalInPallet;
-                const boxesToPut = Math.min(boxesLeftInGroup, spaceInPallet);
-
-                if (spaceInPallet === 0) {
-                    pushPallet();
-                    continue; 
+        boxes.forEach(box => {
+            if (currentPalletCount + box.count > boxesPerPallet) {
+                if (box.count > boxesPerPallet && currentPalletCount === 0) {
+                    let remaining = box.count;
+                    let currentStart = box.start;
+                    while (remaining > 0) {
+                        const take = Math.min(remaining, boxesPerPallet);
+                        const currentEnd = currentStart + take - 1;
+                        pallets.push({
+                            no: pallets.length + 1,
+                            range: `${currentStart} ~ ${currentEnd}`,
+                            totalBox: take,
+                            products: Array.from(new Set(box.items.map(it => (it.matchedName || "").split('-')[1] || it.matchedName))).join(', '),
+                            category: label
+                        });
+                        currentStart += take;
+                        remaining -= take;
+                    }
+                    return;
                 }
-
-                currentPalletItems.push({
-                    ...group,
-                    start: groupStart,
-                    end: groupStart + boxesToPut - 1,
-                    boxCount: boxesToPut
-                });
-                
-                currentTotalInPallet += boxesToPut;
-                boxesLeftInGroup -= boxesToPut;
-                groupStart += boxesToPut;
-
-                if (currentTotalInPallet >= boxesPerPallet) {
-                    pushPallet();
-                }
+                pushPallet();
             }
+            currentPalletItems.push(box);
+            currentPalletCount += box.count;
         });
 
         pushPallet();
         return pallets;
     };
 
-    // 5. 신발과 의류 데이터 분리 및 각각 파레트 생성
-    const shoeGroups = boxGroups.filter(g => g.category === '신발');
-    const clothingGroups = boxGroups.filter(g => g.category === '의류');
+    const allBoxes = Array.from(boxMap.values()).sort((a, b) => a.start - b.start);
+    const shoeBoxes = allBoxes.filter(b => b.category === '신발');
+    const clothingBoxes = allBoxes.filter(b => b.category === '의류');
 
-    const shoePallets = createPallets(shoeGroups, 16, '신발');
-    const clothingPallets = createPallets(clothingGroups, 14, '의류');
+    const shoePallets = createPallets(shoeBoxes, 16, '신발');
+    const clothingPallets = createPallets(clothingBoxes, 14, '의류');
     const allPallets = [...shoePallets, ...clothingPallets];
 
     if (allPallets.length === 0) {
-        alert("분석된 파레트 정보가 없습니다.");
+        alert("현재 분석된 박스 정보가 없습니다.");
         return;
     }
 
