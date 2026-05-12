@@ -308,7 +308,17 @@ export default function ChinaPacking() {
                   }
                   
                   let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
-                  const boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+                  
+                  let boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+                  // 병합된 패킹 번호 처리 (예: A열 "1", B열 "-", C열 "7")
+                  if (header.boxCol !== -1) {
+                      const nextCell1 = String(row[header.boxCol + 1] || "").trim();
+                      const nextCell2 = String(row[header.boxCol + 2] || "").trim();
+                      if (nextCell1 === '-' || nextCell1 === '~') {
+                          boxNoVal += nextCell1 + nextCell2;
+                      }
+                  }
+                  
                   const boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0;
 
                   if (totalQty > 0 || boxNoVal) {
@@ -625,7 +635,7 @@ export default function ChinaPacking() {
         const bNo = String(item.boxNo || "").trim();
         if (!bNo) return;
 
-        const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+        const parts = bNo.split(/[-~.]/).filter(p => p !== "").map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
         const start = parts[0] || 0;
         const end = parts[parts.length - 1] || start;
         let count = parseInt(String(item.boxCount || "0")) || (end - start + 1);
@@ -661,7 +671,7 @@ export default function ChinaPacking() {
                 no: pallets.length + 1,
                 range: first.start === last.end ? `${first.start}` : `${first.start} ~ ${last.end}`,
                 totalBox: currentPalletCount,
-                products: Array.from(new Set(currentPalletItems.flatMap(b => b.items.map(it => {
+                products: Array.from(new Set(currentPalletItems.flatMap(b => b.items.map((it: any) => {
                     const name = it.matchedName || "";
                     return name.split('-')[1] || name;
                 })))).filter(n => n).slice(0, 5).join(', '),
@@ -672,29 +682,34 @@ export default function ChinaPacking() {
         };
 
         boxes.forEach(box => {
-            if (currentPalletCount + box.count > boxesPerPallet) {
-                if (box.count > boxesPerPallet && currentPalletCount === 0) {
-                    let remaining = box.count;
-                    let currentStart = box.start;
-                    while (remaining > 0) {
-                        const take = Math.min(remaining, boxesPerPallet);
-                        const currentEnd = currentStart + take - 1;
-                        pallets.push({
-                            no: pallets.length + 1,
-                            range: `${currentStart} ~ ${currentEnd}`,
-                            totalBox: take,
-                            products: Array.from(new Set(box.items.map(it => (it.matchedName || "").split('-')[1] || it.matchedName))).join(', '),
-                            category: label
-                        });
-                        currentStart += take;
-                        remaining -= take;
-                    }
-                    return;
+            let remainingBoxCount = box.count;
+            let currentStart = box.start;
+
+            while (remainingBoxCount > 0) {
+                const spaceLeft = boxesPerPallet - currentPalletCount;
+                if (spaceLeft <= 0) {
+                    pushPallet();
+                    continue;
                 }
-                pushPallet();
+
+                const take = Math.min(remainingBoxCount, spaceLeft);
+                const currentEnd = currentStart + take - 1;
+
+                currentPalletItems.push({
+                    ...box,
+                    start: currentStart,
+                    end: currentEnd,
+                    count: take
+                });
+
+                currentPalletCount += take;
+                currentStart += take;
+                remainingBoxCount -= take;
+
+                if (currentPalletCount === boxesPerPallet) {
+                    pushPallet();
+                }
             }
-            currentPalletItems.push(box);
-            currentPalletCount += box.count;
         });
 
         pushPallet();
