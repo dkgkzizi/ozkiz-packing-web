@@ -550,18 +550,25 @@ export default function ChinaPacking() {
         return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
     });
 
-    // 박스 번호별로 그룹화 (박스 범위 1-1, 2-13 등을 파싱하기 위함)
+    if (currentItems.length === 0) {
+        alert("현재 탭에 출력할 데이터가 없습니다.");
+        return;
+    }
+
+    // 박스 번호별로 그룹화
     const boxGroups: { boxNo: string, products: string[], boxCount: number, start: number, end: number }[] = [];
     let currentBoxNo = "";
+    let virtualBoxCount = 1;
     
-    currentItems.forEach(item => {
-        if (!item.boxNo) return;
+    currentItems.forEach((item, idx) => {
+        // 박스 번호가 없으면 가상의 번호 부여 (전체 수량을 1박스씩 분할하는 식은 위험하므로, 한 행을 1박스로 가정)
+        const bNo = item.boxNo || `V-${virtualBoxCount++}`;
         
-        if (item.boxNo !== currentBoxNo) {
-            const parts = item.boxNo.split('-').map(p => parseInt(p.trim()));
+        if (bNo !== currentBoxNo) {
+            const parts = bNo.split('-').map(p => parseInt(p.trim()));
             let start = 0, end = 0, count = 0;
             
-            if (parts.length === 2) {
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
                 start = parts[0];
                 end = parts[1];
                 count = end - start + 1;
@@ -569,16 +576,21 @@ export default function ChinaPacking() {
                 start = parts[0];
                 end = parts[0];
                 count = 1;
+            } else {
+                // 숫자가 아닌 박스 번호 (예: 1-1A 등) 처리
+                count = 1;
+                const numericOnly = bNo.replace(/[^0-9]/g, '');
+                start = end = parseInt(numericOnly) || idx + 1;
             }
 
             boxGroups.push({
-                boxNo: item.boxNo,
+                boxNo: bNo,
                 products: [item.matchedName.split('-')[1] || item.matchedName],
                 boxCount: count,
                 start,
                 end
             });
-            currentBoxNo = item.boxNo;
+            currentBoxNo = bNo;
         } else {
             const lastGroup = boxGroups[boxGroups.length - 1];
             const pName = item.matchedName.split('-')[1] || item.matchedName;
@@ -588,7 +600,12 @@ export default function ChinaPacking() {
         }
     });
 
-    // 카테고리 결정 (신발 vs 의류)
+    if (boxGroups.length === 0) {
+        alert("박스 정보를 분석할 수 없습니다.");
+        return;
+    }
+
+    // 카테고리 결정
     const isShoes = activeTab.includes('신발') || currentItems.some(it => it.matchedName.includes('아쿠아') || it.matchedName.includes('슈즈') || it.matchedName.includes('샌들'));
     const boxesPerPallet = isShoes ? 16 : 14;
     const categoryName = isShoes ? '신발' : '의류';
@@ -600,10 +617,11 @@ export default function ChinaPacking() {
 
     boxGroups.forEach(group => {
         if (currentTotalInPallet + group.boxCount > boxesPerPallet && currentPalletBoxes.length > 0) {
-            // 현재 파레트 마감
             pallets.push({
                 no: pallets.length + 1,
-                range: `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
+                range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
+                        ? `${currentPalletBoxes[0].start}`
+                        : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
                 products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
                 totalBox: currentTotalInPallet
             });
@@ -615,36 +633,34 @@ export default function ChinaPacking() {
         currentTotalInPallet += group.boxCount;
     });
 
-    // 마지막 파레트 추가
     if (currentPalletBoxes.length > 0) {
         pallets.push({
             no: pallets.length + 1,
-            range: `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
+            range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
+                    ? `${currentPalletBoxes[0].start}`
+                    : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
             products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
             totalBox: currentTotalInPallet
         });
     }
 
-    // 파일명에서 확장자 제거
     const cleanFileName = (verification?.fileName || file?.name || '중국패킹').replace(/\.[^/.]+$/, "");
-
-    // 프린트용 윈도우 생성
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
     const html = `
       <html>
         <head>
-          <title>${categoryName} 파레트 라벨 출력</title>
+          <title>${categoryName} 파레트 라벨</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+            body { font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; background: white; }
             .pallet-card {
               width: 210mm;
               height: 148mm;
-              border: 10px double black;
+              border: 8px solid black;
               margin: 10mm auto;
-              padding: 20px;
+              padding: 40px;
               box-sizing: border-box;
               display: flex;
               flex-direction: column;
@@ -652,27 +668,29 @@ export default function ChinaPacking() {
               page-break-after: always;
               position: relative;
             }
-            .header { font-size: 24px; font-weight: 900; }
+            .header { font-size: 28px; font-weight: 900; border-bottom: 2px solid #eee; padding-bottom: 10px; }
             .range { 
-                font-size: 120px; 
+                font-size: 140px; 
                 font-weight: 900; 
                 text-align: center; 
                 flex: 1; 
                 display: flex; 
                 align-items: center; 
                 justify-content: center;
-                letter-spacing: -5px;
+                letter-spacing: -2px;
             }
             .footer { 
-                font-size: 20px; 
+                font-size: 22px; 
                 font-weight: 700; 
                 text-align: center; 
-                border-top: 1px solid #eee;
+                border-top: 5px solid black;
                 padding-top: 20px;
+                line-height: 1.4;
             }
             @media print {
-              .pallet-card { margin: 0; border-width: 15px; }
-              body { -webkit-print-color-adjust: exact; }
+              body { margin: 0; }
+              .pallet-card { margin: 0; border-width: 8px; width: 100%; height: 98vh; }
+              .no-print { display: none; }
             }
           </style>
         </head>
@@ -682,11 +700,19 @@ export default function ChinaPacking() {
               <div class="header">${cleanFileName}_${p.no}파레트</div>
               <div class="range">${p.range}</div>
               <div class="footer">
-                ${p.products} (${p.totalBox} Box)
+                ${p.products}<br/>
+                <strong>(${p.totalBox} BOX)</strong>
               </div>
             </div>
           `).join('')}
-          <script>window.print();</script>
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                // window.close(); // 인쇄 후 창 닫기 원할 경우 주석 해제
+              }, 500);
+            };
+          </script>
         </body>
       </html>
     `;
