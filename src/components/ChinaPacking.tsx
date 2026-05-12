@@ -543,15 +543,28 @@ export default function ChinaPacking() {
         return;
     }
 
-    // 2. 카테고리 판별 함수 (신발 vs 의류)
+    // 2. 범용 카테고리 판별 함수 (신발 vs 의류)
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase().trim();
         const originalName = (item.style || "").toUpperCase().trim(); // 엑셀 원본 명칭
+        const sheetName = (item.originSheet || "").toUpperCase().trim();
+        const sizeStr = (item.size || "").toUpperCase().trim();
         
-        // 신발 키워드 및 '요요' 추가
+        // A. 시트명 기반 판별 (가장 확실함)
+        if (sheetName.includes('신발') || sheetName.includes('SHOES') || sheetName.includes('롤라루') || sheetName.includes('ROLLARU')) {
+            return '신발';
+        }
+
+        // B. 사이즈 범위 기반 판별 (신발은 보통 140~240 사이의 숫자 사용)
+        const numericSize = parseInt(sizeStr.replace(/[^0-9]/g, ''));
+        if (!isNaN(numericSize) && numericSize >= 140 && numericSize <= 260) {
+            return '신발';
+        }
+        
+        // C. 키워드 기반 판별
         const shoeKeywords = [
-            '아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', 
-            '요요', 'AQUA', 'SHOE', 'SANDAL', 'SLIPPER', 'SNEAKER'
+            '아쿠아', '슈즈', '샌들', '슬리퍼', '운동화', '단화', '부츠', '장화', '신발',
+            '요요', 'AQUA', 'SHOE', 'SANDAL', 'SLIPPER', 'SNEAKER', 'BOOTS'
         ];
 
         const isShoe = shoeKeywords.some(key => name.includes(key) || originalName.includes(key));

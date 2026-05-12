@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     // 2. 임시 엑셀 생성 (매칭 엔진 입력용)
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
-    tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY', 'SHEET']);
-    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '']));
+    tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY', 'SHEET', 'BOX NO']);
+    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '', r.boxNo || '']));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 마스터 매칭 (Supabase 연동)
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         matchedTotal += q;
         
         // matcher.ts가 저장한 데이터를 기반으로 구성 
-        // 6열: 메모, 7열: 시트명(originSheet), 8열: 원래스타일(originalStyle)
+        // 7열: 시트명, 8열: 원본스타일, 9열: 박스번호
         const styleName = row.getCell(8).text || row.getCell(2).text;
 
         finalItems.push({
@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
             qty: q,
             pdfQty: q,
             style: styleName,
-            originSheet: row.getCell(7).text || '', // originSheet는 7번째 컬럼
+            originSheet: row.getCell(7).text || '',
+            boxNo: row.getCell(9).text || '', // 박스 번호 복원
             imageUrl: null 
         });
     });
