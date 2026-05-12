@@ -544,7 +544,7 @@ export default function ChinaPacking() {
   const handlePrint = () => {
     if (!results) return;
 
-    // 현재 탭에 해당하는 데이터만 필터링
+    // 1. 현재 탭 데이터 필터링
     const currentItems = results.filter((r: any) => {
         const s = r.originSheet || '';
         return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
@@ -555,14 +555,28 @@ export default function ChinaPacking() {
         return;
     }
 
-    // 박스 번호별로 그룹화
-    const boxGroups: { boxNo: string, products: string[], boxCount: number, start: number, end: number }[] = [];
+    // 2. 카테고리 판별 함수 (신발 vs 의류)
+    const getCategory = (item: any) => {
+        const name = (item.matchedName || "").toUpperCase();
+        const style = (item.style || "").toUpperCase();
+        // 신발 키워드 확장
+        if (name.includes('아쿠아') || name.includes('슈즈') || name.includes('샌들') || 
+            name.includes('슬리퍼') || name.includes('운동화') || name.includes('단화') || 
+            name.includes('부츠') || name.includes('장화') ||
+            style.includes('AQUA') || style.includes('SHOE') || style.includes('SANDAL')) {
+            return '신발';
+        }
+        return '의류';
+    };
+
+    // 3. 박스 번호별로 그룹화하되, 해당 박스의 카테고리도 함께 저장
+    const boxGroups: { boxNo: string, products: string[], boxCount: number, start: number, end: number, category: string }[] = [];
     let currentBoxNo = "";
     let virtualBoxCount = 1;
     
     currentItems.forEach((item, idx) => {
-        // 박스 번호가 없으면 가상의 번호 부여 (전체 수량을 1박스씩 분할하는 식은 위험하므로, 한 행을 1박스로 가정)
         const bNo = item.boxNo || `V-${virtualBoxCount++}`;
+        const cat = getCategory(item);
         
         if (bNo !== currentBoxNo) {
             const parts = bNo.split('-').map(p => parseInt(p.trim()));
@@ -577,7 +591,6 @@ export default function ChinaPacking() {
                 end = parts[0];
                 count = 1;
             } else {
-                // 숫자가 아닌 박스 번호 (예: 1-1A 등) 처리
                 count = 1;
                 const numericOnly = bNo.replace(/[^0-9]/g, '');
                 start = end = parseInt(numericOnly) || idx + 1;
@@ -588,7 +601,8 @@ export default function ChinaPacking() {
                 products: [item.matchedName.split('-')[1] || item.matchedName],
                 boxCount: count,
                 start,
-                end
+                end,
+                category: cat
             });
             currentBoxNo = bNo;
         } else {
@@ -597,51 +611,61 @@ export default function ChinaPacking() {
             if (!lastGroup.products.includes(pName)) {
                 lastGroup.products.push(pName);
             }
+            // 한 박스에 여러 카테고리가 섞여있을 경우, 신발이 하나라도 있으면 신발 박스로 간주 (안전 위주)
+            if (cat === '신발') lastGroup.category = '신발';
         }
     });
 
-    if (boxGroups.length === 0) {
-        alert("박스 정보를 분석할 수 없습니다.");
-        return;
-    }
+    // 4. 카테고리별 파레트 생성 함수
+    const createPallets = (groups: typeof boxGroups, boxesPerPallet: number, label: string) => {
+        const pallets: any[] = [];
+        let currentPalletBoxes: any[] = [];
+        let currentTotalInPallet = 0;
 
-    // 카테고리 결정
-    const isShoes = activeTab.includes('신발') || currentItems.some(it => it.matchedName.includes('아쿠아') || it.matchedName.includes('슈즈') || it.matchedName.includes('샌들'));
-    const boxesPerPallet = isShoes ? 16 : 14;
-    const categoryName = isShoes ? '신발' : '의류';
+        groups.forEach(group => {
+            if (currentTotalInPallet + group.boxCount > boxesPerPallet && currentPalletBoxes.length > 0) {
+                pallets.push({
+                    no: pallets.length + 1,
+                    range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
+                            ? `${currentPalletBoxes[0].start}`
+                            : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
+                    products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
+                    totalBox: currentTotalInPallet,
+                    category: label
+                });
+                currentPalletBoxes = [];
+                currentTotalInPallet = 0;
+            }
+            
+            currentPalletBoxes.push(group);
+            currentTotalInPallet += group.boxCount;
+        });
 
-    // 파레트 생성
-    const pallets: any[] = [];
-    let currentPalletBoxes: any[] = [];
-    let currentTotalInPallet = 0;
-
-    boxGroups.forEach(group => {
-        if (currentTotalInPallet + group.boxCount > boxesPerPallet && currentPalletBoxes.length > 0) {
+        if (currentPalletBoxes.length > 0) {
             pallets.push({
                 no: pallets.length + 1,
                 range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
                         ? `${currentPalletBoxes[0].start}`
                         : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
                 products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
-                totalBox: currentTotalInPallet
+                totalBox: currentTotalInPallet,
+                category: label
             });
-            currentPalletBoxes = [];
-            currentTotalInPallet = 0;
         }
-        
-        currentPalletBoxes.push(group);
-        currentTotalInPallet += group.boxCount;
-    });
+        return pallets;
+    };
 
-    if (currentPalletBoxes.length > 0) {
-        pallets.push({
-            no: pallets.length + 1,
-            range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
-                    ? `${currentPalletBoxes[0].start}`
-                    : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
-            products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
-            totalBox: currentTotalInPallet
-        });
+    // 5. 신발과 의류 데이터 분리 및 각각 파레트 생성
+    const shoeGroups = boxGroups.filter(g => g.category === '신발');
+    const clothingGroups = boxGroups.filter(g => g.category === '의류');
+
+    const shoePallets = createPallets(shoeGroups, 16, '신발');
+    const clothingPallets = createPallets(clothingGroups, 14, '의류');
+    const allPallets = [...shoePallets, ...clothingPallets];
+
+    if (allPallets.length === 0) {
+        alert("분석된 파레트 정보가 없습니다.");
+        return;
     }
 
     const cleanFileName = (verification?.fileName || file?.name || '중국패킹').replace(/\.[^/.]+$/, "");
@@ -651,7 +675,7 @@ export default function ChinaPacking() {
     const html = `
       <html>
         <head>
-          <title>${categoryName} 파레트 라벨</title>
+          <title>파레트 라벨 출력</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
             body { font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; background: white; }
@@ -695,9 +719,9 @@ export default function ChinaPacking() {
           </style>
         </head>
         <body>
-          ${pallets.map(p => `
+          ${allPallets.map(p => `
             <div class="pallet-card">
-              <div class="header">${cleanFileName}_${p.no}파레트</div>
+              <div class="header">${cleanFileName}_${p.category} ${p.no}파레트</div>
               <div class="range">${p.range}</div>
               <div class="footer">
                 ${p.products}<br/>
@@ -709,7 +733,6 @@ export default function ChinaPacking() {
             window.onload = () => {
               setTimeout(() => {
                 window.print();
-                // window.close(); // 인쇄 후 창 닫기 원할 경우 주석 해제
               }, 500);
             };
           </script>
