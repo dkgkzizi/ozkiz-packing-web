@@ -345,16 +345,10 @@ export default function ChinaPacking() {
       }
       
       if (data.success) {
-          // 전체 리스트를 스타일과 사이즈별로 정렬하여 표시
-          const sortedResults = data.items.sort((a: any, b: any) => {
-            if (a.style !== b.style) return a.style.localeCompare(b.style);
-            if (a.color !== b.color) return a.color.localeCompare(b.color);
-            return getSizeScore(a.size) - getSizeScore(b.size);
-          });
+          // 전체 리스트의 원본 순서를 유지하기 위해 정렬 로직 제거
+          setResults(data.items);
           
-          setResults(sortedResults);
-          
-          const groups = Array.from(new Set(sortedResults.map((r: any) => {
+          const groups = Array.from(new Set(data.items.map((r: any) => {
               const s = r.originSheet || '';
               return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
           })));
@@ -552,12 +546,15 @@ export default function ChinaPacking() {
     // 2. 카테고리 판별 함수 (신발 vs 의류)
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase();
-        const style = (item.style || "").toUpperCase();
-        // 신발 키워드 확장
+        const originalName = (item.style || "").toUpperCase(); // 엑셀 원본 명칭
+        
+        // 신발 키워드 확장 및 원본 명칭 교차 검증
         if (name.includes('아쿠아') || name.includes('슈즈') || name.includes('샌들') || 
             name.includes('슬리퍼') || name.includes('운동화') || name.includes('단화') || 
             name.includes('부츠') || name.includes('장화') ||
-            style.includes('AQUA') || style.includes('SHOE') || style.includes('SANDAL')) {
+            originalName.includes('아쿠아') || originalName.includes('슈즈') || 
+            originalName.includes('샌들') || originalName.includes('AQUA') || 
+            originalName.includes('SHOE') || originalName.includes('SANDAL')) {
             return '신발';
         }
         return '의류';
