@@ -266,10 +266,10 @@ export default function ChinaPacking() {
                   const row = jsonData[rIdx];
                   if (!row || !Array.isArray(row)) break;
                   
-                  // 다음 도표의 공식 헤더(최소 3개 이상 필드 일치)를 만나면 현재 섹션 종료
+                  // 다음 도표의 공식 헤더를 만나도 중단하지 않고 계속 수집 (데이터 유실 방지)
                   const rowStrAll = row.join('|');
                   if (rIdx > dataStartRowIdx && rowStrAll.includes('품명') && rowStrAll.includes('칼라') && (rowStrAll.includes('합계') || rowStrAll.includes('수량'))) {
-                      break;
+                      continue; 
                   }
 
                   let currentName = String(row[header.nameCol] || "").trim();
