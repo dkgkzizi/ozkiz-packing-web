@@ -543,10 +543,7 @@ export default function ChinaPacking() {
     let virtualBoxCount = 1;
     
     currentItems.forEach((item, idx) => {
-        const bNo = item.boxNo || `V-${virtualBoxCount++}`;
         const cat = getCategory(item);
-        
-        if (bNo !== currentBoxNo) {
         const bNo = item.boxNo;
         if (!bNo) return; 
 
