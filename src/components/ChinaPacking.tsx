@@ -547,37 +547,29 @@ export default function ChinaPacking() {
         const cat = getCategory(item);
         
         if (bNo !== currentBoxNo) {
-            let start = 0, end = 0, count = 1;
+        const bNo = item.boxNo;
+        if (!bNo) return; 
+
+        if (bNo !== currentBoxNo) {
+            let count = parseInt(String(item.boxCount || "0")) || 0;
+            const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+            let start = 0, end = 0;
             
-            // C/T 데이터가 있으면 우선 사용
-            if (item.ct && !isNaN(item.ct)) {
-                count = item.ct;
-                // 범위 분석은 라벨 표시용으로만 수행
-                const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
-                if (parts.length >= 2) {
-                    start = parts[0];
-                    end = parts[parts.length - 1];
-                } else {
-                    const numericOnly = bNo.replace(/[^0-9]/g, '');
-                    start = end = parseInt(numericOnly) || idx + 1;
-                }
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[parts.length - 1])) {
+                start = parts[0];
+                end = parts[parts.length - 1];
+                if (count <= 0) count = end - start + 1;
+            } else if (parts.length === 1 && !isNaN(parts[0])) {
+                start = parts[0];
+                end = parts[0];
+                if (count <= 0) count = 1;
             } else {
-                // C/T가 없을 경우 기존처럼 범위 분석
-                const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
-                if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[parts.length - 1])) {
-                    start = parts[0];
-                    end = parts[parts.length - 1];
-                    count = end - start + 1;
-                } else if (parts.length === 1 && !isNaN(parts[0])) {
-                    start = parts[0];
-                    end = parts[0];
-                    count = 1;
-                } else {
-                    const numericOnly = bNo.replace(/[^0-9]/g, '');
-                    start = end = parseInt(numericOnly) || idx + 1;
-                    count = 1;
-                }
+                const numericOnly = bNo.replace(/[^0-9]/g, '');
+                start = end = parseInt(numericOnly) || 0;
+                if (count <= 0) count = 1;
             }
+
+            if (start === 0) return; 
 
             boxGroups.push({
                 boxNo: bNo,
@@ -590,51 +582,68 @@ export default function ChinaPacking() {
             currentBoxNo = bNo;
         } else {
             const lastGroup = boxGroups[boxGroups.length - 1];
-            const pName = item.matchedName.split('-')[1] || item.matchedName;
-            if (!lastGroup.products.includes(pName)) {
-                lastGroup.products.push(pName);
+            if (lastGroup) {
+                const pName = item.matchedName.split('-')[1] || item.matchedName;
+                if (!lastGroup.products.includes(pName)) {
+                    lastGroup.products.push(pName);
+                }
+                if (cat === '신발') lastGroup.category = '신발';
             }
-            // 한 박스에 여러 카테고리가 섞여있을 경우, 신발이 하나라도 있으면 신발 박스로 간주 (안전 위주)
-            if (cat === '신발') lastGroup.category = '신발';
         }
     });
 
     // 4. 카테고리별 파레트 생성 함수
     const createPallets = (groups: typeof boxGroups, boxesPerPallet: number, label: string) => {
         const pallets: any[] = [];
-        let currentPalletBoxes: any[] = [];
+        let currentPalletItems: any[] = [];
         let currentTotalInPallet = 0;
 
-        groups.forEach(group => {
-            if (currentTotalInPallet + group.boxCount > boxesPerPallet && currentPalletBoxes.length > 0) {
-                pallets.push({
-                    no: pallets.length + 1,
-                    range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
-                            ? `${currentPalletBoxes[0].start}`
-                            : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
-                    products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
-                    totalBox: currentTotalInPallet,
-                    category: label
-                });
-                currentPalletBoxes = [];
-                currentTotalInPallet = 0;
-            }
-            
-            currentPalletBoxes.push(group);
-            currentTotalInPallet += group.boxCount;
-        });
-
-        if (currentPalletBoxes.length > 0) {
+        const pushPallet = () => {
+            if (currentPalletItems.length === 0) return;
+            const start = currentPalletItems[0].start;
+            const end = currentPalletItems[currentPalletItems.length - 1].end;
             pallets.push({
                 no: pallets.length + 1,
-                range: currentPalletBoxes[0].start === currentPalletBoxes[currentPalletBoxes.length - 1].end 
-                        ? `${currentPalletBoxes[0].start}`
-                        : `${currentPalletBoxes[0].start} ~ ${currentPalletBoxes[currentPalletBoxes.length - 1].end}`,
-                products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.products))).join(', '),
+                range: start === end ? `${start}` : `${start} ~ ${end}`,
                 totalBox: currentTotalInPallet,
+                products: Array.from(new Set(currentPalletItems.flatMap(i => i.products))).join(', '),
                 category: label
             });
-        }
+            currentPalletItems = [];
+            currentTotalInPallet = 0;
+        };
+
+        groups.forEach((group) => {
+            let boxesLeftInGroup = group.boxCount;
+            let groupStart = group.start;
+
+            while (boxesLeftInGroup > 0) {
+                const spaceInPallet = boxesPerPallet - currentTotalInPallet;
+                const boxesToPut = Math.min(boxesLeftInGroup, spaceInPallet);
+
+                if (spaceInPallet === 0) {
+                    pushPallet();
+                    continue; 
+                }
+
+                currentPalletItems.push({
+                    ...group,
+                    start: groupStart,
+                    end: groupStart + boxesToPut - 1,
+                    boxCount: boxesToPut
+                });
+                
+                currentTotalInPallet += boxesToPut;
+                boxesLeftInGroup -= boxesToPut;
+                groupStart += boxesToPut;
+
+                if (currentTotalInPallet >= boxesPerPallet) {
+                    pushPallet();
+                }
+            }
+        });
+
+        pushPallet();
         return pallets;
     };
 
