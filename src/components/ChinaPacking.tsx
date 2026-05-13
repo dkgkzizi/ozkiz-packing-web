@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   AlertCircle,
+  Flag,
   TrendingUp,
   X,
   RefreshCcw,
@@ -18,6 +19,7 @@ import {
   ArrowRightLeft,
   ShieldCheck,
   Settings,
+  Tag,
   Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,9 +34,7 @@ type PackingItem = {
   qty: number;
   pdfQty: number;
   style: string;
-  boxNo: string;
-  boxCount?: number;
-  originSheet?: string;
+  boxNo?: string;
 };
 
 type VerificationData = {
@@ -52,315 +52,725 @@ export default function ChinaPacking() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Manual Selection Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   
+  // Keyword Settings State
   const [isSettingOpen, setIsSettingOpen] = useState(false);
   const [shoeKeywords, setShoeKeywords] = useState<string[]>([]);
   const [clothingKeywords, setClothingKeywords] = useState<string[]>([]);
   const [newShoeKey, setNewShoeKey] = useState('');
   const [newClothingKey, setNewClothingKey] = useState('');
 
+  // Load/Save Keywords
   React.useEffect(() => {
     const savedShoe = localStorage.getItem('india_shoe_keywords');
     const savedClothing = localStorage.getItem('india_clothing_keywords');
-    if (savedShoe) setShoeKeywords(JSON.parse(savedShoe));
-    else {
-      const defaults = ['아쿠아슈즈', '아쿠아', '젤리슈즈', '샌들', '장화', '슬립온', '운동화', '구두', '부츠', '신발', 'SHOES', 'SHOE', 'SANDAL'];
+    
+    if (savedShoe) {
+      setShoeKeywords(JSON.parse(savedShoe));
+    } else {
+      const defaults = ['아쿠아슈즈', '아쿠아', '젤리슈즈', '젤리', '샌들', '장화', '슬립온', '운동화', '구두', '부츠', '워커', '힐', '신발', 'SHOES', 'SHOE', 'SANDAL', 'JELLY'];
       setShoeKeywords(defaults);
       localStorage.setItem('india_shoe_keywords', JSON.stringify(defaults));
     }
-    if (savedClothing) setClothingKeywords(JSON.parse(savedClothing));
-    else {
-      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '가디건', '후드', '레깅스', '의류', 'CLOTHING'];
+    
+    if (savedClothing) {
+      setClothingKeywords(JSON.parse(savedClothing));
+    } else {
+      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '가디건', '후드', '레깅스', '한복', '의류', 'CLOTHING'];
       setClothingKeywords(defaults);
       localStorage.setItem('india_clothing_keywords', JSON.stringify(defaults));
     }
   }, []);
 
   const saveKeywords = (type: 'shoe' | 'clothing', list: string[]) => {
-    if (type === 'shoe') { setShoeKeywords(list); localStorage.setItem('india_shoe_keywords', JSON.stringify(list)); }
-    else { setClothingKeywords(list); localStorage.setItem('india_clothing_keywords', JSON.stringify(list)); }
+    if (type === 'shoe') {
+      setShoeKeywords(list);
+      localStorage.setItem('india_shoe_keywords', JSON.stringify(list));
+    } else {
+      setClothingKeywords(list);
+      localStorage.setItem('india_clothing_keywords', JSON.stringify(list));
+    }
   };
 
-  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
-  const onDragLeave = () => setIsDragging(false);
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+  const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
   const onDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false);
     const f = e.dataTransfer.files?.[0];
     if (f) setFile(f);
   };
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
-    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
     const cleanFileName = originalName.replace(/\.[^/.]+$/, "");
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('중국매칭결과');
-    
-    worksheet.columns = [
-      { header: '상품코드', key: 'matchedCode', width: 20 },
-      { header: '상품명', key: 'matchedName', width: 40 },
-      { header: '색상', key: 'color', width: 15 },
-      { header: '사이즈', key: 'size', width: 12 },
-      { header: '작업수량', key: 'qty', width: 15 },
-      { header: '메모', key: 'memo', width: 25 }
-    ];
+    let filePart = "";
+    const dateMatch = cleanFileName.match(/[0-9]{8}/);
+    if (dateMatch) {
+      const fullDate = dateMatch[0];
+      const shortDatePart = fullDate.substring(4); // 0418
+      filePart = cleanFileName.replace(fullDate, shortDatePart);
+    } else {
+      filePart = cleanFileName;
+    }
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
 
-    const hRow = worksheet.getRow(1);
-    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } };
-
-    items.forEach(item => worksheet.addRow({ ...item, memo: `${dateStr}_${cleanFileName}_중국 패킹 입고` }));
-    worksheet.eachRow(row => {
-        row.eachCell(cell => {
-            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-        });
+    // 시트별(UI 그룹별)로 그룹화
+    const groups: { [key: string]: PackingItem[] } = {};
+    items.forEach(item => {
+        const sheet = (item as any).originSheet || '기본';
+        const groupName = sheet.includes('롤라루') ? '그로잉업' : '오즈키즈';
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push(item);
     });
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `${dateStr}_${cleanFileName}_매칭완료.xlsx`);
+    for (const sheetName of Object.keys(groups)) {
+        const groupItems = groups[sheetName];
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('중국매칭결과');
+        
+        // 탭 이름이 포함되도록 메모와 파일명 구성
+        const sheetPrefix = sheetName !== '기본' ? `${sheetName}_` : '';
+        const finalMemo = `${dateStr}_${filePart} ${sheetPrefix}중국 패킹 입고`;
+
+        worksheet.columns = [
+          { header: '상품코드', key: 'matchedCode', width: 20 },
+          { header: '상품명', key: 'matchedName', width: 40 },
+          { header: '색상', key: 'color', width: 15 },
+          { header: '사이즈', key: 'size', width: 12 },
+          { header: '작업수량', key: 'qty', width: 15 },
+          { header: '메모', key: 'memo', width: 25 }
+        ];
+
+        const hRow = worksheet.getRow(1);
+        hRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE53E3E' } }; 
+
+        groupItems.forEach(item => worksheet.addRow({ ...item, memo: finalMemo }));
+        
+        worksheet.eachRow(row => {
+            row.eachCell(cell => {
+                cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        // 시트명이 있으면 파일명에도 반영
+        const outFileName = sheetName !== '기본' ? `${dateStr}_${cleanFileName}_${sheetName}_매칭완료.xlsx` : `${dateStr}_${cleanFileName}_매칭완료.xlsx`;
+        saveAs(new Blob([buffer]), outFileName);
+        
+        // 여러 파일을 받을 때 브라우저 딜레이를 주기 위해 약간 대기
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
   };
 
   const handleProcess = async () => {
     if (!file) return;
     setLoading(true);
+    setResults(null);
+    setVerification(null);
+
     try {
+      // 1. 브라우저에서 직접 엑셀 읽기 (수량 데이터 및 OZ/OH 정보 추출)
       const buffer = await file.arrayBuffer();
       const XLSX = await import('xlsx');
       const workbook = XLSX.read(buffer, { type: 'array' });
+      
       let clientExtractedData: any[] = [];
-      const targetSheets = workbook.SheetNames.filter(name => name.includes('OZ') || name.includes('OH') || name.includes('매칭') || name.includes('오즈'));
-      const sheetsToProcess = targetSheets.length > 0 ? targetSheets : [workbook.SheetNames[0]];
+      const targetSheets = workbook.SheetNames.filter(name => 
+          name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치') || name.includes('매칭')
+      );
+      // 만약 타겟 시트가 없으면 2번째 시트(Index 1)를 우선순위로 두고, 그것도 없으면 전체 시트 처리
+      const sheetsToProcess = targetSheets.length > 0 ? targetSheets : 
+                             (workbook.SheetNames.length >= 2 ? [workbook.SheetNames[1]] : workbook.SheetNames);
 
       sheetsToProcess.forEach(sheetName => {
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-        if (jsonData.length === 0) return;
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          if (jsonData.length === 0) return;
 
-        const headerRows: any[] = [];
-        jsonData.forEach((row, idx) => {
-          if (!Array.isArray(row)) return;
-          const rowStr = row.join('|');
-          if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-            let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, boxCol = -1, ctCol = -1;
-            row.forEach((cell, cellIdx) => {
-                const c = String(cell || "").trim().toUpperCase();
-                if (c === '품명') nameCol = cellIdx;
-                else if (c === '칼라' || c === '색상') colorCol = cellIdx;
-                else if (c === '합계' || c === '수량') totalCol = cellIdx;
-                else if (c === '사이즈') sizeStartCol = cellIdx;
-                else if (c.includes('NO') || c.includes('박스') || c.includes('번호')) boxCol = cellIdx;
-                else if (c === 'C/T' || c.includes('박스수')) ctCol = cellIdx;
-            });
-            let isMatrix = false;
-            const nextRow = jsonData[idx + 1] || [];
-            for (let i = colorCol + 1; i < row.length; i++) {
-                if (i === totalCol) continue;
-                if (String(row[i]).match(/[0-9]/) || String(nextRow[i]).match(/[0-9]/)) {
-                    sizeStartCol = i; isMatrix = true; break;
-                }
-            }
-            if (nameCol !== -1) headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, boxCol, ctCol, isMatrix });
-          }
-        });
+          // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
+          const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number, boxCol: number, ctCol: number }[] = [];
+          
+          jsonData.forEach((row, idx) => {
+              if (!Array.isArray(row)) return;
+              const rowStr = row.join('|');
+              if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
+                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1, ctCol = -1;
+                  row.forEach((cell, cellIdx) => {
+                      const c = String(cell || "").trim().toUpperCase();
+                      if (c === '품명') nameCol = cellIdx;
+                      else if (c === '칼라' || c === '색상') colorCol = cellIdx;
+                      else if (c === '합계' || c === '소계' || c === '총계' || c === '수량' || c === '총수량') totalCol = cellIdx;
+                      else if (c === '사이즈') sizeStartCol = cellIdx;
+                      else if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) boxCol = cellIdx;
+                      else if (c === 'C/T' || c.includes('박스수') || c.includes('BOX수') || c.includes('수량(BOX)')) ctCol = cellIdx;
+                  });
+                  
+                  // 사이즈 매트릭스 레이아웃인지 판단
+                  let isMatrix = false;
+                  let matrixSizeStart = -1;
+                  const nextRow = jsonData[idx + 1] || [];
+                  
+                  if (colorCol !== -1) {
+                      for (let i = colorCol + 1; i < Math.max(row.length, nextRow.length); i++) {
+                          if (i === totalCol) continue;
+                          const hStr = String(row[i] || "").trim();
+                          const nStr = String(nextRow[i] || "").trim();
+                          if ((hStr.match(/[0-9]/) || nStr.match(/[0-9]/)) && !hStr.includes('수량') && !nStr.includes('수량')) {
+                              matrixSizeStart = i;
+                              isMatrix = true;
+                              break;
+                          }
+                      }
+                  }
+                  
+                  if (isMatrix) {
+                      sizeStartCol = matrixSizeStart;
+                      sizeEndCol = 200; // 충분히 큰 값
+                      if (totalCol !== -1 && sizeStartCol < totalCol) {
+                          sizeEndCol = totalCol - 1;
+                      }
+                  } else {
+                      // 수직(단일) 사이즈 레이아웃
+                      sizeEndCol = sizeStartCol;
+                  }
+                  
+                  if (nameCol !== -1) {
+                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix, boxCol, ctCol } as any);
+                  }
+              }
+          });
 
-        headerRows.forEach((header, hIdx) => {
-          let lastName = "", lastColor = "", lastBoxNo = "";
-          let currentGlobalBoxEnd = 0;
-          const nextHeaderRowIdx = headerRows[hIdx + 1] ? headerRows[hIdx + 1].rowIdx : jsonData.length;
-          const nextRow = jsonData[header.rowIdx + 1] || [];
-          const isTwoStep = !String(jsonData[header.rowIdx][header.sizeStartCol]).match(/[0-9]/) && String(nextRow[header.sizeStartCol]).match(/[0-9]/);
-          const sizeHeaderIdx = isTwoStep ? header.rowIdx + 1 : header.rowIdx;
-          const dataStartIdx = sizeHeaderIdx + 1;
+          // 2. 각 헤더 아래 데이터 추출
+          headerRows.forEach((header: any, hIdx: number) => {
+              let lastName = "";
+              let lastColor = "";
+              let lastBoxNo = "";
+              let lastBoxCount = 0;
+              
+              // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
+              const headerRowData = jsonData[header.rowIdx];
+              const nextRow = jsonData[header.rowIdx + 1];
+              // 현재 헤더행의 사이즈 컬럼 부분에 숫자가 하나라도 있다면 투스텝 헤더가 아님
+              const currentHeaderHasSizes = headerRowData.slice(header.sizeStartCol).some(c => String(c).match(/[0-9]/));
+              const isTwoStepHeader = !currentHeaderHasSizes && nextRow && nextRow.slice(header.sizeStartCol).some(c => String(c).match(/[0-9]/));
+              
+              const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
+              const dataStartRowIdx = isTwoStepHeader ? header.rowIdx + 2 : header.rowIdx + 1;
+              const nextHeaderRowIdx = hIdx + 1 < headerRows.length ? headerRows[hIdx + 1].rowIdx : jsonData.length;
 
-          for (let rIdx = dataStartIdx; rIdx < nextHeaderRowIdx; rIdx++) {
-            const row = jsonData[rIdx];
-            if (!row || row.length === 0) {
-              if (!jsonData.slice(rIdx + 1, rIdx + 500).some(nr => nr && nr.length > 0)) continue;
-              continue;
-            }
-            let name = String(row[header.nameCol] || "").trim();
-            if (name.includes('합계') || name.includes('TOTAL') || name.includes('소계')) continue;
-            if (!name && lastName) name = lastName; else if (name) lastName = name;
-            if (!name) continue;
+              for (let rIdx = dataStartRowIdx; rIdx < nextHeaderRowIdx; rIdx++) {
+                  const row = jsonData[rIdx];
+                  if (!row || !Array.isArray(row)) break;
+                  
+                  // 다음 도표의 공식 헤더를 만나도 중단하지 않고 계속 수집 (데이터 유실 방지)
+                  const rowStrAll = row.join('|');
+                  if (rIdx > dataStartRowIdx && rowStrAll.includes('품명') && rowStrAll.includes('칼라') && (rowStrAll.includes('합계') || rowStrAll.includes('수량'))) {
+                      continue; 
+                  }
 
-            let color = String(row[header.colorCol] || "").trim();
-            if (!color && lastColor) color = lastColor; else if (color) lastColor = color;
+                  let currentName = String(row[header.nameCol] || "").trim();
+                  
+                  // 섹션 종료 조건 대신 행 건너뛰기 로직으로 변경 (데이터 유실 방지)
+                  const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
+                  if (leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계' || leftColsStr.includes('소계')) {
+                      // 합계 행은 데이터로 수집하지 않지만, 루프를 멈추지는 않음
+                      continue; 
+                  }
+                  
+                  const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
+                  if (!rowStr && !currentName) {
+                      // 데이터 누락을 방지하기 위해 빈 행이 나와도 훨씬 더 깊게 탐색 (5 -> 500)
+                      const hasMoreDataBelow = jsonData.slice(rIdx + 1, rIdx + 500).some(nr => nr && nr.join('').trim().length > 0);
+                      if (!hasMoreDataBelow) break;
+                      else continue;
+                  }
 
-            let boxNo = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
-            let boxCount = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+                  // 병합된 명칭 핸들링
+                  if (!currentName && lastName) {
+                      currentName = lastName;
+                  } else if (currentName) {
+                      if (currentName !== lastName) lastColor = "";
+                      lastName = currentName;
+                  }
 
-            if (boxNo && boxNo.match(/[0-9]/)) {
-                const parts = boxNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
-                const end = parts[parts.length - 1] || parts[0] || 0;
-                if (end > 0) currentGlobalBoxEnd = end;
-                lastBoxNo = boxNo;
-            } else if (boxCount > 0) {
-                const start = currentGlobalBoxEnd + 1;
-                const end = currentGlobalBoxEnd + boxCount;
-                boxNo = start === end ? `${start}` : `${start}-${end}`;
-                currentGlobalBoxEnd = end;
-                lastBoxNo = boxNo;
-            } else { boxNo = lastBoxNo; }
+                  if (!currentName) continue;
+                  
+                  let color = String(row[header.colorCol] || "").trim();
+                  if (!color && lastColor) {
+                      color = lastColor;
+                  } else {
+                      lastColor = color;
+                  }
+                  
+                  let totalQty = header.totalCol !== -1 ? (parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+                  
+                  let boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+                  // 병합된 패킹 번호 처리 (예: A열 "1", B열 "-", C열 "7")
+                  if (header.boxCol !== -1 && boxNoVal) {
+                      const nextCell1 = String(row[header.boxCol + 1] || "").trim();
+                      const nextCell2 = String(row[header.boxCol + 2] || "").trim();
+                      if (nextCell1 === '-' || nextCell1 === '~') {
+                          boxNoVal += nextCell1 + nextCell2;
+                      }
+                  }
+                  
+                  if (!boxNoVal && lastBoxNo) {
+                      boxNoVal = lastBoxNo;
+                  } else if (boxNoVal) {
+                      lastBoxNo = boxNoVal;
+                  }
+                  
+                  let boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+                  if (boxCountVal === 0 && lastBoxCount > 0 && !String(row[header.ctCol] || "").trim()) {
+                      boxCountVal = lastBoxCount;
+                  } else if (boxCountVal > 0) {
+                      lastBoxCount = boxCountVal;
+                  } else if (boxCountVal === 0 && !lastBoxCount) {
+                      boxCountVal = 1; // 기본값
+                  }
 
-            if (header.isMatrix) {
-                for (let sIdx = header.sizeStartCol; sIdx < (header.totalCol !== -1 ? header.totalCol : row.length); sIdx++) {
-                    const val = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                    if (val > 0) {
-                        let size = String(jsonData[sizeHeaderIdx][sIdx] || "").trim();
-                        if (!size || size.includes('사이즈')) size = "FREE";
-                        clientExtractedData.push({ style: name, name, color, size, qty: val, originSheet: sheetName, boxNo, boxCount });
-                    }
-                }
-            } else if (header.totalCol !== -1) {
-                const qty = parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
-                if (qty > 0) clientExtractedData.push({ style: name, name, color, size: "FREE", qty, originSheet: sheetName, boxNo, boxCount });
-            }
-          }
-        });
+                  if (totalQty > 0 || boxNoVal) {
+                      if (header.isMatrix) {
+                          let foundSizes = false;
+                          for (let sIdx = header.sizeStartCol; sIdx <= header.sizeEndCol; sIdx++) {
+                              const sVal = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                              if (sVal > 0) {
+                                  let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
+                                  if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
+                                  
+                                  clientExtractedData.push({ 
+                                      style: currentName, 
+                                      name: currentName, 
+                                      color: color, 
+                                      size: sHeader, 
+                                      qty: sVal,
+                                      originSheet: sheetName,
+                                      boxNo: boxNoVal,
+                                      boxCount: boxCountVal
+                                  });
+                                  foundSizes = true;
+                              }
+                          }
+                          
+                          if (!foundSizes && (totalQty > 0 || boxNoVal)) {
+                              clientExtractedData.push({ 
+                                  style: currentName, 
+                                  name: currentName, 
+                                  color: color, 
+                                  size: "FREE", 
+                                  qty: totalQty,
+                                  originSheet: sheetName,
+                                  boxNo: boxNoVal,
+                                  boxCount: boxCountVal
+                              });
+                          }
+                      } else {
+                          // 수직 레이아웃 (사이즈가 세로로 나열된 형태)
+                          const sizeStr = header.sizeStartCol !== -1 ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE";
+                          // 수직 레이아웃일 때는 포장수량(총수량)을 수량으로 사용
+                          clientExtractedData.push({ 
+                              style: currentName, 
+                              name: currentName, 
+                              color: color, 
+                              size: sizeStr, 
+                              qty: totalQty,
+                              originSheet: sheetName,
+                              boxNo: boxNoVal,
+                              boxCount: boxCountVal
+                          });
+                      }
+                  }
+              }
+          });
       });
 
-      if (clientExtractedData.length === 0) throw new Error("데이터를 찾을 수 없습니다.");
-      const res = await fetch('/api/china/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: clientExtractedData, fileName: file.name }) });
-      const data = await res.json();
-      if (data.success) {
-          setResults(data.items);
-          const groups = Array.from(new Set(data.items.map((r: any) => (r.originSheet || '').includes('롤라루') ? '그로잉업' : '오즈키즈')));
-          setActiveTab(groups.includes('오즈키즈') ? '오즈키즈' : (groups[0] || ''));
-          setVerification({ originalTotal: data.originalTotal, matchedTotal: data.matchedTotal, fileName: data.fileName });
+      if (clientExtractedData.length === 0) {
+          throw new Error("엑셀 파일의 OZ/OH 탭에서 유효한 매칭 데이터를 찾지 못했습니다.");
       }
-    } catch (e: any) { alert(e.message || '처리 오류'); } finally { setLoading(false); }
+
+      const res = await fetch('/api/china/convert', { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: clientExtractedData, fileName: file.name })
+      });
+      
+      let data;
+      const text = await res.text();
+      try {
+          data = JSON.parse(text);
+      } catch (e) {
+          throw new Error(`서버 응답 오류 (Status: ${res.status}). 데이터가 너무 방대하거나 서버가 응답하지 않습니다.`);
+      }
+      
+      if (data.success) {
+          // 전체 리스트의 원본 순서를 유지하기 위해 정렬 로직 제거
+          setResults(data.items);
+          
+          const groups = Array.from(new Set(data.items.map((r: any) => {
+              const s = r.originSheet || '';
+              return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
+          })));
+          const defaultTab = groups.includes('오즈키즈') ? '오즈키즈' : (groups[0] || '');
+          setActiveTab(defaultTab);
+          
+          setVerification({
+              originalTotal: data.originalTotal,
+              matchedTotal: data.matchedTotal,
+              fileName: data.fileName
+          });
+
+          // 스마트 로직: 미매칭 상품이 없고 수량이 완벽히 일치하면 자동 다운로드
+          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매칭' || item.matchedCode === '코드누락');
+          const isQuantityMatched = data.originalTotal === data.matchedTotal;
+
+          if (!hasUnmatched && isQuantityMatched) {
+              await generateAndDownload(data.items, data.fileName);
+          }
+      } else {
+          alert(`작업 실패: ${data.message}`);
+      }
+    } catch (e: any) { 
+      console.error(e);
+      alert(e.message || '처리 중 오류가 발생했습니다.'); 
+    } finally { setLoading(false); }
   };
 
-  const getSizeScore = (s: string) => {
-    const v = s.toUpperCase();
-    if (v.includes('XS')) return -2; if (v.includes('S')) return -1;
-    if (v.includes('FREE') || v.includes('F')) return 0;
-    if (v.includes('M')) return 500; if (v.includes('L')) return 600;
-    const num = parseInt(v.replace(/[^0-9]/g, ''));
+  const getSizeScore = (sizeStr: string) => {
+    const s = sizeStr.toUpperCase();
+    if (s.includes('XS')) return -2;
+    if (s.includes('S')) return -1;
+    if (s.includes('FREE') || s.includes('F')) return 0;
+    if (s.includes('M')) return 500;
+    if (s.includes('L')) return 600;
+    if (s.includes('XL')) return 700;
+    const num = parseInt(s.replace(/[^0-9]/g, ''));
     return isNaN(num) ? 999 : num;
   };
 
   const handleSearch = async (val: string) => {
     setSearchTerm(val);
-    if (val.length < 2) { setSearchResults([]); return; }
+    if (val.length < 2) {
+      setSearchResults([]);
+      return;
+    }
     setSearchLoading(true);
     try {
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
       const data = await res.json();
       if (data.success) {
         let items = data.items;
+        
+        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
         const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length > 0) {
           items = items.filter((it: any) => {
             const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
-            return tokens.every(token => combined.includes(token.replace(/\s/g, '')));
+            // 모든 토큰이 포함되어야 함
+            return tokens.every(token => {
+              const t = token.replace(/\s/g, '');
+              // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음), 
+              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
+              if (/^[0-9]{3}$/.test(t)) {
+                const opt = (it.option || "").toUpperCase();
+                return opt.includes(t);
+              }
+              return combined.includes(t);
+            });
           });
         }
-        setSearchResults(items.sort((a: any, b: any) => getSizeScore(a.option || "") - getSizeScore(b.option || "")));
+
+        const sorted = items.sort((a: any, b: any) => {
+          return getSizeScore(a.option || "") - getSizeScore(b.option || "");
+        });
+        setSearchResults(sorted);
       }
-    } finally { setSearchLoading(false); }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSearchLoading(false);
+    }
   };
 
   const selectProduct = async (selectedItem: any) => {
     if (editingIndex === null || !results) return;
+    
     setSearchLoading(true);
     try {
+      // 1. 선택된 상품의 상품명으로 모든 옵션 데이터를 다시 조회 (사이즈/색상 전체 확보)
+      // 검색 필터링에 의해 누락된 다른 사이즈들을 찾기 위해 상품명으로 전체 재조회합니다.
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(selectedItem.matchedName)}`);
       const data = await res.json();
       const allOptions = data.success ? data.items : [selectedItem];
+
       const normalize = (s: string) => (s || "").replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
-      const targetStyle = normalize(results[editingIndex].style);
+      const targetStyleNormalized = normalize(results[editingIndex].style);
       const newResults = [...results];
+
+      // 2. 같은 스타일(REF)을 공유하는 모든 행을 스마트하게 연쇄 교정
       newResults.forEach((resItem, idx) => {
-        if (normalize(resItem.style) === targetStyle) {
+        const currentStyleNormalized = normalize(resItem.style);
+        
+        if (currentStyleNormalized === targetStyleNormalized) {
+          if (idx === editingIndex) {
+            // 사용자가 직접 클릭한 행은 선택한 상품으로 즉시 업데이트
+            newResults[idx] = {
+              ...resItem,
+              matchedCode: selectedItem.productCode,
+              matchedName: selectedItem.matchedName
+            };
+          } else {
+            // 같은 그룹 내 다른 사이즈/색상 행들도 지능적으로 매칭
             const resSize = normalize(resItem.size);
-            const match = allOptions.find((opt: any) => normalize(opt.option).includes(resSize)) || selectedItem;
-            newResults[idx] = { ...resItem, matchedCode: match.productCode, matchedName: match.matchedName };
+            const resColor = normalize(resItem.color);
+            
+            // 우선순위 1: 색상과 사이즈가 모두 일치하는 옵션 찾기
+            let match = allOptions.find((opt: any) => {
+              const optNorm = normalize(opt.option);
+              const sizeMatch = optNorm.includes(resSize);
+              const colorMatch = resColor === "" || optNorm.includes(resColor);
+              return sizeMatch && colorMatch;
+            });
+            
+            // 우선순위 2: 색상이 안 맞으면 사이즈만이라도 일치하는 옵션 찾기
+            if (!match) {
+              match = allOptions.find((opt: any) => normalize(opt.option).includes(resSize));
+            }
+
+            if (match) {
+              newResults[idx] = {
+                ...resItem,
+                matchedCode: match.productCode,
+                matchedName: match.matchedName
+              };
+            }
+          }
         }
       });
-      setResults(newResults); setIsModalOpen(false);
-      fetch('/api/china/learn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ originalStyle: results[editingIndex].style, matchedName: selectedItem.matchedName, productCode: selectedItem.productCode, color: results[editingIndex].color, size: results[editingIndex].size }) }).then(() => alert(`AI 학습 완료`));
-    } finally { setSearchLoading(false); }
+
+      // 3. 정렬 상태 유지하며 결과 반영
+      const sortedResults = [...newResults].sort((a: any, b: any) => {
+        if (a.style !== b.style) return a.style.localeCompare(b.style);
+        if (a.color !== b.color) return a.color.localeCompare(b.color);
+        return getSizeScore(a.size) - getSizeScore(b.size);
+      });
+
+      setResults(sortedResults);
+      setIsModalOpen(false);
+      setEditingIndex(null);
+      setSearchTerm('');
+      setSearchResults([]);
+
+      // 4. AI 학습: 수동 매칭 결과를 DB에 저장하여 다음에 자동으로 잡도록 함
+      // (UI 반응성을 위해 비동기로 호출하고 결과 대기는 하지 않음)
+      fetch('/api/china/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalStyle: results[editingIndex].style,
+          matchedName: selectedItem.matchedName,
+          productCode: selectedItem.productCode,
+          color: results[editingIndex].color,
+          size: results[editingIndex].size
+        })
+      }).then(() => {
+          alert(`AI 학습 완료: [${results[editingIndex].style}]의 매칭 정보를 저장했습니다.`);
+      }).catch(err => console.error("Learning failed:", err));
+    } catch (e) {
+      console.error("Group selection error:", e);
+      // 에러 발생 시 최소한 선택한 항목 하나라도 반영 (Fallback)
+      const fallbackResults = [...results];
+      fallbackResults[editingIndex] = {
+        ...fallbackResults[editingIndex],
+        matchedCode: selectedItem.productCode,
+        matchedName: selectedItem.matchedName
+      };
+      setResults(fallbackResults);
+      setIsModalOpen(false);
+    } finally {
+      setSearchLoading(false);
+    }
   };
 
   const handlePrint = () => {
     if (!results) return;
-    const currentItems = results.filter((r: any) => ((r.originSheet || '').includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab);
-    if (currentItems.length === 0) { alert("데이터가 없습니다."); return; }
+
+    const currentItems = results.filter((r: any) => {
+        const s = r.originSheet || '';
+        return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+    });
+
+    if (currentItems.length === 0) {
+        alert("출력할 데이터가 없습니다.");
+        return;
+    }
+
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase();
-        const style = (item.style || "").toUpperCase();
-        if (shoeKeywords.some(k => name.includes(k.toUpperCase()) || style.includes(k.toUpperCase()))) return '신발';
+        const original = (item.style || "").toUpperCase();
+        if (shoeKeywords.some(k => name.includes(k.toUpperCase()) || original.includes(k.toUpperCase()))) return '신발';
         return '의류';
     };
+
     const boxMap = new Map<string, any>();
-    currentItems.forEach(item => {
-        const bNo = String(item.boxNo || "").trim();
+    currentItems.forEach((item: any) => {
+        const bNo = (item.boxNo || "").trim();
         if (!bNo) return;
+
+        const parts = bNo.split(/[-~.]/).filter(p => p !== "").map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
+        const start = parts[0] || 0;
+        const end = parts[parts.length - 1] || start;
+        const count = (end >= start) ? (end - start + 1) : 1;
+        const category = getCategory(item);
+
         if (!boxMap.has(bNo)) {
-            const parts = bNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
-            const start = parts[0] || 0;
-            const end = parts[parts.length - 1] || start;
-            boxMap.set(bNo, { boxNo: bNo, start, end, count: (end >= start ? end - start + 1 : 1), category: getCategory(item), items: [item] });
-        } else { boxMap.get(bNo).items.push(item); }
+            boxMap.set(bNo, { boxNo: bNo, start, end, count, category, items: [item] });
+        } else {
+            boxMap.get(bNo).items.push(item);
+        }
     });
-    const createPallets = (boxes: any[], capacity: number, categoryLabel: string) => {
-        const pallets: any[] = [];
-        let currentPalletItems: any[] = [];
+
+    const allBoxes = Array.from(boxMap.values()).sort((a, b) => a.start - b.start);
+    const shoeBoxes = allBoxes.filter(b => b.category === '신발');
+    const clothingBoxes = allBoxes.filter(b => b.category === '의류');
+
+    const pallets: any[] = [];
+    
+    const createPalletsInternal = (boxes: any[], capacity: number, categoryLabel: string) => {
+        let currentPalletBoxes: any[] = [];
         let currentCount = 0;
-        const pushPallet = () => {
-            if (currentPalletItems.length === 0) return;
-            const first = currentPalletItems[0];
-            const last = currentPalletItems[currentPalletItems.length - 1];
-            pallets.push({ no: pallets.length + 1, category: categoryLabel, range: first.start === last.end ? `${first.start}` : `${first.start} ~ ${last.end}`, totalBox: currentCount, products: Array.from(new Set(currentPalletItems.flatMap(b => b.items.map((it: any) => (it.matchedName || "").split('-')[1] || it.matchedName)))).slice(0, 5).join(', ') });
-            currentPalletItems = []; currentCount = 0;
-        };
+        let palletNum = 1;
+
         boxes.forEach(box => {
-            let remaining = box.count;
-            let currentStart = box.start;
-            while (remaining > 0) {
-                const space = capacity - currentCount;
-                if (space <= 0) { pushPallet(); continue; }
-                const take = Math.min(remaining, space);
-                const currentEnd = currentStart + take - 1;
-                currentPalletItems.push({ ...box, start: currentStart, end: currentEnd, count: take });
-                currentCount += take; currentStart += take; remaining -= take;
-                if (currentCount === capacity) pushPallet();
+            if (currentCount + box.count > capacity) {
+                if (currentPalletBoxes.length > 0) {
+                    const pStart = currentPalletBoxes[0].start;
+                    const pEnd = currentPalletBoxes[currentPalletBoxes.length - 1].end;
+                    pallets.push({
+                        no: palletNum,
+                        category: categoryLabel,
+                        range: `${pStart} ~ ${pEnd}`,
+                        products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.items).map(i => {
+                            const n = i.matchedName || i.style;
+                            return n.split('-')[1] || n;
+                        }))).slice(0, 5).join(', '),
+                        totalBox: currentCount
+                    });
+                    palletNum++;
+                }
+                currentPalletBoxes = [box];
+                currentCount = box.count;
+            } else {
+                currentPalletBoxes.push(box);
+                currentCount += box.count;
             }
         });
-        pushPallet(); return pallets;
+
+        if (currentPalletBoxes.length > 0) {
+            const pStart = currentPalletBoxes[0].start;
+            const pEnd = currentPalletBoxes[currentPalletBoxes.length - 1].end;
+            pallets.push({
+                no: palletNum,
+                category: categoryLabel,
+                range: `${pStart} ~ ${pEnd}`,
+                products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.items).map(i => {
+                    const n = i.matchedName || i.style;
+                    return n.split('-')[1] || n;
+                }))).slice(0, 5).join(', '),
+                totalBox: currentCount
+            });
+        }
     };
-    const allBoxes = Array.from(boxMap.values()).sort((a, b) => a.start - b.start);
-    const shoePallets = createPallets(allBoxes.filter(b => b.category === '신발'), 16, '신발');
-    const clothingPallets = createPallets(allBoxes.filter(b => b.category === '의류'), 14, '의류');
-    const allPallets = [...shoePallets, ...clothingPallets];
+
+    createPalletsInternal(shoeBoxes, 16, "신발");
+    createPalletsInternal(clothingBoxes, 14, "의류");
+
+    const allPallets = pallets;
+
+    if (allPallets.length === 0) {
+        alert("박스 정보가 부족하여 파레트를 생성할 수 없습니다.");
+        return;
+    }
+
+    const cleanFileName = (verification?.fileName || file?.name || '중국패킹').replace(/\.[^/.]+$/, "");
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const cleanFileName = (verification?.fileName || file?.name || '중국패킹').replace(/\.[^/.]+$/, "");
-    printWindow.document.write(`
+
+    const html = `
       <html>
         <head>
           <title>파레트 라벨 출력</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
-            body { font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; }
-            .card { width: 210mm; height: 148mm; border: 8px solid black; margin: 10mm auto; padding: 40px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; }
+            body { font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; background: white; }
+            .pallet-card {
+              width: 210mm;
+              height: 148mm;
+              border: 8px solid black;
+              margin: 10mm auto;
+              padding: 40px;
+              box-sizing: border-box;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              page-break-after: always;
+              position: relative;
+            }
             .header { font-size: 28px; font-weight: 900; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-            .range { font-size: 140px; font-weight: 900; text-align: center; flex: 1; display: flex; align-items: center; justify-content: center; }
-            .footer { font-size: 22px; font-weight: 700; text-align: center; border-top: 5px solid black; padding-top: 20px; }
-            @media print { .card { margin: 0; width: 100%; height: 98vh; } }
+            .range { 
+                font-size: 140px; 
+                font-weight: 900; 
+                text-align: center; 
+                flex: 1; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center;
+                letter-spacing: -2px;
+            }
+            .footer { 
+                font-size: 22px; 
+                font-weight: 700; 
+                text-align: center; 
+                border-top: 5px solid black;
+                padding-top: 20px;
+                line-height: 1.4;
+            }
+            @media print {
+              body { margin: 0; }
+              .pallet-card { margin: 0; border-width: 8px; width: 100%; height: 98vh; }
+              .no-print { display: none; }
+            }
           </style>
         </head>
         <body>
-          ${allPallets.map(p => `<div class="card"><div class="header">${cleanFileName}_${p.category} ${p.no}파레트</div><div class="range">${p.range}</div><div class="footer">${p.products}<br/><strong>(${p.totalBox} BOX)</strong></div></div>`).join('')}
-          <script>window.onload = () => { setTimeout(() => window.print(), 500); };</script>
+          ${allPallets.map(p => `
+            <div class="pallet-card">
+              <div class="header">${cleanFileName}_${p.category} ${p.no}파레트</div>
+              <div class="range">${p.range}</div>
+              <div class="footer">
+                ${p.products}<br/>
+                <strong>(${p.totalBox} BOX)</strong>
+              </div>
+            </div>
+          `).join('')}
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+              }, 500);
+            };
+          </script>
         </body>
       </html>
-    `);
+    `;
+
+    printWindow.document.write(html);
     printWindow.document.close();
   };
 
@@ -368,16 +778,21 @@ export default function ChinaPacking() {
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
       <header className="mb-12">
         <div className="flex items-center gap-3 mb-4">
-          <div className="px-3 py-1 rounded-full bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest border border-red-100">CATEGORY 2</div>
+          <div className="px-3 py-1 rounded-full bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest border border-red-100">
+            CATEGORY 2
+          </div>
           <ChevronRight className="w-4 h-4 text-slate-300" />
-          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><TrendingUp className="w-3 h-3 text-red-600" /> AI China Sync</div>
+          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <TrendingUp className="w-3 h-3 text-red-600" /> AI China Sync
+          </div>
         </div>
         <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
           CHINA <span className="text-red-600">PACKING</span>
-          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1400</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1320</span>
         </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           중국 제작 지시서를 AI가 실시간으로 교정하고 수량 정합성 검증을 마친 무결성 엑셀 파일을 생성합니다.
+           중국 제작 지시서를 AI가 실시간으로 교정하고 <br />
+           <span className="text-red-600 font-black">수량 정합성 검증</span>을 마친 무결성 엑셀 파일을 생성합니다.
         </p>
       </header>
 
@@ -385,124 +800,468 @@ export default function ChinaPacking() {
         <div className="lg:col-span-4">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50 transition-all hover:shadow-2xl">
             <div 
-                onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
                 onClick={() => fileInputRef.current?.click()} 
                 className={`relative h-72 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center transition-all duration-300 cursor-pointer ${
-                    isDragging ? 'border-red-500 bg-red-50/30' : file ? 'border-red-100 bg-red-50/10' : 'border-slate-100 bg-slate-50 hover:bg-red-50/50'
+                    isDragging ? 'border-red-500 bg-red-50/30' : 
+                    file ? 'border-red-100 bg-red-50/10' : 'border-slate-100 bg-slate-50 hover:bg-red-50/50'
                 }`}
             >
               <input type="file" className="hidden" ref={fileInputRef} onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} accept=".xlsx,.xls" />
               <div className="flex flex-col items-center text-center p-6">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-all duration-500 ${file ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-white border border-slate-100 text-slate-300'}`}>
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-all duration-500 ${
+                  file ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-white border border-slate-100 text-slate-300'
+                }`}>
                   <FileSpreadsheet className="w-8 h-8" />
                 </div>
                 <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'Excel Loaded' : 'Upload China List'}</h4>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 italic truncate max-w-full">{file ? file.name : 'OZ / OH Packing Excel'}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 italic truncate max-w-full">
+                    {file ? file.name : 'OZ / OH Packing Excel'}
+                </p>
               </div>
             </div>
-            <button onClick={handleProcess} disabled={!file || loading} className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />} Sync China Data
+
+            <button 
+                onClick={handleProcess} 
+                disabled={!file || loading} 
+                className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+              Sync China Data
             </button>
+
             {results && (
               <>
-                <motion.button initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={() => generateAndDownload(results.filter((r: any) => ((r.originSheet || '').includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab), verification?.fileName || '중국패킹')} className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase">
-                  <Download className="w-5 h-5" /> Download Final Excel
+                <motion.button 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => generateAndDownload(results.filter((r: any) => {
+                        const s = r.originSheet || '';
+                        return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                    }), verification?.fileName || '중국패킹')} 
+                    className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                >
+                  <Download className="w-5 h-5" />
+                  Download Final Excel
                 </motion.button>
-                <motion.button initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} onClick={handlePrint} className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase">
-                  <RefreshCcw className="w-5 h-5" /> Print Pallet Labels
+                
+                <motion.button 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={handlePrint}
+                    className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                >
+                  <RefreshCcw className="w-5 h-5" />
+                  Print Pallet Labels
                 </motion.button>
               </>
             )}
           </div>
         </div>
 
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
              {verification && (
                <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-red-50/50 rounded-[2rem] border border-red-100 flex items-center justify-between shadow-sm">
                   <div className="flex items-center gap-6">
-                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-red-50"><ArrowRightLeft className="w-6 h-6 text-red-600" /></div>
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-red-50">
+                        <ArrowRightLeft className="w-6 h-6 text-red-600" />
+                    </div>
                     <div>
                         <h4 className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">China Integrity Summary</h4>
                         <div className="flex items-center gap-4">
                             <div className="text-center">
                                 <p className="text-[9px] font-bold text-red-300 uppercase mb-0.5">Original Qty</p>
-                                <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
+                                <p className="text-xl font-black text-slate-900">
+                                  {results ? results.filter((item: any) => {
+                                      const s = item.originSheet || '';
+                                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                                  }).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal}
+                                </p>
                             </div>
                             <div className="w-px h-8 bg-red-200" />
                             <div className="text-center">
-                                <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">Matched Qty</p>
-                                <p className="text-xl font-black text-red-600">{verification.matchedTotal}</p>
+                                <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">DB Matched</p>
+                                <p className="text-xl font-black text-red-600">
+                                  {results ? results.filter((item: any) => {
+                                      const s = item.originSheet || '';
+                                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                                  }).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal}
+                                </p>
                             </div>
                         </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="flex items-center gap-2 justify-end mb-1 text-green-600"><CheckCircle2 className="w-4 h-4" /><span className="text-xs font-black uppercase italic tracking-tighter">Verified</span></div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Factory-to-Cloud Stream</p>
+                    {(() => {
+                        const activeOriginal = results ? results.filter((item: any) => {
+                            const s = item.originSheet || '';
+                            return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                        }).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal;
+                        const activeMatched = results ? results.filter((item: any) => {
+                            const s = item.originSheet || '';
+                            return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                        }).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal;
+                        const isVerified = activeOriginal === activeMatched && activeOriginal > 0;
+                        return (
+                            <>
+                                <div className={`flex items-center gap-2 justify-end mb-1 ${isVerified ? 'text-green-600' : 'text-slate-500'}`}>
+                                    {isVerified ? (
+                                        <>
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            <span className="text-xs font-black uppercase italic tracking-tighter">Verified</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <AlertCircle className="w-4 h-4" />
+                                            <span className="text-xs font-black uppercase italic tracking-tighter">Variance Check</span>
+                                        </>
+                                    )}
+                                </div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Factory-to-Cloud Stream</p>
+                            </>
+                        );
+                    })()}
                   </div>
                </motion.div>
              )}
-             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><TrendingUp className="w-4 h-4 text-red-600" /> China Production Stream</h3>
+
+             <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-red-600" />
+                    China Production Stream
+                  </h3>
+                  <button 
+                    onClick={() => setIsSettingOpen(true)}
+                    className="p-1.5 bg-slate-50 text-slate-400 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all border border-slate-100 group"
+                    title="분류 키워드 설정"
+                  >
+                    <Settings className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-500" />
+                  </button>
+                </div>
                 {results && (
                   <div className="flex gap-2 bg-slate-50 p-1 rounded-xl">
-                    {Array.from(new Set(results.map((r: any) => (r.originSheet || '').includes('롤라루') ? '그로잉업' : '오즈키즈'))).map((tab: any) => (
-                      <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === tab ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{tab}</button>
+                    {Array.from(new Set(results.map((r: any) => {
+                        const s = r.originSheet || '';
+                        return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
+                    }))).map((tab: any) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === tab ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        {tab}
+                      </button>
                     ))}
                   </div>
                 )}
              </div>
+
              <div className="flex-1 overflow-auto custom-scrollbar">
-                {loading ? (
-                    <div className="p-20 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto mb-4 text-red-600" /><p className="text-xs font-black text-red-400 uppercase tracking-widest">Analyzing Factory Orders...</p></div>
-                ) : results ? (
-                    <table className="w-full text-left">
-                      <thead className="sticky top-0 bg-white z-10 border-b border-slate-100">
+                <AnimatePresence mode="wait">
+                  {loading ? (
+                    <div className="h-full flex flex-col items-center justify-center p-20 text-center">
+                      <div className="w-16 h-16 border-[4px] border-red-100 border-t-red-600 rounded-full animate-spin mb-6" />
+                      <p className="text-xs font-black text-red-400 uppercase tracking-widest animate-pulse italic tracking-tighter">Analyzing Factory Orders...</p>
+                    </div>
+                  ) : results ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 bg-white/100 backdrop-blur-md z-10 border-b border-slate-100">
                         <tr>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Master SKU</th>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Detail Matrix</th>
-                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Qty / Box</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Qty Score</th>
+                          <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Valid</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {results.filter((item: any) => ((item.originSheet || '').includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab).map((item: any, idx: number) => (
-                          <tr key={idx} onClick={() => { setEditingIndex(results.indexOf(item)); setIsModalOpen(true); }} className="group hover:bg-red-50/50 transition-colors cursor-pointer">
-                            <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600">{item.matchedCode}</td>
-                            <td className="p-6">
-                                <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase mb-1 block w-fit">REF: {item.style}</span>
-                                <span className="text-sm font-bold text-slate-800 block">{item.matchedName}</span>
-                                <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">{item.size} / {item.color}</span>
-                            </td>
-                            <td className="p-4 text-center">
-                                <div className="flex flex-col items-center">
-                                    <span className="text-sm font-black text-slate-900">{item.qty}</span>
-                                    <span className="text-[9px] text-slate-400 font-bold">Box: {item.boxNo}</span>
-                                </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {results.map((item: any, originalIndex: number) => ({ item, originalIndex }))
+                          .filter(({ item }: any) => {
+                            const s = item.originSheet || '';
+                            const group = s.includes('롤라루') ? '그로잉업' : '오즈키즈';
+                            return group === activeTab;
+                        }).map(({ item, originalIndex }: any, idx: number, displayedResults: any[]) => {
+                          const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].item.style;
+                          return (
+                            <React.Fragment key={originalIndex}>
+                              {isNewGroup && (
+                                <tr className="bg-slate-50/30">
+                                  <td colSpan={4} className="h-2 border-t border-slate-100"></td>
+                                </tr>
+                              )}
+                              <tr 
+                                onClick={() => {
+                                    setEditingIndex(originalIndex);
+                                    setSearchTerm('');
+                                    setIsModalOpen(true);
+                                    setSearchResults([]);
+                                }}
+                                className={`group hover:bg-red-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
+                              >
+                                <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 transition-colors flex items-center gap-2">
+                                   {item.matchedCode}
+                                   <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </td>
+                                <td className="p-6">
+                                   <div className="mb-1.5 flex items-center gap-2">
+                                       <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
+                                   </div>
+                                   <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-900 transition-colors">{item.matchedName}</span>
+                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">{item.size} / {item.color}</span>
+                                </td>
+                                <td className="p-4 text-center">
+                                   <div className="flex items-center justify-center gap-3">
+                                       <span className="text-sm font-black text-slate-900">{item.qty}</span>
+                                   </div>
+                                </td>
+                                <td className="p-4 text-center">
+                                   <div className="flex items-center justify-center gap-2">
+                                       <div className="bg-red-50 text-red-600 p-1.5 rounded-lg shadow-sm">
+                                           <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                       </div>
+                                       <button 
+                                           onClick={(e) => {
+                                               e.stopPropagation();
+                                               const newResults = results.filter((_, i) => i !== originalIndex);
+                                               setResults(newResults);
+                                           }}
+                                           className="bg-white text-slate-300 hover:bg-red-100 hover:text-red-600 p-1.5 rounded-lg shadow-sm transition-all border border-slate-100 hover:border-red-200"
+                                           title="목록에서 제외"
+                                       >
+                                           <X className="w-3.5 h-3.5" strokeWidth={3} />
+                                       </button>
+                                   </div>
+                                </td>
+                              </tr>
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
-                ) : (
-                    <div className="p-20 text-center opacity-20"><Table className="w-16 h-16 mx-auto mb-4" /><p className="text-[10px] font-black uppercase tracking-widest">Awaiting Factory Feed</p></div>
-                )}
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center p-20 opacity-20 text-slate-400 grayscale scale-[0.7] transition-all">
+                      <Table className="w-16 h-16 mb-4" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Factory Feed</p>
+                    </div>
+                  )}
+                </AnimatePresence>
              </div>
           </div>
         </div>
       </div>
 
-      <AnimatePresence>
+       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="bg-white w-full max-w-2xl rounded-[3rem] overflow-hidden shadow-2xl">
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div><h3 className="text-xl font-black text-slate-900 tracking-tight">Manual SKU Override</h3><p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Precision Correction Engine</p></div>
-                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all shadow-sm"><X className="w-5 h-5" /></button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl shadow-black/20 overflow-hidden border border-slate-100"
+            >
+              <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 italic uppercase">Code Matrix Override</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    정확한 상품을 검색하여 매칭 데이터를 교정하세요.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-3 hover:bg-white rounded-2xl transition-colors shadow-sm"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
               </div>
+
               <div className="p-8">
-                <div className="relative mb-8"><Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => handleSearch(e.target.value)} placeholder="검색어 입력..." className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-red-500 transition-all font-bold text-slate-700" /></div>
-                <div className="max-h-[400px] overflow-auto custom-scrollbar pr-2">{searchLoading ? <div className="p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-red-600" /></div> : searchResults.length > 0 ? <div className="grid grid-cols-1 gap-3">{searchResults.map((it, i) => <button key={i} onClick={() => selectProduct(it)} className="w-full p-5 rounded-2xl border border-slate-100 hover:border-red-200 hover:bg-red-50/50 transition-all flex items-center justify-between group text-left"><div><span className="text-[10px] font-black text-red-400 block mb-1">{it.productCode}</span><span className="text-sm font-bold text-slate-800 block">{it.matchedName}</span><span className="text-[10px] font-bold text-slate-400 uppercase italic">{it.option}</span></div><ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-red-500 transition-all" /></button>)}</div> : <div className="p-10 text-center text-slate-300 font-bold italic text-sm">No exact matches found</div>}</div>
+                <div className="relative mb-6">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500" />
+                  <input 
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="상품명 또는 상품코드를 입력하세요..."
+                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-red-500/20 transition-all outline-none"
+                    autoFocus
+                  />
+                  {searchLoading && (
+                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-red-500" />
+                  )}
+                </div>
+
+                <div className="max-h-[400px] overflow-auto custom-scrollbar pr-2">
+                  {searchResults.length > 0 ? (
+                    <div className="space-y-3">
+                      {searchResults.map((item, idx) => (
+                        <button 
+                          key={idx}
+                          onClick={() => selectProduct(item)}
+                          className="w-full text-left p-5 rounded-2xl border border-slate-100 hover:border-red-200 hover:bg-red-50/30 transition-all group relative overflow-hidden"
+                        >
+                          <div className="flex items-center justify-between relative z-10">
+                            <div>
+                              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1 italic">
+                                {item.productCode}
+                              </p>
+                              <h4 className="text-sm font-bold text-slate-800 group-hover:text-red-700 transition-colors">
+                                {item.matchedName}
+                              </h4>
+                              <p className="text-[11px] text-slate-400 font-bold mt-1">
+                                {item.option}
+                              </p>
+                            </div>
+                            <RefreshCcw className="w-5 h-5 text-slate-200 group-hover:text-red-400 group-hover:rotate-180 transition-all duration-500" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : searchTerm.length > 1 ? (
+                    <div className="text-center py-20">
+                      <Search className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                      <p className="text-sm font-bold text-slate-300">검색 결과가 없습니다.</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-20">
+                      <AlertCircle className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                      <p className="text-sm font-bold text-slate-300">검색어를 입력하여 인벤토리를 확인하세요.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
+                   China Integration System v2026.05.13.1320
+                 </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Keyword Settings Modal */}
+      <AnimatePresence>
+        {isSettingOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsSettingOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-4">
+                  <div className="bg-red-50 p-3 rounded-2xl">
+                    <Settings className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">분류 키워드 설정</h3>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Classification Keywords</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsSettingOpen(false)} className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto space-y-10 custom-scrollbar">
+                {/* Shoe Keywords Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Flag className="w-4 h-4 text-pink-500" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">신발 (Shoes) 키워드</h4>
+                  </div>
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      {shoeKeywords.map((kw, i) => (
+                        <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm hover:border-pink-300 transition-colors">
+                          {kw}
+                          <button onClick={() => saveKeywords('shoe', shoeKeywords.filter(k => k !== kw))} className="hover:text-red-500">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" value={newShoeKey} onChange={(e) => setNewShoeKey(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter' && newShoeKey.trim()) { saveKeywords('shoe', [...shoeKeywords, newShoeKey.trim()]); setNewShoeKey(''); }}}
+                        placeholder="새 신발 키워드 입력..."
+                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => { if(newShoeKey.trim()) { saveKeywords('shoe', [...shoeKeywords, newShoeKey.trim()]); setNewShoeKey(''); }}}
+                      className="px-6 py-4 bg-pink-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-pink-600 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      추가
+                    </button>
+                  </div>
+                </div>
+
+                {/* Clothing Keywords Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Flag className="w-4 h-4 text-green-500" />
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">의류 (Clothing) 키워드</h4>
+                  </div>
+                  <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      {clothingKeywords.map((kw, i) => (
+                        <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm hover:border-green-300 transition-colors">
+                          {kw}
+                          <button onClick={() => saveKeywords('clothing', clothingKeywords.filter(k => k !== kw))} className="hover:text-red-500">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input 
+                        type="text" value={newClothingKey} onChange={(e) => setNewClothingKey(e.target.value)}
+                        onKeyDown={(e) => { if(e.key === 'Enter' && newClothingKey.trim()) { saveKeywords('clothing', [...clothingKeywords, newClothingKey.trim()]); setNewClothingKey(''); }}}
+                        placeholder="새 의류 키워드 입력..."
+                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => { if(newClothingKey.trim()) { saveKeywords('clothing', [...clothingKeywords, newClothingKey.trim()]); setNewClothingKey(''); }}}
+                      className="px-6 py-4 bg-green-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-green-600 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      추가
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button 
+                  onClick={() => setIsSettingOpen(false)}
+                  className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg"
+                >
+                  설정 완료
+                </button>
               </div>
             </motion.div>
           </div>
