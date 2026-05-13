@@ -140,108 +140,90 @@ export default function ChinaPacking() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
         if (jsonData.length === 0) return;
 
-        const headerRowInfos: any[] = [];
+        const headerRows: any[] = [];
         jsonData.forEach((row, idx) => {
           if (!Array.isArray(row)) return;
           const rowStr = row.join('|');
           if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-            let globalBoxCol = -1;
+            let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, boxCol = -1, ctCol = -1;
             row.forEach((cell, cellIdx) => {
                 const c = String(cell || "").trim().toUpperCase();
-                if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) {
-                    if (globalBoxCol === -1) globalBoxCol = cellIdx;
-                }
+                if (c === '품명') nameCol = cellIdx;
+                else if (c === '칼라' || c === '색상') colorCol = cellIdx;
+                else if (c === '합계' || c === '수량') totalCol = cellIdx;
+                else if (c === '사이즈') sizeStartCol = cellIdx;
+                else if (c.includes('NO') || c.includes('박스') || c.includes('번호')) boxCol = cellIdx;
+                else if (c === 'C/T' || c.includes('박스수')) ctCol = cellIdx;
             });
-
-            const nameCols: number[] = [];
-            row.forEach((cell, cellIdx) => {
-                if (String(cell || "").trim() === '품명') nameCols.push(cellIdx);
-            });
-
-            const tables = nameCols.map((nCol, tIdx) => {
-                let colorCol = -1, totalCol = -1, sizeStartCol = -1, ctCol = -1;
-                const endLimit = nameCols[tIdx + 1] || row.length;
-                for (let i = nCol + 1; i < endLimit; i++) {
-                    const c = String(row[i] || "").trim().toUpperCase();
-                    if (c === '칼라' || c === '색상') colorCol = i;
-                    else if (c.includes('합계') || c.includes('수량')) totalCol = i;
-                    else if (c === 'C/T' || c.includes('박스수')) ctCol = i;
-                    else if (c === '사이즈') sizeStartCol = i;
+            let isMatrix = false;
+            const nextRow = jsonData[idx + 1] || [];
+            for (let i = colorCol + 1; i < row.length; i++) {
+                if (i === totalCol) continue;
+                if (String(row[i]).match(/[0-9]/) || String(nextRow[i]).match(/[0-9]/)) {
+                    sizeStartCol = i; isMatrix = true; break;
                 }
-                
-                let isMatrix = false;
-                const nextRow = jsonData[idx + 1] || [];
-                for (let i = (sizeStartCol !== -1 ? sizeStartCol : colorCol + 1); i < endLimit; i++) {
-                    if (i === totalCol) continue;
-                    if (String(row[i]).match(/[0-9]/) || String(nextRow[i]).match(/[0-9]/)) {
-                        sizeStartCol = i; isMatrix = true; break;
-                    }
-                }
-                return { nCol, colorCol, totalCol, sizeStartCol, ctCol, isMatrix };
-            });
-
-            headerRowInfos.push({ rowIdx: idx, globalBoxCol, tables });
+            }
+            if (nameCol !== -1) headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, boxCol, ctCol, isMatrix });
           }
         });
 
-        headerRowInfos.forEach((headerInfo, hIdx) => {
-          let lastBoxNo = "";
+        headerRows.forEach((header, hIdx) => {
+          let lastName = "", lastColor = "", lastBoxNo = "";
           let currentGlobalBoxEnd = 0;
-          const nextHeaderRowIdx = headerRowInfos[hIdx + 1] ? headerRowInfos[hIdx + 1].rowIdx : jsonData.length;
-          
-          for (let rIdx = headerInfo.rowIdx + 1; rIdx < nextHeaderRowIdx; rIdx++) {
+          const nextHeaderRowIdx = headerRows[hIdx + 1] ? headerRows[hIdx + 1].rowIdx : jsonData.length;
+          const nextRow = jsonData[header.rowIdx + 1] || [];
+          const isTwoStep = !String(jsonData[header.rowIdx][header.sizeStartCol]).match(/[0-9]/) && String(nextRow[header.sizeStartCol]).match(/[0-9]/);
+          const sizeHeaderIdx = isTwoStep ? header.rowIdx + 1 : header.rowIdx;
+          const dataStartIdx = sizeHeaderIdx + 1;
+
+          for (let rIdx = dataStartIdx; rIdx < nextHeaderRowIdx; rIdx++) {
             const row = jsonData[rIdx];
             if (!row || row.length === 0) {
               if (!jsonData.slice(rIdx + 1, rIdx + 500).some(nr => nr && nr.length > 0)) continue;
               continue;
             }
+            let name = String(row[header.nameCol] || "").trim();
+            if (name.includes('합계') || name.includes('TOTAL') || name.includes('소계')) continue;
+            if (!name && lastName) name = lastName; else if (name) lastName = name;
+            if (!name) continue;
 
-            let boxNo = headerInfo.globalBoxCol !== -1 ? String(row[headerInfo.globalBoxCol] || "").trim() : "";
-            // Sub-tables might have their own Box Count (CT)
-            // We use the FIRST table's CT if global boxNo is missing
-            const firstTableCt = headerInfo.tables[0].ctCol !== -1 ? (parseInt(String(row[headerInfo.tables[0].ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+            let color = String(row[header.colorCol] || "").trim();
+            if (!color && lastColor) color = lastColor; else if (color) lastColor = color;
+
+            let boxNo = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+            let boxCount = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
 
             if (boxNo && boxNo.match(/[0-9]/)) {
                 const parts = boxNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
                 const end = parts[parts.length - 1] || parts[0] || 0;
                 if (end > 0) currentGlobalBoxEnd = end;
                 lastBoxNo = boxNo;
-            } else if (firstTableCt > 0) {
+            } else if (boxCount > 0) {
                 const start = currentGlobalBoxEnd + 1;
-                const end = currentGlobalBoxEnd + firstTableCt;
+                const end = currentGlobalBoxEnd + boxCount;
                 boxNo = start === end ? `${start}` : `${start}-${end}`;
                 currentGlobalBoxEnd = end;
                 lastBoxNo = boxNo;
-            } else {
-                boxNo = lastBoxNo;
-            }
+            } else { boxNo = lastBoxNo; }
 
-            headerInfo.tables.forEach((table: any) => {
-                let name = String(row[table.nCol] || "").trim();
-                if (!name || name.includes('합계') || name.includes('TOTAL') || name.includes('소계')) return;
-                
-                let color = String(row[table.colorCol] || "").trim();
-                let boxCount = table.ctCol !== -1 ? (parseInt(String(row[table.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
-
-                if (table.isMatrix) {
-                    for (let sIdx = table.sizeStartCol; sIdx < (table.totalCol !== -1 ? table.totalCol : row.length); sIdx++) {
-                        const val = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                        if (val > 0) {
-                            let size = String(jsonData[headerInfo.rowIdx][sIdx] || jsonData[headerInfo.rowIdx+1][sIdx] || "").trim();
-                            if (!size || size.includes('사이즈')) size = "FREE";
-                            clientExtractedData.push({ style: name, name, color, size, qty: val, originSheet: sheetName, boxNo, boxCount });
-                        }
+            if (header.isMatrix) {
+                for (let sIdx = header.sizeStartCol; sIdx < (header.totalCol !== -1 ? header.totalCol : row.length); sIdx++) {
+                    const val = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                    if (val > 0) {
+                        let size = String(jsonData[sizeHeaderIdx][sIdx] || "").trim();
+                        if (!size || size.includes('사이즈')) size = "FREE";
+                        clientExtractedData.push({ style: name, name, color, size, qty: val, originSheet: sheetName, boxNo, boxCount });
                     }
-                } else if (table.totalCol !== -1 || boxCount > 0) {
-                    const qty = parseInt(String(row[table.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
-                    if (qty > 0) clientExtractedData.push({ style: name, name, color, size: "FREE", qty, originSheet: sheetName, boxNo, boxCount });
                 }
-            });
+            } else if (header.totalCol !== -1) {
+                const qty = parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
+                if (qty > 0) clientExtractedData.push({ style: name, name, color, size: "FREE", qty, originSheet: sheetName, boxNo, boxCount });
+            }
           }
         });
       });
 
-      if (clientExtractedData.length === 0) throw new Error("유효한 데이터를 찾지 못했습니다. 헤더 형식을 확인해 주세요.");
+      if (clientExtractedData.length === 0) throw new Error("데이터를 찾을 수 없습니다.");
       const res = await fetch('/api/china/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: clientExtractedData, fileName: file.name }) });
       const data = await res.json();
       if (data.success) {
@@ -250,7 +232,7 @@ export default function ChinaPacking() {
           setActiveTab(groups.includes('오즈키즈') ? '오즈키즈' : (groups[0] || ''));
           setVerification({ originalTotal: data.originalTotal, matchedTotal: data.matchedTotal, fileName: data.fileName });
       }
-    } catch (e: any) { console.error(e); alert(e.message || '처리 오류'); } finally { setLoading(false); }
+    } catch (e: any) { alert(e.message || '처리 오류'); } finally { setLoading(false); }
   };
 
   const getSizeScore = (s: string) => {
@@ -309,14 +291,12 @@ export default function ChinaPacking() {
     if (!results) return;
     const currentItems = results.filter((r: any) => ((r.originSheet || '').includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab);
     if (currentItems.length === 0) { alert("데이터가 없습니다."); return; }
-
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase();
         const style = (item.style || "").toUpperCase();
         if (shoeKeywords.some(k => name.includes(k.toUpperCase()) || style.includes(k.toUpperCase()))) return '신발';
         return '의류';
     };
-
     const boxMap = new Map<string, any>();
     currentItems.forEach(item => {
         const bNo = String(item.boxNo || "").trim();
@@ -328,7 +308,6 @@ export default function ChinaPacking() {
             boxMap.set(bNo, { boxNo: bNo, start, end, count: (end >= start ? end - start + 1 : 1), category: getCategory(item), items: [item] });
         } else { boxMap.get(bNo).items.push(item); }
     });
-
     const createPallets = (boxes: any[], capacity: number, categoryLabel: string) => {
         const pallets: any[] = [];
         let currentPalletItems: any[] = [];
@@ -355,12 +334,10 @@ export default function ChinaPacking() {
         });
         pushPallet(); return pallets;
     };
-
     const allBoxes = Array.from(boxMap.values()).sort((a, b) => a.start - b.start);
     const shoePallets = createPallets(allBoxes.filter(b => b.category === '신발'), 16, '신발');
     const clothingPallets = createPallets(allBoxes.filter(b => b.category === '의류'), 14, '의류');
     const allPallets = [...shoePallets, ...clothingPallets];
-
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const cleanFileName = (verification?.fileName || file?.name || '중국패킹').replace(/\.[^/.]+$/, "");
@@ -397,7 +374,7 @@ export default function ChinaPacking() {
         </div>
         <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
           CHINA <span className="text-red-600">PACKING</span>
-          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1360</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1400</span>
         </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            중국 제작 지시서를 AI가 실시간으로 교정하고 수량 정합성 검증을 마친 무결성 엑셀 파일을 생성합니다.
@@ -441,6 +418,31 @@ export default function ChinaPacking() {
 
         <div className="lg:col-span-8">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
+             {verification && (
+               <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-red-50/50 rounded-[2rem] border border-red-100 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-6">
+                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-red-50"><ArrowRightLeft className="w-6 h-6 text-red-600" /></div>
+                    <div>
+                        <h4 className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">China Integrity Summary</h4>
+                        <div className="flex items-center gap-4">
+                            <div className="text-center">
+                                <p className="text-[9px] font-bold text-red-300 uppercase mb-0.5">Original Qty</p>
+                                <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
+                            </div>
+                            <div className="w-px h-8 bg-red-200" />
+                            <div className="text-center">
+                                <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">Matched Qty</p>
+                                <p className="text-xl font-black text-red-600">{verification.matchedTotal}</p>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-2 justify-end mb-1 text-green-600"><CheckCircle2 className="w-4 h-4" /><span className="text-xs font-black uppercase italic tracking-tighter">Verified</span></div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Factory-to-Cloud Stream</p>
+                  </div>
+               </motion.div>
+             )}
              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><TrendingUp className="w-4 h-4 text-red-600" /> China Production Stream</h3>
                 {results && (
@@ -495,87 +497,12 @@ export default function ChinaPacking() {
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="bg-white w-full max-w-2xl rounded-[3rem] overflow-hidden shadow-2xl">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Manual SKU Override</h3>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Precision Correction Engine</p>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all shadow-sm">
-                  <X className="w-5 h-5" />
-                </button>
+                <div><h3 className="text-xl font-black text-slate-900 tracking-tight">Manual SKU Override</h3><p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Precision Correction Engine</p></div>
+                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all shadow-sm"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-8">
-                <div className="relative mb-8">
-                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="text" value={searchTerm} onChange={(e) => handleSearch(e.target.value)} placeholder="검색어 입력 (상품명, 상품코드...)" className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-red-500 transition-all font-bold text-slate-700" />
-                </div>
-                <div className="max-h-[400px] overflow-auto custom-scrollbar pr-2">
-                  {searchLoading ? (
-                    <div className="p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-red-600" /></div>
-                  ) : searchResults.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3">
-                      {searchResults.map((it, i) => (
-                        <button key={i} onClick={() => selectProduct(it)} className="w-full p-5 rounded-2xl border border-slate-100 hover:border-red-200 hover:bg-red-50/50 transition-all flex items-center justify-between group text-left">
-                          <div>
-                            <span className="text-[10px] font-black text-red-400 block mb-1">{it.productCode}</span>
-                            <span className="text-sm font-bold text-slate-800 block">{it.matchedName}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase italic">{it.option}</span>
-                          </div>
-                          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-red-500 transition-all" />
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-10 text-center text-slate-300 font-bold italic text-sm">No exact matches found</div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isSettingOpen && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="bg-white w-full max-w-4xl rounded-[3rem] overflow-hidden shadow-2xl">
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Classification Engine Settings</h3>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Smart Category Routing</p>
-                </div>
-                <button onClick={() => setIsSettingOpen(false)} className="w-10 h-10 bg-white border border-slate-200 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all shadow-sm">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-8 grid grid-cols-2 gap-10">
-                <div>
-                  <h4 className="text-xs font-black text-red-600 uppercase tracking-widest mb-4 flex items-center gap-2 italic">Shoe Keywords (16 Box Cap)</h4>
-                  <div className="flex gap-2 mb-4">
-                    <input type="text" value={newShoeKey} onChange={(e) => setNewShoeKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (saveKeywords('shoe', [...shoeKeywords, newShoeKey]), setNewShoeKey(''))} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-red-500 text-sm font-bold" placeholder="신규 키워드..." />
-                    <button onClick={() => { if(newShoeKey) { saveKeywords('shoe', [...shoeKeywords, newShoeKey]); setNewShoeKey(''); } }} className="bg-slate-900 text-white p-3 rounded-xl hover:bg-black transition-all shadow-lg"><Plus className="w-5 h-5" /></button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 max-h-48 overflow-auto custom-scrollbar p-2 bg-slate-50/50 rounded-2xl border border-slate-100">
-                    {shoeKeywords.map((k, i) => (
-                      <span key={i} className="px-3 py-1.5 bg-white text-slate-700 text-[10px] font-black rounded-lg border border-slate-200 flex items-center gap-2 group hover:border-red-200 hover:text-red-600 transition-all cursor-default">
-                        {k} <X onClick={() => saveKeywords('shoe', shoeKeywords.filter((_, idx) => idx !== i))} className="w-3 h-3 cursor-pointer opacity-30 group-hover:opacity-100" />
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest mb-4 flex items-center gap-2 italic">Clothing Keywords (14 Box Cap)</h4>
-                  <div className="flex gap-2 mb-4">
-                    <input type="text" value={newClothingKey} onChange={(e) => setNewClothingKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (saveKeywords('clothing', [...clothingKeywords, newClothingKey]), setNewClothingKey(''))} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-slate-500 text-sm font-bold" placeholder="신규 키워드..." />
-                    <button onClick={() => { if(newClothingKey) { saveKeywords('clothing', [...clothingKeywords, newClothingKey]); setNewClothingKey(''); } }} className="bg-slate-900 text-white p-3 rounded-xl hover:bg-black transition-all shadow-lg"><Plus className="w-5 h-5" /></button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 max-h-48 overflow-auto custom-scrollbar p-2 bg-slate-50/50 rounded-2xl border border-slate-100">
-                    {clothingKeywords.map((k, i) => (
-                      <span key={i} className="px-3 py-1.5 bg-white text-slate-700 text-[10px] font-black rounded-lg border border-slate-200 flex items-center gap-2 group hover:border-slate-400 hover:text-slate-900 transition-all cursor-default">
-                        {k} <X onClick={() => saveKeywords('clothing', clothingKeywords.filter((_, idx) => idx !== i))} className="w-3 h-3 cursor-pointer opacity-30 group-hover:opacity-100" />
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                <div className="relative mb-8"><Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" /><input type="text" value={searchTerm} onChange={(e) => handleSearch(e.target.value)} placeholder="검색어 입력..." className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-red-500 transition-all font-bold text-slate-700" /></div>
+                <div className="max-h-[400px] overflow-auto custom-scrollbar pr-2">{searchLoading ? <div className="p-10 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-red-600" /></div> : searchResults.length > 0 ? <div className="grid grid-cols-1 gap-3">{searchResults.map((it, i) => <button key={i} onClick={() => selectProduct(it)} className="w-full p-5 rounded-2xl border border-slate-100 hover:border-red-200 hover:bg-red-50/50 transition-all flex items-center justify-between group text-left"><div><span className="text-[10px] font-black text-red-400 block mb-1">{it.productCode}</span><span className="text-sm font-bold text-slate-800 block">{it.matchedName}</span><span className="text-[10px] font-bold text-slate-400 uppercase italic">{it.option}</span></div><ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-red-500 transition-all" /></button>)}</div> : <div className="p-10 text-center text-slate-300 font-bold italic text-sm">No exact matches found</div>}</div>
               </div>
             </motion.div>
           </div>
