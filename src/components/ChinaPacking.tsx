@@ -291,7 +291,18 @@ export default function ChinaPacking() {
                       else continue;
                   }
 
-                  // 병합된 명칭 핸들링
+                  let nameOriginal = String(row[header.nameCol] || "").trim();
+                  let boxNoOriginal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
+                  let colorOriginal = String(row[header.colorCol] || "").trim();
+
+                  // 합계 행 감지 강화: 명칭, 박스번호, 색상이 모두 없는데 수량만 있는 경우
+                  if (!nameOriginal && !boxNoOriginal && !colorOriginal) {
+                      const hasTotalQty = header.totalCol !== -1 && parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) > 0;
+                      const hasTotalCT = header.ctCol !== -1 && parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) > 0;
+                      if (hasTotalQty || hasTotalCT) continue; // 이것은 합계 행입니다.
+                  }
+
+                  let currentName = nameOriginal;
                   if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
@@ -412,12 +423,8 @@ export default function ChinaPacking() {
           // 전체 리스트의 원본 순서를 유지하기 위해 정렬 로직 제거
           setResults(data.items);
           
-          const groups = Array.from(new Set(data.items.map((r: any) => {
-              const s = r.originSheet || '';
-              return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
-          })));
-          const defaultTab = groups.includes('오즈키즈') ? '오즈키즈' : (groups[0] || '');
-          setActiveTab(defaultTab);
+          const groups = Array.from(new Set(data.items.map((r: any) => r.originSheet || '기본')));
+          setActiveTab(groups[0] || '');
           
           setVerification({
               originalTotal: data.originalTotal,
@@ -836,10 +843,7 @@ export default function ChinaPacking() {
                 <motion.button 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    onClick={() => generateAndDownload(results.filter((r: any) => {
-                        const s = r.originSheet || '';
-                        return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
-                    }), verification?.fileName || '중국패킹')} 
+                    onClick={() => generateAndDownload(results.filter((r: any) => (r.originSheet || '기본') === activeTab), verification?.fileName || '중국패킹')} 
                     className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
                 >
                   <Download className="w-5 h-5" />
@@ -876,7 +880,7 @@ export default function ChinaPacking() {
                                 <p className="text-xl font-black text-slate-900">
                                   {results ? results.filter((item: any) => {
                                       const s = item.originSheet || '';
-                                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                                      return (item.originSheet || '기본') === activeTab;
                                   }).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal}
                                 </p>
                             </div>
@@ -886,7 +890,7 @@ export default function ChinaPacking() {
                                 <p className="text-xl font-black text-red-600">
                                   {results ? results.filter((item: any) => {
                                       const s = item.originSheet || '';
-                                      return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
+                                      return (item.originSheet || '기본') === activeTab;
                                   }).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal}
                                 </p>
                             </div>
@@ -942,15 +946,12 @@ export default function ChinaPacking() {
                   </button>
                 </div>
                 {results && (
-                  <div className="flex gap-2 bg-slate-50 p-1 rounded-xl">
-                    {Array.from(new Set(results.map((r: any) => {
-                        const s = r.originSheet || '';
-                        return s.includes('롤라루') ? '그로잉업' : '오즈키즈';
-                    }))).map((tab: any) => (
+                  <div className="flex gap-2 bg-slate-50 p-1 rounded-xl overflow-x-auto max-w-[500px] custom-scrollbar">
+                    {Array.from(new Set(results.map((r: any) => r.originSheet || '기본'))).map((tab: any) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === tab ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${activeTab === tab ? 'bg-white text-red-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >
                         {tab}
                       </button>
@@ -979,9 +980,8 @@ export default function ChinaPacking() {
                       <tbody className="divide-y divide-slate-50">
                         {results.map((item: any, originalIndex: number) => ({ item, originalIndex }))
                           .filter(({ item }: any) => {
-                            const s = item.originSheet || '';
-                            const group = s.includes('롤라루') ? '그로잉업' : '오즈키즈';
-                            return group === activeTab;
+                             const isTotalRow = !item.matchedName && !item.size && !item.color && item.qty > 0;
+                             return (item.originSheet || '기본') === activeTab && !isTotalRow;
                         }).map(({ item, originalIndex }: any, idx: number, displayedResults: any[]) => {
                           const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].item.style;
                           return (
@@ -1141,7 +1141,7 @@ export default function ChinaPacking() {
               
               <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                   China Integration System v2026.05.13.1420
+                   China Integration System v2026.05.13.1430
                  </p>
               </div>
             </motion.div>
