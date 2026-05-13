@@ -834,9 +834,10 @@ export default function ChinaPacking() {
             <TrendingUp className="w-3 h-3 text-red-600" /> AI China Sync
           </div>
         </div>
-        <h2 className="text-4xl font-black text-slate-900 italic tracking-tighter uppercase mb-2">
-          China <span className="text-red-600">Packing</span>
-        </h2>
+        <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
+          CHINA <span className="text-red-600">PACKING</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1200</span>
+        </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            중국 제작 지시서를 AI가 실시간으로 교정하고 <br />
            <span className="text-red-600 font-black">수량 정합성 검증</span>을 마친 무결성 엑셀 파일을 생성합니다.
