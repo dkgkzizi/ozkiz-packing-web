@@ -26,6 +26,8 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
         let results: PackingResult[] = [];
         let sizes: Record<string, string> = {}; 
         let curS = "", curN = "", curC = "";
+        let lastBoxNo = "";
+        let lastBoxCount = 1;
         const styleRegex = /[A-Z]{1,2}[0-9]{2}[A-Z]{1,2}[0-9]{2,4}[A-Z]?/i;
 
         pdfData.Pages.forEach((page: any) => {
@@ -104,6 +106,16 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                             let q = parseInt(qc.text.trim());
                             if (q > 0 && q < 1000) {
                                 let bNo = boxNums.length >= 2 ? `${Math.min(...boxNums)}-${Math.max(...boxNums)}` : (boxNums[0] ? String(boxNums[0]) : "");
+                                let boxCount = boxes;
+                                
+                                if (!bNo && lastBoxNo) {
+                                    bNo = lastBoxNo;
+                                    boxCount = lastBoxCount;
+                                } else if (bNo) {
+                                    lastBoxNo = bNo;
+                                    lastBoxCount = boxCount;
+                                }
+
                                 results.push({ 
                                     style: curS, 
                                     name: curN || curS, 
@@ -111,7 +123,7 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                                     size: sizes[closestSx], 
                                     qty: q * boxes,
                                     boxNo: bNo,
-                                    boxCount: boxes
+                                    boxCount: boxCount
                                 });
                                 matchedSizes.add(closestSx);
                             }
@@ -131,7 +143,7 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
   const results = await getRawPackingResults(buffer);
   const aggregated: Record<string, any> = {};
   results.forEach(res => {
-      const key = `${res.style}|${res.name}|${res.color}|${res.size}`;
+      const key = `${res.style}|${res.name}|${res.color}|${res.size}|${res.boxNo}|${res.boxCount}`;
       if (aggregated[key]) aggregated[key].qty += res.qty;
       else aggregated[key] = { ...res };
   });
