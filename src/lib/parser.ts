@@ -13,6 +13,8 @@ export interface PackingResult {
   color: string;
   size: string;
   qty: number;
+  boxNo?: string;
+  boxCount?: number;
 }
 
 export async function getRawPackingResults(buffer: Buffer): Promise<PackingResult[]> {
@@ -101,7 +103,16 @@ export async function getRawPackingResults(buffer: Buffer): Promise<PackingResul
                         if (Math.abs(parseFloat(closestSx) - qc.x) < 0.8 && !matchedSizes.has(closestSx)) {
                             let q = parseInt(qc.text.trim());
                             if (q > 0 && q < 1000) {
-                                results.push({ style: curS, name: curN || curS, color: curC, size: sizes[closestSx], qty: q * boxes });
+                                let bNo = boxNums.length >= 2 ? `${Math.min(...boxNums)}-${Math.max(...boxNums)}` : (boxNums[0] ? String(boxNums[0]) : "");
+                                results.push({ 
+                                    style: curS, 
+                                    name: curN || curS, 
+                                    color: curC, 
+                                    size: sizes[closestSx], 
+                                    qty: q * boxes,
+                                    boxNo: bNo,
+                                    boxCount: boxes
+                                });
                                 matchedSizes.add(closestSx);
                             }
                         }
@@ -131,7 +142,9 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ExcelJS.Workbook> 
       { header: '상품명', key: 'name', width: 35 },
       { header: '색상', key: 'color', width: 15 },
       { header: '사이즈', key: 'size', width: 12 },
-      { header: '총수량', key: 'qty', width: 12 }
+      { header: '총수량', key: 'qty', width: 12 },
+      { header: '박스번호', key: 'boxNo', width: 15 },
+      { header: '박스수량', key: 'boxCount', width: 10 }
   ];
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };

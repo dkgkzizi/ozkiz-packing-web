@@ -60,9 +60,11 @@ export async function POST(req: NextRequest) {
             matchedName: row.getCell(2).text,
             color: row.getCell(3).text,
             size: row.getCell(4).text,
-            qty: q, // 최종 매칭 수량
-            pdfQty: q, // 원본 수량 (매칭 엔진에서 수량이 변조되지 않으므로 q와 동일하게 세팅하여 대조군 형성)
-            originalKey: row.getCell(7).text 
+            qty: q, 
+            pdfQty: q, 
+            boxNo: row.getCell(9).text, 
+            boxCount: parseInt(row.getCell(10).text) || 1, 
+            originalKey: row.getCell(8).text 
         });
     });
 
