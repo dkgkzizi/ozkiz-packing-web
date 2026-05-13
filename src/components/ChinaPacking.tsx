@@ -251,6 +251,8 @@ export default function ChinaPacking() {
           headerRows.forEach((header: any, hIdx: number) => {
               let lastName = "";
               let lastColor = "";
+              let lastBoxNo = "";
+              let lastBoxCount = 0;
               
               // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
               const headerRowData = jsonData[header.rowIdx];
@@ -311,7 +313,7 @@ export default function ChinaPacking() {
                   
                   let boxNoVal = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
                   // 병합된 패킹 번호 처리 (예: A열 "1", B열 "-", C열 "7")
-                  if (header.boxCol !== -1) {
+                  if (header.boxCol !== -1 && boxNoVal) {
                       const nextCell1 = String(row[header.boxCol + 1] || "").trim();
                       const nextCell2 = String(row[header.boxCol + 2] || "").trim();
                       if (nextCell1 === '-' || nextCell1 === '~') {
@@ -319,7 +321,20 @@ export default function ChinaPacking() {
                       }
                   }
                   
-                  const boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "1")) || 0) : 0;
+                  if (!boxNoVal && lastBoxNo) {
+                      boxNoVal = lastBoxNo;
+                  } else if (boxNoVal) {
+                      lastBoxNo = boxNoVal;
+                  }
+                  
+                  let boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+                  if (boxCountVal === 0 && lastBoxCount > 0 && !String(row[header.ctCol] || "").trim()) {
+                      boxCountVal = lastBoxCount;
+                  } else if (boxCountVal > 0) {
+                      lastBoxCount = boxCountVal;
+                  } else if (boxCountVal === 0 && !lastBoxCount) {
+                      boxCountVal = 1; // 기본값
+                  }
 
                   if (totalQty > 0 || boxNoVal) {
                       if (header.isMatrix) {
