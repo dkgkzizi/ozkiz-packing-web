@@ -286,8 +286,8 @@ export default function ChinaPacking() {
                   
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
                   if (!rowStr && !currentName) {
-                      // 데이터 누락을 방지하기 위해 빈 행이 나와도 훨씬 더 깊게 탐색 (5 -> 50)
-                      const hasMoreDataBelow = jsonData.slice(rIdx + 1, rIdx + 50).some(nr => nr && nr.join('').trim().length > 0);
+                      // 데이터 누락을 방지하기 위해 빈 행이 나와도 훨씬 더 깊게 탐색 (5 -> 500)
+                      const hasMoreDataBelow = jsonData.slice(rIdx + 1, rIdx + 500).some(nr => nr && nr.join('').trim().length > 0);
                       if (!hasMoreDataBelow) break;
                       else continue;
                   }
@@ -579,6 +579,8 @@ export default function ChinaPacking() {
           color: results[editingIndex].color,
           size: results[editingIndex].size
         })
+      }).then(() => {
+          alert(`AI 학습 완료: [${results[editingIndex].style}]의 매칭 정보를 저장했습니다.`);
       }).catch(err => console.error("Learning failed:", err));
     } catch (e) {
       console.error("Group selection error:", e);
@@ -836,7 +838,7 @@ export default function ChinaPacking() {
         </div>
         <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
           CHINA <span className="text-red-600">PACKING</span>
-          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1200</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1245</span>
         </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            중국 제작 지시서를 AI가 실시간으로 교정하고 <br />
