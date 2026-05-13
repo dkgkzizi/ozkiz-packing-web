@@ -1297,7 +1297,6 @@ export default function ChinaPacking() {
           </div>
         )}
       </AnimatePresence>
-      </AnimatePresence>
     </div>
   );
 }
