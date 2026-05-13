@@ -253,6 +253,7 @@ export default function ChinaPacking() {
               let lastColor = "";
               let lastBoxNo = "";
               let lastBoxCount = 0;
+              let currentGlobalBoxEnd = 0; // 박스 번호 자동 계산을 위한 끝 번호 추적
               
               // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
               const headerRowData = jsonData[header.rowIdx];
@@ -321,19 +322,25 @@ export default function ChinaPacking() {
                       }
                   }
                   
-                  if (!boxNoVal && lastBoxNo) {
-                      boxNoVal = lastBoxNo;
-                  } else if (boxNoVal) {
-                      lastBoxNo = boxNoVal;
-                  }
-                  
                   let boxCountVal = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
-                  if (boxCountVal === 0 && lastBoxCount > 0 && !String(row[header.ctCol] || "").trim()) {
-                      boxCountVal = lastBoxCount;
+
+                  // --- 박스 번호 자동 전파(Propagation) 로직 ---
+                  if (boxNoVal) {
+                      // 엑셀에 직접 번호가 있는 경우
+                      const parts = boxNoVal.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
+                      const end = parts[parts.length - 1] || parts[0] || 0;
+                      if (end > 0) currentGlobalBoxEnd = end;
+                      lastBoxNo = boxNoVal;
                   } else if (boxCountVal > 0) {
-                      lastBoxCount = boxCountVal;
-                  } else if (boxCountVal === 0 && !lastBoxCount) {
-                      boxCountVal = 1; // 기본값
+                      // 번호는 없지만 수량(CT)이 있는 경우 -> 이전 번호 다음부터 자동 생성
+                      const start = currentGlobalBoxEnd + 1;
+                      const end = currentGlobalBoxEnd + boxCountVal;
+                      boxNoVal = start === end ? `${start}` : `${start}-${end}`;
+                      currentGlobalBoxEnd = end;
+                      lastBoxNo = boxNoVal;
+                  } else {
+                      // 둘 다 없으면 이전 행 번호 유지 (병합된 셀)
+                      boxNoVal = lastBoxNo;
                   }
 
                   if (totalQty > 0 || boxNoVal) {
@@ -788,7 +795,7 @@ export default function ChinaPacking() {
         </div>
         <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
           CHINA <span className="text-red-600">PACKING</span>
-          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1320</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1345</span>
         </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            중국 제작 지시서를 AI가 실시간으로 교정하고 <br />
@@ -1013,8 +1020,9 @@ export default function ChinaPacking() {
                                    <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">{item.size} / {item.color}</span>
                                 </td>
                                 <td className="p-4 text-center">
-                                   <div className="flex items-center justify-center gap-3">
+                                   <div className="flex flex-col items-center justify-center">
                                        <span className="text-sm font-black text-slate-900">{item.qty}</span>
+                                       <span className="text-[9px] text-slate-400 font-bold">Box: {item.boxNo}</span>
                                    </div>
                                 </td>
                                 <td className="p-4 text-center">
