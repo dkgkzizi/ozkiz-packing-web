@@ -601,150 +601,100 @@ export default function ChinaPacking() {
   const handlePrint = () => {
     if (!results) return;
 
-    // 1. 현재 탭 데이터 필터링
     const currentItems = results.filter((r: any) => {
         const s = r.originSheet || '';
         return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
     });
 
     if (currentItems.length === 0) {
-        alert("현재 탭에 출력할 데이터가 없습니다.");
+        alert("출력할 데이터가 없습니다.");
         return;
     }
 
     const getCategory = (item: any) => {
-        const name = (item.matchedName || "").toUpperCase().trim();
-        const originalName = (item.style || "").toUpperCase().trim(); 
-        const sheetName = (item.originSheet || "").toUpperCase().trim();
-        
-        // 1. 신발 키워드 우선 체크 (신발이 의류로 오분류되는 것 방지)
-        if (shoeKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()) || sheetName.includes(key.toUpperCase()))) return '신발';
-        if (sheetName.includes('롤라루')) return '신발';
-        
-        // 2. 의류 키워드 체크
-        if (clothingKeywords.some(key => name.includes(key.toUpperCase()) || originalName.includes(key.toUpperCase()) || sheetName.includes(key.toUpperCase()))) return '의류';
-        
-        // 3. 기본값
-        if (sheetName.includes('의류') || sheetName.includes('CLOTHING')) return '의류';
-
-        return '의류'; 
+        const name = (item.matchedName || "").toUpperCase();
+        const original = (item.style || "").toUpperCase();
+        if (shoeKeywords.some(k => name.includes(k.toUpperCase()) || original.includes(k.toUpperCase()))) return '신발';
+        return '의류';
     };
 
-    // 2. 박스 번호(start 기준)로 정렬하여 순서 보장
-    const sortedItems = [...currentItems].sort((a, b) => {
-        const getStart = (val: string) => {
-            if (!val) return 999999;
-            const parts = val.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
-            return parts[0] || 999999;
-        };
-        return getStart(a.boxNo) - getStart(b.boxNo);
-    });
-
-    // 3. 박스 단위로 데이터 구조 재편 (혼합 박스 중복 카운팅 방지)
-    const boxMap = new Map<string, {
-        boxNo: string,
-        start: number,
-        end: number,
-        count: number,
-        items: any[],
-        category: string
-    }>();
-
-    sortedItems.forEach(item => {
-        const bNo = String(item.boxNo || "").trim();
+    const boxMap = new Map<string, any>();
+    currentItems.forEach((item: any) => {
+        const bNo = (item.boxNo || "").trim();
         if (!bNo) return;
 
-        const parts = bNo.split(/[-~.]/).filter(p => p !== "").map(p => parseInt(p.replace(/[^0-9]/g, '').trim()));
+        const parts = bNo.split(/[-~.]/).filter(p => p !== "").map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
         const start = parts[0] || 0;
         const end = parts[parts.length - 1] || start;
-        let count = parseInt(String(item.boxCount || "0")) || (end - start + 1);
-        if (count === 0 && start > 0) count = 1;
+        const count = (end >= start) ? (end - start + 1) : 1;
+        const category = getCategory(item);
 
         if (!boxMap.has(bNo)) {
-            boxMap.set(bNo, {
-                boxNo: bNo,
-                start,
-                end,
-                count,
-                items: [item],
-                category: getCategory(item)
-            });
+            boxMap.set(bNo, { boxNo: bNo, start, end, count, category, items: [item] });
         } else {
-            const entry = boxMap.get(bNo)!;
-            entry.items.push(item);
-            if (getCategory(item) === '신발') entry.category = '신발';
+            boxMap.get(bNo).items.push(item);
         }
     });
-
-    const createPallets = (boxes: any[], boxesPerPallet: number, label: string) => {
-        const pallets: any[] = [];
-        let currentPalletItems: any[] = [];
-        let currentPalletCount = 0;
-
-        const pushPallet = () => {
-            if (currentPalletItems.length === 0) return;
-            const first = currentPalletItems[0];
-            const last = currentPalletItems[currentPalletItems.length - 1];
-            
-            pallets.push({
-                no: pallets.length + 1,
-                range: first.start === last.end ? `${first.start}` : `${first.start} ~ ${last.end}`,
-                totalBox: currentPalletCount,
-                products: Array.from(new Set(currentPalletItems.flatMap(b => b.items.map((it: any) => {
-                    const name = it.matchedName || "";
-                    return name.split('-')[1] || name;
-                })))).filter(n => n).slice(0, 5).join(', '),
-                category: label
-            });
-            currentPalletItems = [];
-            currentPalletCount = 0;
-        };
-
-        boxes.forEach(box => {
-            let remainingBoxCount = box.count;
-            let currentStart = box.start;
-
-            while (remainingBoxCount > 0) {
-                const spaceLeft = boxesPerPallet - currentPalletCount;
-                if (spaceLeft <= 0) {
-                    pushPallet();
-                    continue;
-                }
-
-                const take = Math.min(remainingBoxCount, spaceLeft);
-                const currentEnd = currentStart + take - 1;
-
-                currentPalletItems.push({
-                    ...box,
-                    start: currentStart,
-                    end: currentEnd,
-                    count: take
-                });
-
-                currentPalletCount += take;
-                currentStart += take;
-                remainingBoxCount -= take;
-
-                if (currentPalletCount === boxesPerPallet) {
-                    pushPallet();
-                }
-            }
-        });
-
-        pushPallet();
-        return pallets;
-    };
 
     const allBoxes = Array.from(boxMap.values()).sort((a, b) => a.start - b.start);
     const shoeBoxes = allBoxes.filter(b => b.category === '신발');
     const clothingBoxes = allBoxes.filter(b => b.category === '의류');
 
-    const shoePallets = createPallets(shoeBoxes, 16, '신발');
-    const clothingPallets = createPallets(clothingBoxes, 14, '의류');
-    const allPallets = [...shoePallets, ...clothingPallets];
+    const pallets: any[] = [];
+    
+    const createPalletsInternal = (boxes: any[], capacity: number, categoryLabel: string) => {
+        let currentPalletBoxes: any[] = [];
+        let currentCount = 0;
+        let palletNum = 1;
+
+        boxes.forEach(box => {
+            if (currentCount + box.count > capacity) {
+                if (currentPalletBoxes.length > 0) {
+                    const pStart = currentPalletBoxes[0].start;
+                    const pEnd = currentPalletBoxes[currentPalletBoxes.length - 1].end;
+                    pallets.push({
+                        no: palletNum,
+                        category: categoryLabel,
+                        range: `${pStart} ~ ${pEnd}`,
+                        products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.items).map(i => {
+                            const n = i.matchedName || i.style;
+                            return n.split('-')[1] || n;
+                        }))).slice(0, 5).join(', '),
+                        totalBox: currentCount
+                    });
+                    palletNum++;
+                }
+                currentPalletBoxes = [box];
+                currentCount = box.count;
+            } else {
+                currentPalletBoxes.push(box);
+                currentCount += box.count;
+            }
+        });
+
+        if (currentPalletBoxes.length > 0) {
+            const pStart = currentPalletBoxes[0].start;
+            const pEnd = currentPalletBoxes[currentPalletBoxes.length - 1].end;
+            pallets.push({
+                no: palletNum,
+                category: categoryLabel,
+                range: `${pStart} ~ ${pEnd}`,
+                products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.items).map(i => {
+                    const n = i.matchedName || i.style;
+                    return n.split('-')[1] || n;
+                }))).slice(0, 5).join(', '),
+                totalBox: currentCount
+            });
+        }
+    };
+
+    createPalletsInternal(shoeBoxes, 16, "신발");
+    createPalletsInternal(clothingBoxes, 14, "의류");
+
+    const allPallets = pallets;
 
     if (allPallets.length === 0) {
-        alert("현재 분석된 박스 정보가 없습니다.");
+        alert("박스 정보가 부족하여 파레트를 생성할 수 없습니다.");
         return;
     }
 
@@ -838,7 +788,7 @@ export default function ChinaPacking() {
         </div>
         <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
           CHINA <span className="text-red-600">PACKING</span>
-          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1245</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1320</span>
         </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            중국 제작 지시서를 AI가 실시간으로 교정하고 <br />

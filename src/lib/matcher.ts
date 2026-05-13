@@ -135,9 +135,14 @@ const COLOR_MAP: Record<string, string[]> = {
             // 0. AI 학습 가중치
             if (learned) {
                 // 이름이 같으면 기본 가산점
-                if (row['상품명'] === learned.matched_name) score += 40;
-                // 코드까지 완전히 같으면 강력한 가산점
-                if (row['상품코드'] === learned.product_code) score += 60;
+                if (row['상품명'] === learned.matched_name) score += 50;
+                
+                // 스타일만 매칭된 경우(Fallback) 코드에 보너스를 주지 않음
+                // [색상 + 사이즈]까지 완벽히 일치하는 히스토리일 때만 코드에 강력한 보너스 부여
+                const isExactSkuHistory = (learned.color === record.color && learned.size === record.size);
+                if (row['상품코드'] === learned.product_code && isExactSkuHistory) {
+                    score += 100; // 절대적인 우선순위
+                }
             }
 
             // 1. 기본 매칭 (스타일/상품명 일치)
@@ -167,22 +172,22 @@ const COLOR_MAP: Record<string, string[]> = {
                 return;
             }
 
-            // 2. 사이즈 매칭
+            // 2. 사이즈 매칭 (가중치 강화)
             if (record.size) {
                 const nSize = normalizeStr(record.size);
                 if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
-                    score += 20;
+                    score += 40; // 20 -> 40
                 }
             }
 
-            // 3. 색상 매칭
+            // 3. 색상 매칭 (가중치 강화)
             if (record.color) {
                 const nColor = normalizeStr(record.color);
                 const upperColor = record.color.trim().toUpperCase();
                 let matchedColor = false;
                 
                 if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor))) {
-                    score += 15;
+                    score += 30; // 15 -> 30
                     matchedColor = true;
                 }
                 
