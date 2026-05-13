@@ -423,8 +423,14 @@ export default function ChinaPacking() {
           // 전체 리스트의 원본 순서를 유지하기 위해 정렬 로직 제거
           setResults(data.items);
           
-          const groups = Array.from(new Set(data.items.map((r: any) => r.originSheet || '기본')));
-          setActiveTab(groups[0] || '');
+          const getGroup = (sheetName: string) => {
+              const s = (sheetName || '').toUpperCase();
+              if (s.includes('롤라루')) return '그로잉업';
+              if (s.includes('OZ') || s.includes('OH') || s.includes('오즈')) return '오즈키즈';
+              return sheetName || '기본';
+          };
+          const groups = Array.from(new Set(data.items.map((r: any) => getGroup(r.originSheet))));
+          setActiveTab(groups.includes('오즈키즈') ? '오즈키즈' : (groups[0] || ''));
           
           setVerification({
               originalTotal: data.originalTotal,
@@ -843,7 +849,11 @@ export default function ChinaPacking() {
                 <motion.button 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    onClick={() => generateAndDownload(results.filter((r: any) => (r.originSheet || '기본') === activeTab), verification?.fileName || '중국패킹')} 
+                    onClick={() => generateAndDownload(results.filter((r: any) => {
+                        const s = (r.originSheet || '').toUpperCase();
+                        const group = s.includes('롤라루') ? '그로잉업' : (s.includes('OZ') || s.includes('OH') || s.includes('오즈')) ? '오즈키즈' : (r.originSheet || '기본');
+                        return group === activeTab;
+                    }), verification?.fileName || '중국패킹')} 
                     className="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-red-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
                 >
                   <Download className="w-5 h-5" />
@@ -889,8 +899,9 @@ export default function ChinaPacking() {
                                 <p className="text-[9px] font-bold text-red-400 uppercase mb-0.5">DB Matched</p>
                                 <p className="text-xl font-black text-red-600">
                                   {results ? results.filter((item: any) => {
-                                      const s = item.originSheet || '';
-                                      return (item.originSheet || '기본') === activeTab;
+                                      const s = (item.originSheet || '').toUpperCase();
+                                      const group = s.includes('롤라루') ? '그로잉업' : (s.includes('OZ') || s.includes('OH') || s.includes('오즈')) ? '오즈키즈' : (item.originSheet || '기본');
+                                      return group === activeTab;
                                   }).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal}
                                 </p>
                             </div>
@@ -947,7 +958,12 @@ export default function ChinaPacking() {
                 </div>
                 {results && (
                   <div className="flex gap-2 bg-slate-50 p-1 rounded-xl overflow-x-auto max-w-[500px] custom-scrollbar">
-                    {Array.from(new Set(results.map((r: any) => r.originSheet || '기본'))).map((tab: any) => (
+                    {Array.from(new Set(results.map((r: any) => {
+                        const s = (r.originSheet || '').toUpperCase();
+                        if (s.includes('롤라루')) return '그로잉업';
+                        if (s.includes('OZ') || s.includes('OH') || s.includes('오즈')) return '오즈키즈';
+                        return r.originSheet || '기본';
+                    }))).map((tab: any) => (
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -980,8 +996,10 @@ export default function ChinaPacking() {
                       <tbody className="divide-y divide-slate-50">
                         {results.map((item: any, originalIndex: number) => ({ item, originalIndex }))
                           .filter(({ item }: any) => {
+                             const s = (item.originSheet || '').toUpperCase();
+                             const group = s.includes('롤라루') ? '그로잉업' : (s.includes('OZ') || s.includes('OH') || s.includes('오즈')) ? '오즈키즈' : (item.originSheet || '기본');
                              const isTotalRow = !item.matchedName && !item.size && !item.color && item.qty > 0;
-                             return (item.originSheet || '기본') === activeTab && !isTotalRow;
+                             return group === activeTab && !isTotalRow;
                         }).map(({ item, originalIndex }: any, idx: number, displayedResults: any[]) => {
                           const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].item.style;
                           return (
@@ -1141,7 +1159,7 @@ export default function ChinaPacking() {
               
               <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                   China Integration System v2026.05.13.1430
+                   China Integration System v2026.05.13.1435
                  </p>
               </div>
             </motion.div>
