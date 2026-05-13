@@ -140,69 +140,75 @@ export default function ChinaPacking() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
         if (jsonData.length === 0) return;
 
-        const headerRows: any[] = [];
+        const headerRowInfos: any[] = [];
         jsonData.forEach((row, idx) => {
           if (!Array.isArray(row)) return;
           const rowStr = row.join('|');
           if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-            let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, boxCol = -1, ctCol = -1;
+            let globalBoxCol = -1;
             row.forEach((cell, cellIdx) => {
-              const c = String(cell || "").trim().toUpperCase();
-              if (c === '품명') nameCol = cellIdx;
-              else if (c === '칼라' || c === '색상') colorCol = cellIdx;
-              else if (c === '합계' || c === '수량') totalCol = cellIdx;
-              else if (c === '사이즈') sizeStartCol = cellIdx;
-              else if (c.includes('NO') || c.includes('박스') || c.includes('번호')) boxCol = cellIdx;
-              else if (c === 'C/T' || c.includes('박스수')) ctCol = cellIdx;
+                const c = String(cell || "").trim().toUpperCase();
+                if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) {
+                    if (globalBoxCol === -1) globalBoxCol = cellIdx;
+                }
             });
-            let isMatrix = false;
-            if (colorCol !== -1) {
+
+            const nameCols: number[] = [];
+            row.forEach((cell, cellIdx) => {
+                if (String(cell || "").trim() === '품명') nameCols.push(cellIdx);
+            });
+
+            const tables = nameCols.map((nCol, tIdx) => {
+                let colorCol = -1, totalCol = -1, sizeStartCol = -1, ctCol = -1;
+                const endLimit = nameCols[tIdx + 1] || row.length;
+                for (let i = nCol + 1; i < endLimit; i++) {
+                    const c = String(row[i] || "").trim().toUpperCase();
+                    if (c === '칼라' || c === '색상') colorCol = i;
+                    else if (c.includes('합계') || c.includes('수량')) totalCol = i;
+                    else if (c === 'C/T' || c.includes('박스수')) ctCol = i;
+                    else if (c === '사이즈') sizeStartCol = i;
+                }
+                
+                let isMatrix = false;
                 const nextRow = jsonData[idx + 1] || [];
-                for (let i = colorCol + 1; i < row.length; i++) {
+                for (let i = (sizeStartCol !== -1 ? sizeStartCol : colorCol + 1); i < endLimit; i++) {
                     if (i === totalCol) continue;
                     if (String(row[i]).match(/[0-9]/) || String(nextRow[i]).match(/[0-9]/)) {
                         sizeStartCol = i; isMatrix = true; break;
                     }
                 }
-            }
-            if (nameCol !== -1) headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, boxCol, ctCol, isMatrix });
+                return { nCol, colorCol, totalCol, sizeStartCol, ctCol, isMatrix };
+            });
+
+            headerRowInfos.push({ rowIdx: idx, globalBoxCol, tables });
           }
         });
 
-        headerRows.forEach((header, hIdx) => {
-          let lastName = "", lastColor = "", lastBoxNo = "";
+        headerRowInfos.forEach((headerInfo, hIdx) => {
+          let lastBoxNo = "";
           let currentGlobalBoxEnd = 0;
-          const nextHeaderRowIdx = headerRows[hIdx + 1] ? headerRows[hIdx + 1].rowIdx : jsonData.length;
-          const nextRow = jsonData[header.rowIdx + 1] || [];
-          const isTwoStep = !String(jsonData[header.rowIdx][header.sizeStartCol]).match(/[0-9]/) && String(nextRow[header.sizeStartCol]).match(/[0-9]/);
-          const sizeHeaderIdx = isTwoStep ? header.rowIdx + 1 : header.rowIdx;
-          const dataStartIdx = sizeHeaderIdx + 1;
-
-          for (let rIdx = dataStartIdx; rIdx < nextHeaderRowIdx; rIdx++) {
+          const nextHeaderRowIdx = headerRowInfos[hIdx + 1] ? headerRowInfos[hIdx + 1].rowIdx : jsonData.length;
+          
+          for (let rIdx = headerInfo.rowIdx + 1; rIdx < nextHeaderRowIdx; rIdx++) {
             const row = jsonData[rIdx];
             if (!row || row.length === 0) {
-              if (!jsonData.slice(rIdx + 1, rIdx + 500).some(nr => nr && nr.length > 0)) continue; // NO EARLY BREAK!
+              if (!jsonData.slice(rIdx + 1, rIdx + 500).some(nr => nr && nr.length > 0)) continue;
               continue;
             }
-            let name = String(row[header.nameCol] || "").trim();
-            if (name.includes('합계') || name.includes('TOTAL') || name.includes('소계')) continue;
-            if (!name && lastName) name = lastName; else if (name) lastName = name;
-            if (!name) continue;
 
-            let color = String(row[header.colorCol] || "").trim();
-            if (!color && lastColor) color = lastColor; else if (color) lastColor = color;
+            let boxNo = headerInfo.globalBoxCol !== -1 ? String(row[headerInfo.globalBoxCol] || "").trim() : "";
+            // Sub-tables might have their own Box Count (CT)
+            // We use the FIRST table's CT if global boxNo is missing
+            const firstTableCt = headerInfo.tables[0].ctCol !== -1 ? (parseInt(String(row[headerInfo.tables[0].ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
 
-            let boxNo = header.boxCol !== -1 ? String(row[header.boxCol] || "").trim() : "";
-            let boxCount = header.ctCol !== -1 ? (parseInt(String(row[header.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
-
-            if (boxNo) {
+            if (boxNo && boxNo.match(/[0-9]/)) {
                 const parts = boxNo.split(/[-~.]/).map(p => parseInt(p.replace(/[^0-9]/g, ''))).filter(n => !isNaN(n));
                 const end = parts[parts.length - 1] || parts[0] || 0;
                 if (end > 0) currentGlobalBoxEnd = end;
                 lastBoxNo = boxNo;
-            } else if (boxCount > 0) {
+            } else if (firstTableCt > 0) {
                 const start = currentGlobalBoxEnd + 1;
-                const end = currentGlobalBoxEnd + boxCount;
+                const end = currentGlobalBoxEnd + firstTableCt;
                 boxNo = start === end ? `${start}` : `${start}-${end}`;
                 currentGlobalBoxEnd = end;
                 lastBoxNo = boxNo;
@@ -210,24 +216,32 @@ export default function ChinaPacking() {
                 boxNo = lastBoxNo;
             }
 
-            if (header.isMatrix) {
-                for (let sIdx = header.sizeStartCol; sIdx < (header.totalCol !== -1 ? header.totalCol : row.length); sIdx++) {
-                    const val = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
-                    if (val > 0) {
-                        let size = String(jsonData[sizeHeaderIdx][sIdx] || "").trim();
-                        if (!size || size.includes('사이즈')) size = "FREE";
-                        clientExtractedData.push({ style: name, name: name, color, size, qty: val, originSheet: sheetName, boxNo, boxCount });
+            headerInfo.tables.forEach((table: any) => {
+                let name = String(row[table.nCol] || "").trim();
+                if (!name || name.includes('합계') || name.includes('TOTAL') || name.includes('소계')) return;
+                
+                let color = String(row[table.colorCol] || "").trim();
+                let boxCount = table.ctCol !== -1 ? (parseInt(String(row[table.ctCol] || "0").replace(/[^0-9]/g, '')) || 0) : 0;
+
+                if (table.isMatrix) {
+                    for (let sIdx = table.sizeStartCol; sIdx < (table.totalCol !== -1 ? table.totalCol : row.length); sIdx++) {
+                        const val = parseInt(String(row[sIdx] || "0").replace(/[^0-9]/g, ''));
+                        if (val > 0) {
+                            let size = String(jsonData[headerInfo.rowIdx][sIdx] || jsonData[headerInfo.rowIdx+1][sIdx] || "").trim();
+                            if (!size || size.includes('사이즈')) size = "FREE";
+                            clientExtractedData.push({ style: name, name, color, size, qty: val, originSheet: sheetName, boxNo, boxCount });
+                        }
                     }
+                } else if (table.totalCol !== -1 || boxCount > 0) {
+                    const qty = parseInt(String(row[table.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
+                    if (qty > 0) clientExtractedData.push({ style: name, name, color, size: "FREE", qty, originSheet: sheetName, boxNo, boxCount });
                 }
-            } else if (header.totalCol !== -1) {
-                const qty = parseInt(String(row[header.totalCol] || "0").replace(/[^0-9]/g, '')) || 0;
-                if (qty > 0) clientExtractedData.push({ style: name, name: name, color, size: "FREE", qty, originSheet: sheetName, boxNo, boxCount });
-            }
+            });
           }
         });
       });
 
-      if (clientExtractedData.length === 0) throw new Error("유효한 데이터를 찾지 못했습니다.");
+      if (clientExtractedData.length === 0) throw new Error("유효한 데이터를 찾지 못했습니다. 헤더 형식을 확인해 주세요.");
       const res = await fetch('/api/china/convert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: clientExtractedData, fileName: file.name }) });
       const data = await res.json();
       if (data.success) {
@@ -383,7 +397,7 @@ export default function ChinaPacking() {
         </div>
         <h1 className="text-4xl font-black tracking-tighter text-gray-900 mb-2">
           CHINA <span className="text-red-600">PACKING</span>
-          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1350</span>
+          <span className="text-[10px] font-normal text-gray-400 ml-2">v2026.05.13.1360</span>
         </h1>
         <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
            중국 제작 지시서를 AI가 실시간으로 교정하고 수량 정합성 검증을 마친 무결성 엑셀 파일을 생성합니다.
