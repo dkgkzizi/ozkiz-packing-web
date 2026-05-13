@@ -278,9 +278,8 @@ export default function ChinaPacking() {
                   let currentName = String(row[header.nameCol] || "").trim();
                   
                   // 섹션 종료 조건 대신 행 건너뛰기 로직으로 변경 (데이터 유실 방지)
-                  const leftColsStr = row.slice(0, header.nameCol + 2).join('').replace(/\s/g, '');
-                  if (leftColsStr.includes('합계') || leftColsStr.includes('TOTAL') || currentName === '합계' || leftColsStr.includes('소계')) {
-                      // 합계 행은 데이터로 수집하지 않지만, 루프를 멈추지는 않음
+                  const fullRowStr = row.join('|');
+                  if (fullRowStr.includes('합계') || fullRowStr.includes('TOTAL') || fullRowStr.includes('소계') || fullRowStr.includes('총계') || fullRowStr.includes('총수량')) {
                       continue; 
                   }
                   
@@ -1142,7 +1141,7 @@ export default function ChinaPacking() {
               
               <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                   China Integration System v2026.05.13.1320
+                   China Integration System v2026.05.13.1420
                  </p>
               </div>
             </motion.div>
