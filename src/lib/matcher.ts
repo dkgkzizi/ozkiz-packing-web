@@ -114,8 +114,12 @@ const COLOR_MAP: Record<string, string[]> = {
 };
 
     const finalResults = excelRecords.map(record => {
-        // 학습 데이터 존재 여부 확인
-        const learned = historyRows.find(h => h.original_style === record.styleNo);
+        // 학습 데이터 존재 여부 확인 (스타일 + 색상 + 사이즈 정확히 일치하는 기록 우선)
+        const learned = historyRows.find(h => 
+            h.original_style === record.styleNo && 
+            (h.color === record.color || (!h.color && !record.color)) &&
+            (h.size === record.size || (!h.size && !record.size))
+        ) || historyRows.find(h => h.original_style === record.styleNo); // Fallback to style-only match
         
         const nStyle = normalizeStr(record.styleNo);
         let bestMatch = null;
@@ -128,11 +132,12 @@ const COLOR_MAP: Record<string, string[]> = {
             const dbBarcode = normalizeStr(row['바코드']);
             const dbOption = normalizeStr(row['옵션'] || '');
 
-            // 0. AI 학습 가중치 (과거에 매칭했던 '상품명'을 공유하는 모든 SKU에 가산점 부여)
-            // 특정 코드 하나에만 몰표를 주는 대신, 해당 상품 그룹 전체를 후보군으로 끌어올리고
-            // 그 안에서 사이즈와 색상이 가장 잘 맞는 개별 코드가 선택되게 합니다.
-            if (learned && row['상품명'] === learned.matched_name) {
-                score += 50;
+            // 0. AI 학습 가중치
+            if (learned) {
+                // 이름이 같으면 기본 가산점
+                if (row['상품명'] === learned.matched_name) score += 40;
+                // 코드까지 완전히 같으면 강력한 가산점
+                if (row['상품코드'] === learned.product_code) score += 60;
             }
 
             // 1. 기본 매칭 (스타일/상품명 일치)

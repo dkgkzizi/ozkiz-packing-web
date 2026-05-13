@@ -575,7 +575,9 @@ export default function ChinaPacking() {
         body: JSON.stringify({
           originalStyle: results[editingIndex].style,
           matchedName: selectedItem.matchedName,
-          productCode: selectedItem.productCode
+          productCode: selectedItem.productCode,
+          color: results[editingIndex].color,
+          size: results[editingIndex].size
         })
       }).catch(err => console.error("Learning failed:", err));
     } catch (e) {
