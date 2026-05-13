@@ -129,8 +129,7 @@ export default function ChinaPacking() {
     // 시트별(UI 그룹별)로 그룹화
     const groups: { [key: string]: PackingItem[] } = {};
     items.forEach(item => {
-        const sheet = (item as any).originSheet || '기본';
-        const groupName = sheet.includes('롤라루') ? '그로잉업' : '오즈키즈';
+        const groupName = getChinaTabGroup((item as any).originSheet || '기본');
         if (!groups[groupName]) groups[groupName] = [];
         groups[groupName].push(item);
     });
@@ -884,7 +883,6 @@ export default function ChinaPacking() {
                                 <p className="text-[9px] font-bold text-red-300 uppercase mb-0.5">Original Qty</p>
                                 <p className="text-xl font-black text-slate-900">
                                   {results ? results.filter((item: any) => {
-                                      const s = item.originSheet || '';
                                       return getChinaTabGroup(item.originSheet) === activeTab;
                                   }).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal}
                                 </p>
@@ -1139,7 +1137,7 @@ export default function ChinaPacking() {
               
               <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                   China Integration System v2026.05.13.1440
+                   China Integration System v2026.05.13.1445
                  </p>
               </div>
             </motion.div>
