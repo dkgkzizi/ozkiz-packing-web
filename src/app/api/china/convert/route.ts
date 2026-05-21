@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const tempWb = new ExcelJS.Workbook();
     const tempWs = tempWb.addWorksheet('Temp');
     tempWs.addRow(['STYLE NO', 'NAME', 'COLOR', 'SIZE', 'QTY', 'SHEET', 'BOX NO', 'CT']);
-    rawResults.forEach(r => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '', r.boxNo || '', r.boxCount || '']));
+    rawResults.forEach((r: any) => tempWs.addRow([r.style, r.name, r.color, r.size, r.qty, r.originSheet || '', r.boxNo || '', r.boxCount || '']));
     const tempBuffer = await tempWb.xlsx.writeBuffer();
 
     // 3. 마스터 매칭 (Supabase 연동)

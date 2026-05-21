@@ -6,6 +6,107 @@ function normalizeStr(s: any) {
     return s.toString().replace(/[^0-9A-Z가-힣]/gi, '').toUpperCase();
 }
 
+const COLOR_MAP: Record<string, string[]> = {
+    'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
+    'WHITE': ['화이트', '아이보리', '백아이보리'],
+    'BLACK': ['블랙', '검정'],
+    'PINK': ['핑크', '분홍'],
+    'YELLOW': ['옐로우', '노랑'],
+    'MELANGE': ['멜란지', '회색', '그레이'],
+    'GRAY': ['그레이', '회색', '멜란지'],
+    'BEIGE': ['베이지'],
+    'BLUE': ['블루', '파랑'],
+    'NAVY': ['네이비', '남색'],
+    'RED': ['레드', '빨강'],
+    'GREEN': ['그린', '초록'],
+    'MINT': ['민트'],
+    'PURPLE': ['퍼플', '보라'],
+    'CHARCOAL': ['차콜', '먹색'],
+    'CORAL': ['코랄'],
+    'PEACH': ['피치'],
+    'BROWN': ['브라운', '갈색']
+};
+
+const STANDARD_COLORS = Array.from(new Set([
+    ...Object.keys(COLOR_MAP),
+    ...Object.values(COLOR_MAP).flat()
+]));
+
+function getLevenshteinDistance(a: string, b: string): number {
+    const matrix = Array.from({ length: a.length + 1 }, () =>
+        Array(b.length + 1).fill(0)
+    );
+
+    for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+    for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+            if (a[i - 1] === b[j - 1]) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,    // deletion
+                    matrix[i][j - 1] + 1,    // insertion
+                    matrix[i - 1][j - 1] + 1 // substitution
+                );
+            }
+        }
+    }
+    return matrix[a.length][b.length];
+}
+
+function normalizeColor(color: string): string {
+    if (!color) return "";
+    let trimmed = color.trim();
+    
+    if (STANDARD_COLORS.includes(trimmed)) {
+        return trimmed;
+    }
+
+    const typoMap: Record<string, string> = {
+        '옐러우': '옐로우',
+        '엘로우': '옐로우',
+        '옐라우': '옐로우',
+        '옐로': '옐로우',
+        '옐로루': '옐로우',
+        '옐로오': '옐로우',
+        '챠콜': '차콜',
+        '배이지': '베이지',
+        '아아보리': '아이보리',
+        '메란지': '멜란지',
+        '퍼풀': '퍼플',
+        '브라움': '브라운',
+        '브라웅': '브라운',
+        '하이트': '화이트',
+        '블렉': '블랙',
+        '블락': '블랙',
+        '핑크': '핑크',
+        '핀크': '핑크'
+    };
+    
+    if (typoMap[trimmed]) {
+        return typoMap[trimmed];
+    }
+
+    let bestMatch = trimmed;
+    let minDistance = Infinity;
+
+    for (const standard of STANDARD_COLORS) {
+        const dist = getLevenshteinDistance(trimmed, standard);
+        if (dist < minDistance) {
+            minDistance = dist;
+            bestMatch = standard;
+        }
+    }
+
+    if (minDistance <= 1) {
+        return bestMatch;
+    }
+
+    return trimmed;
+}
+
 export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', fileName: string = ""): Promise<ExcelJS.Workbook> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as any);
@@ -92,27 +193,6 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         client.release();
     }
 
-const COLOR_MAP: Record<string, string[]> = {
-    'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
-    'WHITE': ['화이트', '아이보리', '백아이보리'],
-    'BLACK': ['블랙', '검정'],
-    'PINK': ['핑크', '분홍'],
-    'YELLOW': ['옐로우', '노랑'],
-    'MELANGE': ['멜란지', '회색', '그레이'],
-    'GRAY': ['그레이', '회색', '멜란지'],
-    'BEIGE': ['베이지'],
-    'BLUE': ['블루', '파랑'],
-    'NAVY': ['네이비', '남색'],
-    'RED': ['레드', '빨강'],
-    'GREEN': ['그린', '초록'],
-    'MINT': ['민트'],
-    'PURPLE': ['퍼플', '보라'],
-    'CHARCOAL': ['차콜', '먹색'],
-    'CORAL': ['코랄'],
-    'PEACH': ['피치'],
-    'BROWN': ['브라운', '갈색']
-};
-
     const finalResults = excelRecords.map(record => {
         // 학습 데이터 존재 여부 확인 (스타일 + 색상 + 사이즈 정확히 일치하는 기록 우선)
         const learned = historyRows.find(h => 
@@ -182,8 +262,9 @@ const COLOR_MAP: Record<string, string[]> = {
 
             // 3. 색상 매칭 (가중치 강화)
             if (record.color) {
-                const nColor = normalizeStr(record.color);
-                const upperColor = record.color.trim().toUpperCase();
+                const normalizedColorVal = normalizeColor(record.color);
+                const nColor = normalizeStr(normalizedColorVal);
+                const upperColor = normalizedColorVal.toUpperCase();
                 let matchedColor = false;
                 
                 if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor))) {
@@ -203,7 +284,7 @@ const COLOR_MAP: Record<string, string[]> = {
                 
                 if (!matchedColor) {
                     for (let engColor in COLOR_MAP) {
-                        if (COLOR_MAP[engColor].some(kc => kc === record.color.trim())) {
+                        if (COLOR_MAP[engColor].some(kc => kc === normalizedColorVal)) {
                             if (dbBarcode.includes(normalizeStr(engColor)) || dbOption.includes(normalizeStr(engColor))) {
                                 score += 15;
                                 matchedColor = true;
@@ -243,9 +324,9 @@ const COLOR_MAP: Record<string, string[]> = {
         const isValidMatch = bestMatch && (bestScore >= 100 || bestScore >= 25);
 
         return {
-            productCode: isValidMatch ? bestMatch['상품코드'] : '미매칭',
-            sheetName: isValidMatch ? bestMatch['상품명'] : record.pdfName,
-            color: record.color, 
+            productCode: isValidMatch ? bestMatch!['상품코드'] : '미매칭',
+            sheetName: isValidMatch ? bestMatch!['상품명'] : record.pdfName,
+            color: normalizeColor(record.color), 
             size: record.size,   
             qty: record.qty,
             originalStyle: record.styleNo,
