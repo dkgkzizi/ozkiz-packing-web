@@ -161,8 +161,16 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
     try {
         const uniqueStyles = Array.from(new Set(excelRecords.map(r => r.styleNo).filter(s => s && s.length >= 2)));
-        if (uniqueStyles.length > 0) {
-            const patterns = uniqueStyles.map(s => `%${normalizeStr(s)}%`);
+        const normalizedStyles = new Set(uniqueStyles.map(normalizeStr));
+        const uniqueNames = Array.from(new Set(
+            excelRecords
+                .map(r => r.pdfName)
+                .filter(n => n && n.length >= 2 && !normalizedStyles.has(normalizeStr(n)))
+        ));
+        const searchTerms = [...uniqueStyles, ...uniqueNames];
+
+        if (searchTerms.length > 0) {
+            const patterns = searchTerms.map(s => `%${normalizeStr(s)}%`);
             const historyRes = await client.query(`
                 SELECT original_style, product_code, matched_name FROM matching_history 
                 WHERE original_style = ANY($1)
@@ -179,6 +187,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     REGEXP_REPLACE("바코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1) 
                     OR REGEXP_REPLACE("상품코드", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
                     OR REGEXP_REPLACE("상품명", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
+                    OR REGEXP_REPLACE("옵션", '[^a-zA-Z0-9가-힣]', '', 'g') ILIKE ANY($1)
                     OR "상품코드" = ANY($2)
                     OR "상품명" = ANY($3)
                 )
@@ -202,6 +211,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         ) || historyRows.find(h => h.original_style === record.styleNo); // Fallback to style-only match
         
         const nStyle = normalizeStr(record.styleNo);
+        const nName = normalizeStr(record.pdfName || '');
         let bestMatch = null;
         let bestScore = -1;
 
@@ -227,19 +237,27 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
             // 1. 기본 매칭 (스타일/상품명 일치)
             let isBaseMatch = false;
-            if (dbName === nStyle || dbCode === nStyle || dbBarcode === nStyle) {
+            if (
+                dbName === nStyle || dbCode === nStyle || dbBarcode === nStyle ||
+                (nName && (dbName === nName || dbCode === nName || dbBarcode === nName))
+            ) {
                 score += 30; // 정확히 일치하는 경우 높은 가산점
                 isBaseMatch = true;
-            } else if (dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle)) {
+            } else if (
+                dbName.includes(nStyle) || dbCode.includes(nStyle) || dbBarcode.includes(nStyle) || dbOption.includes(nStyle) ||
+                (nName && (dbName.includes(nName) || dbCode.includes(nName) || dbBarcode.includes(nName) || dbOption.includes(nName)))
+            ) {
                 score += 10;
                 isBaseMatch = true;
             } else {
                 // '아쿠아슈즈-요요' -> '아쿠아-요요' 매칭을 위해 '슈즈', '신발' 등 노이즈 제거 후 재시도
                 const cleanedStyle = nStyle.replace(/슈즈|신발|샌들|장화|구두/g, '');
-                if (cleanedStyle.length >= 2 && (dbName === cleanedStyle || dbCode === cleanedStyle)) {
+                if (cleanedStyle.length >= 2 && (dbName === cleanedStyle || dbCode === cleanedStyle || dbOption === cleanedStyle)) {
                     score += 20;
                     isBaseMatch = true;
-                } else if (cleanedStyle.length >= 2 && (dbName.includes(cleanedStyle) || dbCode.includes(cleanedStyle))) {
+                } else if (cleanedStyle.length >= 2 && (
+                    dbName.includes(cleanedStyle) || dbCode.includes(cleanedStyle) || dbOption.includes(cleanedStyle)
+                )) {
                     score += 8; // 노이즈 제거 매칭은 약간 낮은 점수
                     isBaseMatch = true;
                 }
@@ -255,8 +273,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             // 2. 사이즈 매칭 (가중치 강화)
             if (record.size) {
                 const nSize = normalizeStr(record.size);
-                if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
-                    score += 40; // 20 -> 40
+                if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize) || dbName.includes(nSize) || dbCode.includes(nSize))) {
+                    score += 40;
                 }
             }
 
@@ -267,8 +285,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 const upperColor = normalizedColorVal.toUpperCase();
                 let matchedColor = false;
                 
-                if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor))) {
-                    score += 30; // 15 -> 30
+                if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor) || dbName.includes(nColor) || dbCode.includes(nColor))) {
+                    score += 30;
                     matchedColor = true;
                 }
                 
@@ -363,7 +381,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             color: r.color,
             size: r.size,
             qty: r.qty,
-            memo: `${memoDate}_인도 입고`,
+            memo: `${memoDate}_${type === 'china' ? '중국 입고' : type === 'domestic' ? '국내 입고' : '인도 입고'}`,
             originSheet: r.originSheet,
             originalStyle: r.originalStyle,
             boxNo: r.boxNo,
