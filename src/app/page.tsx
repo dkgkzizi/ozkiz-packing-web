@@ -84,89 +84,65 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-red-100 selection:text-red-900 overflow-x-hidden">
-      {/* Background Soft Gradients */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-red-100/30 blur-[180px] rounded-full" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-rose-200/20 blur-[180px] rounded-full" />
-      </div>
-
-      <div className="relative z-10 flex min-h-screen">
-        {/* Sidebar Nav - Light Edition */}
-        <nav className="w-80 border-r border-slate-200 sticky top-0 h-screen p-10 flex flex-col bg-white/70 backdrop-blur-2xl">
-          <div className="mb-16">
-            <div className="flex items-center gap-3 mb-1 px-1">
-              <div className="flex flex-col">
-                <h1 className="text-5xl font-black tracking-[-0.05em] text-red-600 leading-none" style={{ fontFamily: 'var(--font-sans)', fontWeight: 900 }}>
-                  ozkiz
-                </h1>
-                <span className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase mt-3 ml-0.5">Logistics Center</span>
-              </div>
+      <div className="flex min-h-screen">
+        {/* Sidebar Nav - Clean Edition */}
+        <nav className="w-72 border-r border-slate-200 sticky top-0 h-screen p-6 flex flex-col bg-white">
+          <div className="mb-10 px-2">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black tracking-tight leading-none">
+                <span className="text-red-600">OH!</span> <span className="text-slate-900">Packing</span>
+              </h1>
             </div>
+            <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase mt-1 block">Openhan Smart Packing</span>
           </div>
 
-          <div className="flex-1 space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-1">Logistic Management</p>
+          <div className="flex-1 space-y-1">
             {categories.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`w-full group flex items-center gap-4 p-4 rounded-2xl transition-all duration-400 relative overflow-hidden ${
-                  activeCategory === cat.id 
-                  ? `${cat.bg} border border-slate-200 shadow-sm scale-[1.02]` 
-                  : 'hover:bg-slate-100/50 border border-transparent opacity-60 hover:opacity-100'
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                  activeCategory === cat.id
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-slate-100'
                 }`}
               >
-                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-400 shadow-sm ${
-                  activeCategory === cat.id ? `bg-white text-slate-900 shadow-md` : 'bg-slate-100 text-slate-400'
-                }`}>
-                  <span className={activeCategory === cat.id ? cat.activeColor : ''}>{cat.icon}</span>
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="text-sm font-black text-slate-900 tracking-tight leading-none mb-1">{cat.label}</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{cat.desc}</span>
-                </div>
-                {activeCategory === cat.id && (
-                  <div className="ml-auto">
-                    <ChevronRight className={`w-4 h-4 ${cat.activeColor}`} />
-                  </div>
-                )}
+                <span className={activeCategory === cat.id ? 'text-white' : 'text-slate-400'}>{cat.icon}</span>
+                <span className="text-sm font-bold">{cat.label}</span>
               </button>
             ))}
           </div>
 
-          <div className="mt-auto space-y-4">
+          <div className="mt-auto space-y-3 pt-6 border-t border-slate-100">
              {/* 관리자 업데이트 락 상태 버튼 */}
-             <button 
+             <button
                 onClick={() => isLocked ? setShowUnlockModal(true) : setIsLocked(true)}
-                className={`w-full flex items-center gap-3 p-4 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-[0.2em] ${
-                    isLocked 
-                    ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200' 
-                    : 'bg-red-50 text-red-600 border-red-100 animate-pulse'
+                className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl border transition-colors text-xs font-bold ${
+                    isLocked
+                    ? 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                    : 'bg-red-50 text-red-600 border-red-100'
                 }`}
             >
-                {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                {isLocked ? 'Update Locked' : 'Update Mode On'}
+                {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                {isLocked ? '수정 잠금' : '수정 모드 켜짐'}
             </button>
 
-            <div className="p-6 bg-slate-950 rounded-3xl shadow-xl shadow-slate-200 border border-white/10 group cursor-pointer overflow-hidden relative">
-                <div className={`absolute inset-0 bg-gradient-to-br transition-opacity ${isLocked ? 'from-green-500/10' : 'from-red-600/20'} to-transparent opacity-0 group-hover:opacity-100`} />
-                <div className="relative z-10 flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${isLocked ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]'}`} />
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-white uppercase tracking-widest leading-none mb-1">
-                            {isLocked ? 'Production: Active' : 'Maintenance: Active'}
-                        </span>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                            {isLocked ? 'OZ-Integrity Secured' : 'System Update Available'}
-                        </span>
-                    </div>
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 bg-slate-50">
+                <div className={`w-2 h-2 rounded-full ${isLocked ? 'bg-green-500' : 'bg-red-600'}`} />
+                <div className="flex flex-col leading-tight">
+                    <span className="text-xs font-bold text-slate-700">
+                        {isLocked ? '운영 중' : '점검 모드'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                        {isLocked ? '정상 작동 중' : '업데이트 가능'}
+                    </span>
                 </div>
             </div>
           </div>
         </nav>
 
         {/* Content Area */}
-        <section className="flex-1 p-16 max-w-7xl mx-auto overflow-y-auto">
+        <section className="flex-1 p-10 max-w-7xl mx-auto overflow-y-auto">
            {renderContent()}
         </section>
       </div>

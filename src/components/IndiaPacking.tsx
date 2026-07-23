@@ -345,23 +345,14 @@ export default function IndiaPacking() {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <header className="mb-12">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest border border-slate-200">
-            CATEGORY 3
-          </div>
-          <ChevronRight className="w-4 h-4 text-slate-300" />
-          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            <Globe className="w-3 h-3 text-slate-900" /> Global Matcher Hub
-          </div>
+      <header className="mb-8 flex items-center gap-3">
+        <div className="w-1.5 h-9 bg-slate-900 rounded-full" />
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">인도 패킹리스트</h2>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
+            인도 수입 리스트를 분석해 자체 상품 코드와 1:1 매칭하고 수량을 검증합니다
+          </p>
         </div>
-        <h2 className="text-4xl font-black text-slate-900 italic tracking-tighter uppercase mb-2">
-          India <span className="text-slate-400">Packing</span>
-        </h2>
-        <p className="text-slate-400 font-bold max-w-2xl leading-relaxed text-sm">
-           인도 수입 리스트를 분석하고 <span className="text-slate-900 font-black">자체 상품 코드</span>와 1:1 매칭합니다. <br />
-           글로벌 규격 데이터를 국내 시스템 환경에 최적화하여 변환합니다.
-        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -384,42 +375,42 @@ export default function IndiaPacking() {
                 }`}>
                   <FileUp className="w-8 h-8" />
                 </div>
-                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? 'File Selected' : 'Upload India PDF'}</h4>
-                <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest px-4 italic truncate max-w-full">
-                    {file ? file.name : 'Drag and Drop File'}
+                <h4 className="text-slate-900 font-black text-base tracking-tight mb-1">{file ? '파일 선택됨' : '인도 PDF 업로드'}</h4>
+                <p className="text-[11px] font-medium text-slate-400 px-4 truncate max-w-full">
+                    {file ? file.name : '파일을 드래그하거나 클릭하세요'}
                 </p>
               </div>
             </div>
 
-            <button 
-                onClick={handleProcess} 
-                disabled={!file || loading} 
-                className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+            <button
+                onClick={handleProcess}
+                disabled={!file || loading}
+                className="w-full mt-8 bg-slate-900 hover:bg-black disabled:opacity-10 text-white font-bold py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-base"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-              Process for India
+              인도 데이터 변환
             </button>
 
             {results && (
               <>
-                <motion.button 
+                <motion.button
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    onClick={() => generateAndDownload(results, verification?.fileName || '인도패킹')} 
-                    className="w-full mt-4 bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl transition-all shadow-xl shadow-rose-200 flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                    onClick={() => generateAndDownload(results, verification?.fileName || '인도패킹')}
+                    className="w-full mt-4 bg-rose-600 hover:bg-rose-700 text-white font-bold py-4 rounded-2xl transition-all shadow-xl shadow-rose-200 flex items-center justify-center gap-3 active:scale-95 text-base"
                 >
                   <Download className="w-5 h-5" />
-                  Download Matched Excel
+                  매칭 엑셀 다운로드
                 </motion.button>
-                
-                <motion.button 
+
+                <motion.button
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     onClick={handlePrint}
-                    className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-lg italic uppercase"
+                    className="w-full mt-4 bg-white border-2 border-slate-900 hover:bg-slate-50 text-slate-900 font-bold py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-3 active:scale-95 text-base"
                 >
                   <RefreshCcw className="w-5 h-5" />
-                  Print Pallet Labels
+                  파레트 라벨 출력
                 </motion.button>
               </>
             )}
@@ -428,51 +419,44 @@ export default function IndiaPacking() {
 
         <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
           <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
-             {verification && (
-               <motion.div initial={{ opacity:0, y:-20 }} animate={{ opacity:1, y:0 }} className="m-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center justify-between shadow-sm">
-                  <div className="flex items-center gap-6">
-                    <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-50">
-                        <ArrowRightLeft className="w-6 h-6 text-slate-900" />
+             {verification && (() => {
+                const isVerified = verification.originalTotal === verification.matchedTotal;
+                return (
+                  <div className="m-6 grid grid-cols-3 gap-3">
+                    <div className="p-5 rounded-2xl border border-slate-200 bg-white flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                        <ArrowRightLeft className="w-4 h-4 text-slate-500" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400">원본 수량</p>
+                        <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
+                      </div>
                     </div>
-                    <div>
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Matching Integrity Summary</h4>
-                        <div className="flex items-center gap-4">
-                            <div className="text-center">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Original Total</p>
-                                <p className="text-xl font-black text-slate-900">{verification.originalTotal}</p>
-                            </div>
-                            <div className="w-px h-8 bg-slate-200" />
-                            <div className="text-center">
-                                <p className="text-[9px] font-bold text-slate-300 uppercase mb-0.5">Matched Total</p>
-                                <p className="text-xl font-black text-slate-900">{verification.matchedTotal}</p>
-                            </div>
-                        </div>
+                    <div className="p-5 rounded-2xl border border-slate-200 bg-white flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                        <ArrowRightLeft className="w-4 h-4 text-slate-900" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400">매칭 수량</p>
+                        <p className="text-xl font-black text-slate-900">{verification.matchedTotal}</p>
+                      </div>
+                    </div>
+                    <div className={`p-5 rounded-2xl border flex items-center gap-3 ${isVerified ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
+                      {isVerified ? <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />}
+                      <div>
+                        <p className={`text-sm font-bold ${isVerified ? 'text-green-700' : 'text-amber-700'}`}>{isVerified ? '수량 일치' : '수량 확인 필요'}</p>
+                        <p className="text-[11px] text-slate-400">{isVerified ? '정상적으로 검증됨' : '원본/매칭 수량이 달라요'}</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`flex items-center gap-2 justify-end mb-1 ${verification.originalTotal === verification.matchedTotal ? 'text-green-600' : 'text-slate-500'}`}>
-                        {verification.originalTotal === verification.matchedTotal ? (
-                            <>
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Verified</span>
-                            </>
-                        ) : (
-                            <>
-                                <AlertCircle className="w-4 h-4" />
-                                <span className="text-xs font-black uppercase italic tracking-tighter">Verification Check</span>
-                            </>
-                        )}
-                    </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic truncate max-w-[150px]">Security Protocol Active</p>
-                  </div>
-               </motion.div>
-             )}
+                );
+             })()}
 
              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-slate-400 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-slate-900" />
-                    Live Match Stream
+                    변환 결과
                   </h3>
                   <button 
                     onClick={() => setIsSettingOpen(true)}

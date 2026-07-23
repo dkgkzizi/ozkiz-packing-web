@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "오즈키즈 통합 패킹리스트 변환 웹 | OZKIZ",
+  title: "OH! Packing | 오즈키즈 통합 패킹리스트 변환",
   description: "인도, 국내, 중국 패킹리스트 PDF/엑셀 파일을 통합 관리하고 수량을 검증하는 오즈키즈 물류 자동화 솔루션입니다.",
-  keywords: ["오즈키즈", "패킹리스트 변환", "물류 자동화", "인도 패킹", "중국 패킹", "국내 패킹", "OZKIZ"],
+  keywords: ["오즈키즈", "OH! Packing", "패킹리스트 변환", "물류 자동화", "인도 패킹", "중국 패킹", "국내 패킹", "OZKIZ"],
 };
 
 export default function RootLayout({
