@@ -246,7 +246,7 @@ export default function DomesticPacking() {
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div>
       <header className="mb-8 flex items-center gap-3">
         <div className="w-1.5 h-9 bg-slate-900 rounded-full" />
         <div>

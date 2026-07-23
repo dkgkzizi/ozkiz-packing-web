@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Globe, 
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Globe,
   LayoutDashboard,
   Package,
   Truck,
@@ -16,6 +17,9 @@ import {
 import IndiaPacking from '@/components/IndiaPacking';
 import DomesticPacking from '@/components/DomesticPacking';
 import ChinaPacking from '@/components/ChinaPacking';
+
+// Tailwind의 기본 transition easing(cubic-bezier(0.4, 0, 0.2, 1))과 동일한 커브
+const EASE_STANDARD: [number, number, number, number] = [0.4, 0, 0.2, 1];
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<number>(1);
@@ -143,7 +147,17 @@ export default function Home() {
 
         {/* Content Area */}
         <section className="flex-1 p-10 max-w-7xl mx-auto overflow-y-auto">
-           {renderContent()}
+           <AnimatePresence mode="wait">
+             <motion.div
+                key={activeCategory}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22, ease: EASE_STANDARD }}
+             >
+                {renderContent()}
+             </motion.div>
+           </AnimatePresence>
         </section>
       </div>
 
