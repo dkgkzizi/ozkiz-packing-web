@@ -191,6 +191,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     OR "상품코드" = ANY($2)
                     OR "상품명" = ANY($3)
                 )
+                ORDER BY "상품코드" ASC
             `, [
                 patterns, 
                 learnedCodes.length > 0 ? learnedCodes : ['EMPTY_PLACEHOLDER'],
@@ -212,8 +213,9 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         
         const nStyle = normalizeStr(record.styleNo);
         const nName = normalizeStr(record.pdfName || '');
-        let bestMatch = null;
+        let bestMatch: any = null;
         let bestScore = -1;
+        let tiedMatches: any[] = [];
 
         dbRows.forEach(row => {
             let score = 0;
@@ -334,18 +336,26 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             if (score > bestScore) {
                 bestScore = score;
                 bestMatch = row;
+                tiedMatches = [row];
+            } else if (score === bestScore) {
+                tiedMatches.push(row);
             }
         });
 
         // 완벽한 매칭(상품명+색상+사이즈)이 아니면(점수가 너무 낮으면) 실패 처리 방어
-        // 학습된 데이터의 경우 100점 이상이므로 무조건 통과
-        const isValidMatch = bestMatch && (bestScore >= 100 || bestScore >= 25);
+        const isValidMatch = bestMatch && bestScore >= 25;
+
+        // 최고점이 서로 다른 상품코드 여러 개에 동시에 걸리면(카탈로그에 동일 상품명+옵션이
+        // 여러 코드로 중복 등록된 경우) 임의로 하나를 확정하지 않고 수동 확인을 요청한다.
+        // 단, AI 학습으로 확정된 매칭(100점 이상)은 예외로 그대로 신뢰한다.
+        const distinctTiedCodes = Array.from(new Set(tiedMatches.map(r => r['상품코드'])));
+        const isAmbiguous = isValidMatch && bestScore < 100 && distinctTiedCodes.length > 1;
 
         return {
-            productCode: isValidMatch ? bestMatch!['상품코드'] : '미매칭',
-            sheetName: isValidMatch ? bestMatch!['상품명'] : record.pdfName,
-            color: normalizeColor(record.color), 
-            size: record.size,   
+            productCode: !isValidMatch ? '미매칭' : (isAmbiguous ? '중복확인' : bestMatch!['상품코드']),
+            sheetName: !isValidMatch ? record.pdfName : (isAmbiguous ? `${bestMatch!['상품명']} [후보코드: ${distinctTiedCodes.join('/')}]` : bestMatch!['상품명']),
+            color: normalizeColor(record.color),
+            size: record.size,
             qty: record.qty,
             originalStyle: record.styleNo,
             originSheet: record.sheetName,

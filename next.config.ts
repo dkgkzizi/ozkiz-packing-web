@@ -1,6 +1,12 @@
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { NextConfig } from "next";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: __dirname,
   // SSR 환경에서 바이너리나 Node.js 내장 모듈을 사용하는 패키지들을 위한 설정
   serverExternalPackages: ['pdf.js-extract', 'pdf2json', 'pg'],
   
@@ -13,13 +19,6 @@ const nextConfig: NextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: true,
-  },
-
-  // Turbopack 호환성 설정 (Next.js 15/16)
-  turbopack: {
-    resolveAlias: {
-      canvas: false,
-    },
   },
 
   // canvas 모듈 에러 해결을 위한 webpack 설정

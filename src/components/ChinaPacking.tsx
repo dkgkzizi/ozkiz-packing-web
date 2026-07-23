@@ -308,7 +308,7 @@ export default function ChinaPacking() {
                       if (hasTotalQty || hasTotalCT) continue; // 이것은 합계 행입니다.
                   }
 
-                  let currentName = nameOriginal;
+                  currentName = nameOriginal;
                   if (!currentName && lastName) {
                       currentName = lastName;
                   } else if (currentName) {
@@ -437,7 +437,7 @@ export default function ChinaPacking() {
           });
 
           // 스마트 로직: 미매칭 상품이 없고 수량이 완벽히 일치하면 자동 다운로드
-          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매칭' || item.matchedCode === '코드누락');
+          const hasUnmatched = data.items.some((item: any) => item.matchedCode === '미매칭' || item.matchedCode === '코드누락' || item.matchedCode === '중복확인');
           const isQuantityMatched = data.originalTotal === data.matchedTotal;
 
           if (!hasUnmatched && isQuantityMatched) {
@@ -489,7 +489,10 @@ export default function ChinaPacking() {
               // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
               if (/^[0-9]{3}$/.test(t)) {
                 const opt = (it.option || "").toUpperCase();
-                return opt.includes(t);
+                // 옵션 필드에 있으면 우선 인정하되, 옵션이 비어있거나 다른 형식이라
+                // 못 찾는 경우를 대비해 상품명/코드 전체에서도 재확인한다 (검색결과가
+                // 통째로 사라지는 것을 방지).
+                return opt.includes(t) || combined.includes(t);
               }
               return combined.includes(t);
             });
@@ -1014,10 +1017,16 @@ export default function ChinaPacking() {
                                 </td>
                                 <td className="p-4 text-center">
                                    <div className="flex items-center justify-center gap-2">
-                                       <div className="bg-red-50 text-red-600 p-1.5 rounded-lg shadow-sm">
-                                           <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
-                                       </div>
-                                       <button 
+                                       {(item.matchedCode === '미매칭' || item.matchedCode === '코드누락' || item.matchedCode === '중복확인') ? (
+                                           <div className="bg-amber-50 text-amber-600 p-1.5 rounded-lg shadow-sm" title="확인 필요: 클릭해서 수동으로 상품을 선택하세요">
+                                               <AlertCircle className="w-3.5 h-3.5" strokeWidth={3} />
+                                           </div>
+                                       ) : (
+                                           <div className="bg-red-50 text-red-600 p-1.5 rounded-lg shadow-sm">
+                                               <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={3} />
+                                           </div>
+                                       )}
+                                       <button
                                            onClick={(e) => {
                                                e.stopPropagation();
                                                const newResults = results.filter((_, i) => i !== originalIndex);
