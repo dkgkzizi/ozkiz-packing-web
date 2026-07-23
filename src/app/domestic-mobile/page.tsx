@@ -9,9 +9,24 @@ type UploadedItem = {
   file_name: string;
 };
 
+const getExtension = (f: File) => {
+  const m = f.name.match(/\.[^/.]+$/);
+  if (m) return m[0];
+  return f.type === 'image/png' ? '.png' : '.jpg';
+};
+
+const defaultPackingName = () => {
+  const d = new Date();
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}_국내패킹`;
+};
+
 export default function DomesticMobileCapture() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [packingName, setPackingName] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<UploadedItem[]>([]);
@@ -21,6 +36,7 @@ export default function DomesticMobileCapture() {
     setError(null);
     setFile(f);
     setPreview(f ? URL.createObjectURL(f) : null);
+    setPackingName(f ? defaultPackingName() : '');
   };
 
   const reset = () => {
@@ -30,16 +46,17 @@ export default function DomesticMobileCapture() {
 
   const upload = async () => {
     if (!file) return;
+    const finalName = (packingName.trim() || defaultPackingName()) + getExtension(file);
     setUploading(true);
     setError(null);
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', file, finalName);
       formData.append('category', 'domestic');
       const res = await fetch('/api/mobile-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!data.success) throw new Error(data.message || '업로드 실패');
-      setUploaded(prev => [{ id: data.id, file_name: file.name }, ...prev]);
+      setUploaded(prev => [{ id: data.id, file_name: finalName }, ...prev]);
       reset();
     } catch (e: any) {
       setError(e.message || '업로드 중 오류가 발생했습니다.');
@@ -51,7 +68,7 @@ export default function DomesticMobileCapture() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="p-5 flex items-center justify-between bg-white border-b border-slate-200">
-        <Link href="/" className="flex items-center gap-1.5 text-slate-400 text-xs font-bold">
+        <Link href="/?pc=1" className="flex items-center gap-1.5 text-slate-400 text-xs font-bold">
           <ArrowLeft className="w-4 h-4" /> PC 버전으로
         </Link>
         <h1 className="text-lg font-black tracking-tight">
@@ -92,6 +109,18 @@ export default function DomesticMobileCapture() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={preview} alt="촬영된 패킹리스트" className="w-full h-auto max-h-[50vh] object-contain" />
             </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-400 mb-1.5 block">패킹리스트 이름</label>
+              <input
+                type="text"
+                value={packingName}
+                onChange={(e) => setPackingName(e.target.value)}
+                placeholder={defaultPackingName()}
+                className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:ring-red-500/20 focus:border-red-300 outline-none transition-all"
+              />
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={reset}
