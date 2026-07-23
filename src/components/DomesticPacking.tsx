@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { 
-  ChevronRight, 
-  Download, 
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import {
+  ChevronRight,
+  Download,
   Loader2,
   Table,
   Search,
@@ -16,7 +17,10 @@ import {
   TrendingUp,
   X,
   RefreshCcw,
-  Edit2
+  Edit2,
+  Smartphone,
+  Inbox,
+  ArrowDownToLine
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -52,6 +56,43 @@ export default function DomesticPacking() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  // 모바일 촬영 대기열 (모바일에서 업로드한 사진을 PC에서 불러오기)
+  const [mobileQueue, setMobileQueue] = useState<{ id: number; file_name: string; created_at: string }[]>([]);
+  const [queueLoadingId, setQueueLoadingId] = useState<number | null>(null);
+
+  const fetchMobileQueue = useCallback(async () => {
+    try {
+      const res = await fetch('/api/mobile-upload?category=domestic');
+      const data = await res.json();
+      if (data.success) setMobileQueue(data.items);
+    } catch (e) {
+      console.error('모바일 대기열 조회 실패:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMobileQueue();
+    const interval = setInterval(fetchMobileQueue, 15000);
+    return () => clearInterval(interval);
+  }, [fetchMobileQueue]);
+
+  const loadFromMobileQueue = async (item: { id: number; file_name: string }) => {
+    setQueueLoadingId(item.id);
+    try {
+      const res = await fetch(`/api/mobile-upload/${item.id}`);
+      if (!res.ok) throw new Error('이미 처리되었거나 존재하지 않는 항목입니다.');
+      const blob = await res.blob();
+      const loadedFile = new File([blob], item.file_name, { type: blob.type });
+      setFile(loadedFile);
+      await fetch(`/api/mobile-upload/${item.id}`, { method: 'DELETE' });
+      setMobileQueue(prev => prev.filter(q => q.id !== item.id));
+    } catch (e: any) {
+      alert(e.message || '불러오는 중 오류가 발생했습니다.');
+    } finally {
+      setQueueLoadingId(null);
+    }
+  };
 
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
@@ -247,14 +288,23 @@ export default function DomesticPacking() {
 
   return (
     <div>
-      <header className="mb-8 flex items-center gap-3">
-        <div className="w-1.5 h-9 bg-slate-900 rounded-full" />
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">국내 패킹리스트</h2>
-          <p className="text-xs text-slate-400 font-medium mt-0.5">
-            국내 표준 형식을 분석해 실시간으로 수량을 검증하고, 모호한 항목은 수동 교정으로 확정합니다
-          </p>
+      <header className="mb-8 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-9 bg-slate-900 rounded-full" />
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">국내 패킹리스트</h2>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">
+              국내 표준 형식을 분석해 실시간으로 수량을 검증하고, 모호한 항목은 수동 교정으로 확정합니다
+            </p>
+          </div>
         </div>
+        <Link
+          href="/domestic-mobile"
+          className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
+        >
+          <Smartphone className="w-4 h-4" />
+          모바일 버전
+        </Link>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -305,6 +355,37 @@ export default function DomesticPacking() {
               </motion.button>
             )}
           </div>
+
+          {mobileQueue.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 mt-6 shadow-xl shadow-slate-200/50">
+              <div className="flex items-center gap-2 mb-4">
+                <Inbox className="w-4 h-4 text-red-600" />
+                <p className="text-xs font-bold text-slate-500">모바일 촬영 대기열 ({mobileQueue.length})</p>
+              </div>
+              <ul className="space-y-2">
+                {mobileQueue.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 bg-slate-50/50"
+                  >
+                    <span className="text-xs font-medium text-slate-600 truncate">{item.file_name}</span>
+                    <button
+                      onClick={() => loadFromMobileQueue(item)}
+                      disabled={queueLoadingId !== null}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-[11px] font-bold disabled:opacity-40"
+                    >
+                      {queueLoadingId === item.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ArrowDownToLine className="w-3.5 h-3.5" />
+                      )}
+                      불러오기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
