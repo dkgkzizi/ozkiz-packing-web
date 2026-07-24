@@ -32,6 +32,14 @@ const STANDARD_COLORS = Array.from(new Set([
     ...Object.values(COLOR_MAP).flat()
 ]));
 
+// "(인디)" 상품군은 패킹리스트의 표기 사이즈와 마스터 DB 등록 사이즈가 40 차이로 어긋난다.
+const INDI_SIZE_REMAP: Record<string, string> = {
+    '100': '140',
+    '110': '150',
+    '120': '160',
+    '130': '170'
+};
+
 function getLevenshteinDistance(a: string, b: string): number {
     const matrix = Array.from({ length: a.length + 1 }, () =>
         Array(b.length + 1).fill(0)
@@ -288,7 +296,13 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             // 시리즈에서 사이즈 140과 코드 앞자리 "140"이 겹쳐 전부 오매칭되던 버그).
             let sizeMatched = !record.size; // 사이즈 정보가 없으면 통과 처리
             if (record.size) {
-                const nSize = normalizeStr(record.size);
+                // "(인디)" 상품군은 패킹리스트 표기 사이즈와 마스터 DB 등록 사이즈가
+                // 40 차이로 어긋나 있다(100→140, 110→150, 120→160, 130→170).
+                const isIndiProduct = (row['상품명'] || '').includes('(인디)');
+                const effectiveSize = isIndiProduct && INDI_SIZE_REMAP[record.size]
+                    ? INDI_SIZE_REMAP[record.size]
+                    : record.size;
+                const nSize = normalizeStr(effectiveSize);
                 if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
                     score += 40;
                     sizeMatched = true;
