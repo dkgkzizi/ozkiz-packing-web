@@ -269,23 +269,32 @@ export default function ChinaPacking() {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
               if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
-                  let nameCol = -1, colorCol = -1, totalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1, ctCol = -1;
+                  let nameCol = -1, colorCol = -1, totalCol = -1, subtotalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1, ctCol = -1;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim().toUpperCase();
                       if (c === '품명') nameCol = cellIdx;
                       else if (c === '칼라' || c === '색상') colorCol = cellIdx;
-                      else if (c === '합계' || c === '소계' || c === '총계' || c === '수량' || c === '총수량') totalCol = cellIdx;
+                      // "수량"/"포장수량"은 행별 실제 작업수량이라 항상 우선한다. "합계/소계/총계/총수량"은
+                      // 병합된 소계 컬럼이라(OH 포맷처럼 같은 시트에 둘 다 있을 수 있음) 행별 수량이
+                      // 없을 때만 대체로 사용한다 — 안 그러면 스캔 순서상 나중에 나오는 소계 컬럼이
+                      // 앞서 찾은 행별 수량 컬럼을 덮어써서 병합 소계값을 모든 행에 잘못 적용하게 된다.
+                      else if (c === '수량' || c === '포장수량') totalCol = cellIdx;
+                      else if (c === '합계' || c === '소계' || c === '총계' || c === '총수량') { if (subtotalCol === -1) subtotalCol = cellIdx; }
                       else if (c === '사이즈') sizeStartCol = cellIdx;
                       else if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) boxCol = cellIdx;
                       else if (c === 'C/T' || c.includes('박스수') || c.includes('BOX수') || c.includes('수량(BOX)')) ctCol = cellIdx;
                   });
-                  
-                  // 사이즈 매트릭스 레이아웃인지 판단
+                  if (totalCol === -1 && subtotalCol !== -1) totalCol = subtotalCol;
+
+                  // 사이즈 매트릭스 레이아웃인지 판단 — "사이즈"라는 정확한 헤더 셀이 이미 발견됐다면
+                  // (수직/단일 사이즈 레이아웃이라는 확실한 증거) 휴리스틱 탐지는 건너뛴다. 안 그러면
+                  // C/T나 총수량 같은 다른 컬럼의 첫 데이터 행에 우연히 숫자가 있을 때 이를 사이즈
+                  // 매트릭스로 오인해서 사이즈 시작 컬럼을 엉뚱한 곳으로 덮어써버리는 문제가 있었다.
                   let isMatrix = false;
                   let matrixSizeStart = -1;
                   const nextRow = jsonData[idx + 1] || [];
-                  
-                  if (colorCol !== -1) {
+
+                  if (colorCol !== -1 && sizeStartCol === -1) {
                       for (let i = colorCol + 1; i < Math.max(row.length, nextRow.length); i++) {
                           if (i === totalCol) continue;
                           const hStr = String(row[i] || "").trim();
@@ -322,12 +331,15 @@ export default function ChinaPacking() {
               let lastBoxNo = "";
               let lastBoxCount = 0;
               
-              // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (병합 레이아웃 대응)
+              // 사이즈 헤더가 헤더행 바로 아래에 있는지 확인 (매트릭스 레이아웃에서 "사이즈"
+              // 텍스트 헤더 다음 행에 실제 사이즈 라벨(90,100,110...)이 나오는 경우 대응).
+              // 수직(단일) 사이즈 레이아웃에서는 이 개념 자체가 성립하지 않는다 — 사이즈 컬럼이
+              // 하나뿐이라 다음 행은 무조건 진짜 데이터이고, 그 사이즈 값 자체가 "130"처럼 숫자라서
+              // 예전 로직은 이를 "사이즈 서브헤더 행"으로 착각해 첫 데이터 행을 통째로 건너뛰었다.
               const headerRowData = jsonData[header.rowIdx];
               const nextRow = jsonData[header.rowIdx + 1];
-              // 현재 헤더행의 사이즈 컬럼 부분에 숫자가 하나라도 있다면 투스텝 헤더가 아님
-              const currentHeaderHasSizes = headerRowData.slice(header.sizeStartCol).some(c => String(c).match(/[0-9]/));
-              const isTwoStepHeader = !currentHeaderHasSizes && nextRow && nextRow.slice(header.sizeStartCol).some(c => String(c).match(/[0-9]/));
+              const currentHeaderHasSizes = headerRowData.slice(header.sizeStartCol, header.sizeEndCol + 1).some((c: any) => String(c).match(/[0-9]/));
+              const isTwoStepHeader = header.isMatrix && !currentHeaderHasSizes && nextRow && nextRow.slice(header.sizeStartCol, header.sizeEndCol + 1).some((c: any) => String(c).match(/[0-9]/));
               
               const sizeHeaderRowIdx = isTwoStepHeader ? header.rowIdx + 1 : header.rowIdx;
               const dataStartRowIdx = isTwoStepHeader ? header.rowIdx + 2 : header.rowIdx + 1;
