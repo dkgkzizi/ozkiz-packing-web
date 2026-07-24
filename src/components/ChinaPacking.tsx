@@ -43,6 +43,31 @@ type VerificationData = {
   fileName: string;
 };
 
+// 엑셀 컬럼 문자(A, Z, AA, AJ ...)를 0-based 인덱스로 변환
+function colLetterToIndex(letters: string): number {
+  let idx = 0;
+  for (let i = 0; i < letters.length; i++) {
+    idx = idx * 26 + (letters.charCodeAt(i) - 64);
+  }
+  return idx - 1;
+}
+
+// 탭(시트)별로 신고 단가 확인용 컬럼 범위를 정의 — 이 범위는 사이즈/수량 매트릭스로
+// 오인되지 않도록 파싱 전에 통째로 비워버린다. 파일/탭마다 원본 서식이 달라서
+// 범위가 제각각이라 하드코딩된 매핑을 둔다.
+const IGNORE_COLUMN_RULES: { match: (upper: string) => boolean; range: [string, string] }[] = [
+  { match: (s) => s.includes('OZ') && s.includes('롤라루'), range: ['R', 'Z'] },
+  { match: (s) => s.includes('OZ') && s.includes('오즈'), range: ['AB', 'AJ'] },
+  { match: (s) => s.includes('OH') && s.includes('롤라루'), range: ['K', 'S'] },
+  { match: (s) => s.includes('OH') && s.includes('오즈'), range: ['AD', 'AL'] },
+];
+
+function getIgnoreColumnRange(sheetName: string): [number, number] | null {
+  const upper = (sheetName || '').toUpperCase();
+  const rule = IGNORE_COLUMN_RULES.find(r => r.match(upper));
+  return rule ? [colLetterToIndex(rule.range[0]), colLetterToIndex(rule.range[1])] : null;
+}
+
 export default function ChinaPacking() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -199,6 +224,19 @@ export default function ChinaPacking() {
           const worksheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
           if (jsonData.length === 0) return;
+
+          // 신고 단가 확인용 컬럼(사이즈/수량 매트릭스가 아님)은 파싱 전에 비워서
+          // 사이즈 매트릭스로 잘못 인식되지 않게 한다.
+          const ignoreRange = getIgnoreColumnRange(sheetName);
+          if (ignoreRange) {
+              const [ignoreStart, ignoreEnd] = ignoreRange;
+              jsonData.forEach(row => {
+                  if (!Array.isArray(row)) return;
+                  for (let i = ignoreStart; i <= ignoreEnd; i++) {
+                      row[i] = undefined;
+                  }
+              });
+          }
 
           // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
           const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number, boxCol: number, ctCol: number }[] = [];
