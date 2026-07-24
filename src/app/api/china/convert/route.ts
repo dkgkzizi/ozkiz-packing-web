@@ -45,9 +45,10 @@ export async function POST(req: NextRequest) {
             pdfQty: q,
             style: styleName,
             originSheet: row.getCell(7).text || '',
-            boxNo: row.getCell(9).text || '', 
+            boxNo: row.getCell(9).text || '',
             boxCount: row.getCell(10).text || '', // C/T 컬럼 복원
-            imageUrl: null 
+            verified: row.getCell(11).text === 'Y',
+            imageUrl: null
         });
     });
 

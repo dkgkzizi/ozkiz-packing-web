@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
             size: row.getCell(4).value?.toString() || "",
             qty: q,
             pdfQty: q,
-            style: styleName
+            style: styleName,
+            verified: row.getCell(9).value?.toString() === 'Y'
         });
     });
 

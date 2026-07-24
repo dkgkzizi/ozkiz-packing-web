@@ -216,6 +216,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         let bestMatch: any = null;
         let bestScore = -1;
         let tiedMatches: any[] = [];
+        let bestSizeMatched = false;
+        let bestColorMatched = false;
 
         dbRows.forEach(row => {
             let score = 0;
@@ -228,12 +230,20 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             if (learned) {
                 // 이름이 같으면 기본 가산점
                 if (row['상품명'] === learned.matched_name) score += 50;
-                
+
                 // 스타일만 매칭된 경우(Fallback) 코드에 보너스를 주지 않음
                 // [색상 + 사이즈]까지 완벽히 일치하는 히스토리일 때만 코드에 강력한 보너스 부여
                 const isExactSkuHistory = (learned.color === record.color && learned.size === record.size);
                 if (row['상품코드'] === learned.product_code && isExactSkuHistory) {
-                    score += 100; // 절대적인 우선순위
+                    // 과거 수동교정이 오클릭 등으로 잘못 저장됐을 수 있으므로, 학습된 색상/사이즈가
+                    // 실제 이 상품의 옵션/바코드에 정말 존재하는지 검증한 뒤에만 절대 우선순위를 부여한다.
+                    const nLearnedSize = learned.size ? normalizeStr(learned.size) : '';
+                    const nLearnedColor = learned.color ? normalizeStr(normalizeColor(learned.color)) : '';
+                    const learnedSizeHolds = !nLearnedSize || dbOption.includes(nLearnedSize) || dbBarcode.includes(nLearnedSize);
+                    const learnedColorHolds = !nLearnedColor || dbOption.includes(nLearnedColor) || dbBarcode.includes(nLearnedColor);
+                    if (learnedSizeHolds && learnedColorHolds) {
+                        score += 100; // 절대적인 우선순위
+                    }
                 }
             }
 
@@ -273,20 +283,26 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             }
 
             // 2. 사이즈 매칭 (가중치 강화)
+            // 주의: dbName/dbCode는 검사하지 않는다 — 상품코드는 임의의 일련번호라
+            // 스타일 패밀리 번호가 실제 사이즈 값과 우연히 겹칠 수 있다(예: S140044~S140048
+            // 시리즈에서 사이즈 140과 코드 앞자리 "140"이 겹쳐 전부 오매칭되던 버그).
+            let sizeMatched = !record.size; // 사이즈 정보가 없으면 통과 처리
             if (record.size) {
                 const nSize = normalizeStr(record.size);
-                if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize) || dbName.includes(nSize) || dbCode.includes(nSize))) {
+                if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
                     score += 40;
+                    sizeMatched = true;
                 }
             }
 
             // 3. 색상 매칭 (가중치 강화)
+            let colorMatched = !record.color;
             if (record.color) {
                 const normalizedColorVal = normalizeColor(record.color);
                 const nColor = normalizeStr(normalizedColorVal);
                 const upperColor = normalizedColorVal.toUpperCase();
                 let matchedColor = false;
-                
+
                 if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor) || dbName.includes(nColor) || dbCode.includes(nColor))) {
                     score += 30;
                     matchedColor = true;
@@ -313,6 +329,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                         }
                     }
                 }
+
+                colorMatched = matchedColor;
             }
 
             // 4. 카테고리 우선순위 (의류 vs 잡화)
@@ -337,6 +355,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 bestScore = score;
                 bestMatch = row;
                 tiedMatches = [row];
+                bestSizeMatched = sizeMatched;
+                bestColorMatched = colorMatched;
             } else if (score === bestScore) {
                 tiedMatches.push(row);
             }
@@ -351,6 +371,9 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         const distinctTiedCodes = Array.from(new Set(tiedMatches.map(r => r['상품코드'])));
         const isAmbiguous = isValidMatch && bestScore < 100 && distinctTiedCodes.length > 1;
 
+        // 상품코드/상품명/색상/사이즈가 실제 DB 데이터와 전부 일치하는지 (프론트 초록/빨강 표시용)
+        const isVerified = isValidMatch && !isAmbiguous && bestSizeMatched && bestColorMatched;
+
         return {
             productCode: !isValidMatch ? '미매칭' : (isAmbiguous ? '중복확인' : bestMatch!['상품코드']),
             sheetName: !isValidMatch ? record.pdfName : (isAmbiguous ? `${bestMatch!['상품명']} [후보코드: ${distinctTiedCodes.join('/')}]` : bestMatch!['상품명']),
@@ -360,7 +383,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             originalStyle: record.styleNo,
             originSheet: record.sheetName,
             boxNo: record.boxNo,
-            boxCount: record.boxCount
+            boxCount: record.boxCount,
+            verified: isVerified
         };
     });
 
@@ -377,7 +401,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         { header: '시트명', key: 'originSheet', width: 20 },
         { header: '원래스타일', key: 'originalStyle', width: 20 },
         { header: '박스번호', key: 'boxNo', width: 15 },
-        { header: '박스수', key: 'boxCount', width: 10 }
+        { header: '박스수', key: 'boxCount', width: 10 },
+        { header: '검증', key: 'verified', width: 8 }
     ];
 
     const hRow = outWs.getRow(1);
@@ -395,7 +420,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             originSheet: r.originSheet,
             originalStyle: r.originalStyle,
             boxNo: r.boxNo,
-            boxCount: r.boxCount
+            boxCount: r.boxCount,
+            verified: r.verified ? 'Y' : 'N'
         });
     });
 

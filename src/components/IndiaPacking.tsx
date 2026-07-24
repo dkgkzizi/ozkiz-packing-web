@@ -37,6 +37,7 @@ type PackingItem = {
   boxNo?: string;
   boxCount?: number;
   style?: string;
+  verified?: boolean;
 };
 
 type VerificationData = {
@@ -488,7 +489,11 @@ export default function IndiaPacking() {
                       <tbody className="divide-y divide-slate-50">
                         {results.map((item, idx) => (
                           <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
-                            <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-rose-600 transition-colors">
+                            <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-rose-600 transition-colors flex items-center gap-2">
+                               <span
+                                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.verified ? 'bg-green-500' : 'bg-red-500'}`}
+                                 title={item.verified ? '상품코드/상품명/색상/사이즈 DB 일치 확인됨' : 'DB와 완전히 일치하지 않음 — 확인 필요'}
+                               />
                                {item.matchedCode}
                             </td>
                             <td className="p-6">

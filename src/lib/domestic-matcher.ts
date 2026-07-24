@@ -275,21 +275,28 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         group.forEach(record => {
             let bestMatch = null;
             let bestScore = -1;
+            let bestSizeMatched = false;
+            let bestColorMatched = false;
 
             winningDbRows.forEach(row => {
                 let score = 10;
                 const dbBarcode = normalizeStr(row['바코드']);
                 const dbOption = normalizeStr(row['옵션'] || '');
+                let sizeMatched = !record.size;
                 if (record.size) {
                     const nSize = normalizeStr(record.size);
-                    if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) score += 20;
+                    if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
+                        score += 20;
+                        sizeMatched = true;
+                    }
                 }
+                let colorMatched = !record.color;
                 if (record.color) {
                     const normalizedColorVal = normalizeColor(record.color);
                     const nColor = normalizeStr(normalizedColorVal);
                     const upperColor = normalizedColorVal.toUpperCase();
                     let matchedColor = false;
-                    
+
                     if (nColor && (dbBarcode.includes(nColor) || dbOption.includes(nColor))) {
                         score += 15;
                         matchedColor = true;
@@ -314,26 +321,31 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                             }
                         }
                     }
+                    colorMatched = matchedColor;
                 }
                 if (score > bestScore) {
                     bestScore = score;
                     bestMatch = row;
+                    bestSizeMatched = sizeMatched;
+                    bestColorMatched = colorMatched;
                 }
             });
 
             // 그룹 단위로 묶였으므로 엄격한 25점 컷을 낮추거나 미달이어도 동일 상품명 부여
             // 베스트스코어가 양수이면(기본일치라도 있으면) 통과
             const isValidMatch = bestMatch !== null;
+            const isVerified = isValidMatch && bestSizeMatched && bestColorMatched;
 
             finalResults.push({
                 productCode: isValidMatch ? bestMatch!['상품코드'] : '미매칭',
                 sheetName: isValidMatch ? bestMatch!['상품명'] : record.pdfName,
-                color: normalizeColor(record.color), 
-                size: record.size,   
+                color: normalizeColor(record.color),
+                size: record.size,
                 qty: record.qty,
                 originalStyle: record.styleNo,
                 originSheet: record.sheetName,
-                originalIndex: record.originalIndex
+                originalIndex: record.originalIndex,
+                verified: isVerified
             });
         });
     }
@@ -359,7 +371,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         { header: '작업수량', key: 'qty', width: 15 },
         { header: '메모', key: 'memo', width: 25 },
         { header: '시트명', key: 'originSheet', width: 20 },
-        { header: '원래스타일', key: 'originalStyle', width: 20 }
+        { header: '원래스타일', key: 'originalStyle', width: 20 },
+        { header: '검증', key: 'verified', width: 8 }
     ];
 
     const hRow = outWs.getRow(1);
@@ -375,7 +388,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             qty: r.qty,
             memo: `${memoDate}_인도 입고`,
             originSheet: r.originSheet,
-            originalStyle: r.originalStyle
+            originalStyle: r.originalStyle,
+            verified: r.verified ? 'Y' : 'N'
         });
     });
 

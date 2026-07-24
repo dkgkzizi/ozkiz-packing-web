@@ -62,9 +62,10 @@ export async function POST(req: NextRequest) {
             size: row.getCell(4).text,
             qty: q, 
             pdfQty: q, 
-            boxNo: row.getCell(9).text, 
-            boxCount: parseInt(row.getCell(10).text) || 1, 
-            originalKey: row.getCell(8).text 
+            boxNo: row.getCell(9).text,
+            boxCount: parseInt(row.getCell(10).text) || 1,
+            originalKey: row.getCell(8).text,
+            verified: row.getCell(11).text === 'Y'
         });
     });
 

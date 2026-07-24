@@ -34,6 +34,7 @@ type PackingItem = {
   qty: number;
   pdfQty: number;
   style: string;
+  verified?: boolean;
 };
 
 type VerificationData = {
@@ -467,6 +468,10 @@ export default function DomesticPacking() {
                                 className={`group hover:bg-red-50/50 transition-colors cursor-pointer ${isNewGroup ? 'border-t border-slate-200' : ''}`}
                               >
                                 <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 transition-colors flex items-center gap-2">
+                                   <span
+                                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.verified ? 'bg-green-500' : 'bg-red-500'}`}
+                                     title={item.verified ? '상품코드/상품명/색상/사이즈 DB 일치 확인됨' : 'DB와 완전히 일치하지 않음 — 확인 필요'}
+                                   />
                                    {item.matchedCode}
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
