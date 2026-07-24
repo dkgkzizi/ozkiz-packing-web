@@ -83,7 +83,9 @@ export default function ChinaPacking() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestIdRef = useRef(0);
+
   // Keyword Settings State
   const [isSettingOpen, setIsSettingOpen] = useState(false);
   
@@ -502,51 +504,63 @@ export default function ChinaPacking() {
     return isNaN(num) ? 999 : num;
   };
 
-  const handleSearch = async (val: string) => {
+  const handleSearch = (val: string) => {
     setSearchTerm(val);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
     if (val.length < 2) {
       setSearchResults([]);
+      searchRequestIdRef.current++; // 대기 중이던 이전 요청들의 응답을 전부 무효화
       return;
     }
-    setSearchLoading(true);
-    try {
-      const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
-      const data = await res.json();
-      if (data.success) {
-        let items = data.items;
-        
-        // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
-        const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
-        if (tokens.length > 0) {
-          items = items.filter((it: any) => {
-            const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
-            // 모든 토큰이 포함되어야 함
-            return tokens.every(token => {
-              const t = token.replace(/\s/g, '');
-              // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음), 
-              // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
-              if (/^[0-9]{3}$/.test(t)) {
-                const opt = (it.option || "").toUpperCase();
-                // 옵션 필드에 있으면 우선 인정하되, 옵션이 비어있거나 다른 형식이라
-                // 못 찾는 경우를 대비해 상품명/코드 전체에서도 재확인한다 (검색결과가
-                // 통째로 사라지는 것을 방지).
-                return opt.includes(t) || combined.includes(t);
-              }
-              return combined.includes(t);
-            });
-          });
-        }
 
-        const sorted = items.sort((a: any, b: any) => {
-          return getSizeScore(a.option || "") - getSizeScore(b.option || "");
-        });
-        setSearchResults(sorted);
+    setSearchLoading(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      // 이 요청만의 고유 번호 — 응답이 왔을 때 이게 여전히 최신 요청인지 확인한다.
+      // (빠르게 타이핑하면 이전 글자에 대한 느린 응답이 나중에 도착해서 최신
+      // 검색결과를 덮어쓰는 문제가 있었음)
+      const requestId = ++searchRequestIdRef.current;
+      try {
+        const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
+        const data = await res.json();
+        if (requestId !== searchRequestIdRef.current) return; // 이미 낡은 응답이면 무시
+
+        if (data.success) {
+          let items = data.items;
+
+          // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
+          const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
+          if (tokens.length > 0) {
+            items = items.filter((it: any) => {
+              const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
+              // 모든 토큰이 포함되어야 함
+              return tokens.every(token => {
+                const t = token.replace(/\s/g, '');
+                // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음),
+                // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
+                if (/^[0-9]{3}$/.test(t)) {
+                  const opt = (it.option || "").toUpperCase();
+                  // 옵션 필드에 있으면 우선 인정하되, 옵션이 비어있거나 다른 형식이라
+                  // 못 찾는 경우를 대비해 상품명/코드 전체에서도 재확인한다 (검색결과가
+                  // 통째로 사라지는 것을 방지).
+                  return opt.includes(t) || combined.includes(t);
+                }
+                return combined.includes(t);
+              });
+            });
+          }
+
+          const sorted = items.sort((a: any, b: any) => {
+            return getSizeScore(a.option || "") - getSizeScore(b.option || "");
+          });
+          setSearchResults(sorted);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (requestId === searchRequestIdRef.current) setSearchLoading(false);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSearchLoading(false);
-    }
+    }, 300);
   };
 
   const selectProduct = async (selectedItem: any) => {

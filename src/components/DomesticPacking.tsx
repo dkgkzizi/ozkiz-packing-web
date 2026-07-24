@@ -57,6 +57,7 @@ export default function DomesticPacking() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const searchRequestIdRef = useRef(0);
 
   // 모바일 촬영 대기열 (모바일에서 업로드한 사진을 PC에서 불러오기)
   const [mobileQueue, setMobileQueue] = useState<{ id: number; file_name: string; created_at: string }[]>([]);
@@ -179,22 +180,27 @@ export default function DomesticPacking() {
 
   const handleSearch = (val: string) => {
     setSearchTerm(val);
-    
+
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    
+
     if (val.length < 2) {
       setSearchResults([]);
+      searchRequestIdRef.current++; // 대기 중이던 이전 요청들의 응답을 전부 무효화
       return;
     }
-    
+
     setSearchLoading(true);
     searchTimeoutRef.current = setTimeout(async () => {
+    // 이 요청만의 고유 번호 — 응답이 왔을 때 여전히 최신 요청인지 확인한다.
+    const requestId = ++searchRequestIdRef.current;
     try {
       const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
       const data = await res.json();
+      if (requestId !== searchRequestIdRef.current) return; // 이미 낡은 응답이면 무시
+
       if (data.success) {
         let items = data.items;
-        
+
         // **강력한 프론트엔드 필터링**: 사용자가 명시한 모든 단어가 포함된 것만 노출
         const tokens = val.trim().toUpperCase().split(/\s+/).filter(t => t.length > 0);
         if (tokens.length > 0) {
@@ -203,11 +209,12 @@ export default function DomesticPacking() {
             // 모든 토큰이 포함되어야 함
             return tokens.every(token => {
               const t = token.replace(/\s/g, '');
-              // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음), 
+              // 만약 토큰이 100~200 사이 숫자라면(사이즈일 확률 높음),
               // 단순 포함이 아니라 옵션 필드에 해당 숫자가 있는지 더 엄격하게 체크
               if (/^[0-9]{3}$/.test(t)) {
                 const opt = (it.option || "").toUpperCase();
-                return opt.includes(t);
+                // 옵션 필드에 없어도 상품명/코드 전체에서 재확인 (결과가 통째로 사라지는 것 방지)
+                return opt.includes(t) || combined.includes(t);
               }
               return combined.includes(t);
             });
@@ -222,7 +229,7 @@ export default function DomesticPacking() {
     } catch (e) {
       console.error(e);
     } finally {
-      setSearchLoading(false);
+      if (requestId === searchRequestIdRef.current) setSearchLoading(false);
     }
     }, 300);
   };

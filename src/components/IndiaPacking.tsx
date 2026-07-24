@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { 
-  FileUp, 
-  ChevronRight, 
-  Download, 
+import {
+  FileUp,
+  ChevronRight,
+  Download,
   Loader2,
   Table,
   Search,
@@ -20,7 +20,8 @@ import {
   RefreshCcw,
   Tag,
   Plus,
-  Flag
+  Flag,
+  Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
@@ -53,6 +54,15 @@ export default function IndiaPacking() {
   const [verification, setVerification] = useState<VerificationData | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Manual Selection Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   // Keyword Settings State
   const [isSettingOpen, setIsSettingOpen] = useState(false);
@@ -344,6 +354,139 @@ export default function IndiaPacking() {
     printWindow.document.close();
   };
 
+  const getSizeScore = (sizeStr: string) => {
+    const s = (sizeStr || '').toUpperCase();
+    if (s.includes('XS')) return -2;
+    if (s.includes('S')) return -1;
+    if (s.includes('FREE') || s.includes('F')) return 0;
+    if (s.includes('M')) return 500;
+    if (s.includes('L')) return 600;
+    if (s.includes('XL')) return 700;
+    const num = parseInt(s.replace(/[^0-9]/g, ''));
+    return isNaN(num) ? 999 : num;
+  };
+
+  const handleSearch = (val: string) => {
+    setSearchTerm(val);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    if (val.length < 2) {
+      setSearchResults([]);
+      searchRequestIdRef.current++; // 대기 중이던 이전 요청들의 응답을 전부 무효화
+      return;
+    }
+
+    setSearchLoading(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      // 이 요청만의 고유 번호 — 응답이 왔을 때 여전히 최신 요청인지 확인한다.
+      const requestId = ++searchRequestIdRef.current;
+      try {
+        const res = await fetch(`/api/china/search?q=${encodeURIComponent(val)}`);
+        const data = await res.json();
+        if (requestId !== searchRequestIdRef.current) return; // 이미 낡은 응답이면 무시
+
+        if (data.success) {
+          let items = data.items;
+
+          const tokens = val.trim().toUpperCase().split(/\s+/).filter((t: string) => t.length > 0);
+          if (tokens.length > 0) {
+            items = items.filter((it: any) => {
+              const combined = `${it.matchedName} ${it.option} ${it.productCode}`.toUpperCase().replace(/\s/g, '');
+              return tokens.every((token: string) => {
+                const t = token.replace(/\s/g, '');
+                if (/^[0-9]{3}$/.test(t)) {
+                  const opt = (it.option || '').toUpperCase();
+                  return opt.includes(t) || combined.includes(t);
+                }
+                return combined.includes(t);
+              });
+            });
+          }
+
+          const sorted = items.sort((a: any, b: any) => getSizeScore(a.option || '') - getSizeScore(b.option || ''));
+          setSearchResults(sorted);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (requestId === searchRequestIdRef.current) setSearchLoading(false);
+      }
+    }, 300);
+  };
+
+  const selectProduct = async (selectedItem: any) => {
+    if (editingIndex === null || !results) return;
+
+    setSearchLoading(true);
+    try {
+      // 선택된 상품명으로 전체 옵션(사이즈/색상 변형)을 다시 조회해서 같은 그룹을 한 번에 교정
+      const res = await fetch(`/api/china/search?q=${encodeURIComponent(selectedItem.matchedName)}`);
+      const data = await res.json();
+      const allOptions = data.success ? data.items : [selectedItem];
+
+      const normalize = (s: string) => (s || '').replace(/[^a-zA-Z0-9가-힣]/g, '').toUpperCase();
+      const targetKeyNormalized = normalize(results[editingIndex].originalKey || results[editingIndex].style || '');
+      const newResults = [...results];
+
+      newResults.forEach((resItem, idx) => {
+        const currentKeyNormalized = normalize(resItem.originalKey || resItem.style || '');
+        if (!targetKeyNormalized || currentKeyNormalized !== targetKeyNormalized) return;
+
+        if (idx === editingIndex) {
+          newResults[idx] = { ...resItem, matchedCode: selectedItem.productCode, matchedName: selectedItem.matchedName };
+        } else {
+          const resSize = normalize(resItem.size);
+          const resColor = normalize(resItem.color);
+
+          let match = allOptions.find((opt: any) => {
+            const optNorm = normalize(opt.option);
+            const sizeMatch = optNorm.includes(resSize);
+            const colorMatch = resColor === '' || optNorm.includes(resColor);
+            return sizeMatch && colorMatch;
+          });
+          if (!match) match = allOptions.find((opt: any) => normalize(opt.option).includes(resSize));
+
+          if (match) {
+            newResults[idx] = { ...resItem, matchedCode: match.productCode, matchedName: match.matchedName };
+          }
+        }
+      });
+
+      setResults(newResults);
+      setIsModalOpen(false);
+      setEditingIndex(null);
+      setSearchTerm('');
+      setSearchResults([]);
+
+      // AI 학습: 수동 매칭 결과를 저장해서 다음 동기화 때 자동으로 잡히게 함 (China와 동일 엔진 공유)
+      if (results[editingIndex].originalKey) {
+        fetch('/api/china/learn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            originalStyle: results[editingIndex].originalKey,
+            matchedName: selectedItem.matchedName,
+            productCode: selectedItem.productCode,
+            color: results[editingIndex].color,
+            size: results[editingIndex].size
+          })
+        }).catch(err => console.error('Learning failed:', err));
+      }
+    } catch (e) {
+      console.error('Group selection error:', e);
+      const fallbackResults = [...results];
+      fallbackResults[editingIndex] = {
+        ...fallbackResults[editingIndex],
+        matchedCode: selectedItem.productCode,
+        matchedName: selectedItem.matchedName
+      };
+      setResults(fallbackResults);
+      setIsModalOpen(false);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   return (
     <div>
       <header className="mb-8 flex items-center gap-3">
@@ -488,15 +631,30 @@ export default function IndiaPacking() {
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {results.map((item, idx) => (
-                          <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                          <tr
+                            key={idx}
+                            onClick={() => {
+                                setEditingIndex(idx);
+                                setSearchTerm('');
+                                setIsModalOpen(true);
+                                setSearchResults([]);
+                            }}
+                            className="group hover:bg-rose-50/50 transition-colors cursor-pointer"
+                          >
                             <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-rose-600 transition-colors flex items-center gap-2">
                                <span
                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.verified ? 'bg-green-500' : 'bg-red-500'}`}
                                  title={item.verified ? '상품코드/상품명/색상/사이즈 DB 일치 확인됨' : 'DB와 완전히 일치하지 않음 — 확인 필요'}
                                />
                                {item.matchedCode}
+                               <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </td>
                             <td className="p-6">
+                               {(item.originalKey || item.style) && (
+                                 <div className="mb-1.5 flex items-center gap-2">
+                                     <span className="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.originalKey || item.style}</span>
+                                 </div>
+                               )}
                                <span className="text-sm font-bold text-slate-800 block mb-1">{item.matchedName}</span>
                                <span className="text-[9px] text-slate-400 font-bold uppercase block italic">{item.size} / {item.color}</span>
                             </td>
@@ -525,6 +683,98 @@ export default function IndiaPacking() {
           </div>
         </div>
       </div>
+
+      {/* Manual Match Correction Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl shadow-black/20 overflow-hidden border border-slate-100"
+            >
+              <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">수동 매칭 교정</h3>
+                  <p className="text-xs font-medium text-slate-400">
+                    정확한 상품을 검색하여 매칭 데이터를 교정하세요.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-3 hover:bg-white rounded-2xl transition-colors shadow-sm"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="p-8">
+                <div className="relative mb-6">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-500" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="상품명 또는 상품코드를 입력하세요..."
+                    className="w-full pl-14 pr-6 py-5 bg-slate-50 border-none rounded-[1.5rem] text-sm font-bold focus:ring-2 focus:ring-rose-500/20 transition-all outline-none"
+                    autoFocus
+                  />
+                  {searchLoading && (
+                    <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-rose-500" />
+                  )}
+                </div>
+
+                <div className="max-h-[400px] overflow-auto custom-scrollbar pr-2">
+                  {searchResults.length > 0 ? (
+                    <div className="space-y-3">
+                      {searchResults.map((item, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => selectProduct(item)}
+                          className="w-full text-left p-5 rounded-2xl border border-slate-100 hover:border-rose-200 hover:bg-rose-50/30 transition-all group relative overflow-hidden"
+                        >
+                          <div className="flex items-center justify-between relative z-10">
+                            <div>
+                              <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">
+                                {item.productCode}
+                              </p>
+                              <h4 className="text-sm font-bold text-slate-800 group-hover:text-rose-700 transition-colors">
+                                {item.matchedName}
+                              </h4>
+                              <p className="text-[11px] text-slate-400 font-bold mt-1">
+                                {item.option}
+                              </p>
+                            </div>
+                            <RefreshCcw className="w-5 h-5 text-slate-200 group-hover:text-rose-400 group-hover:rotate-180 transition-all duration-500" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : searchTerm.length > 1 ? (
+                    <div className="text-center py-20">
+                      <Search className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                      <p className="text-sm font-bold text-slate-300">검색 결과가 없습니다.</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-20">
+                      <AlertCircle className="w-12 h-12 text-slate-100 mx-auto mb-4" />
+                      <p className="text-sm font-bold text-slate-300">검색어를 입력하여 인벤토리를 확인하세요.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Keyword Settings Modal */}
       <AnimatePresence>
