@@ -26,7 +26,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { stampSignatureAndDownload } from '@/lib/signature';
+import { stampSignatureAndDownload, stampSignatureOnElementAndDownload } from '@/lib/signature';
 
 type PackingItem = {
   matchedCode: string;
@@ -79,6 +79,7 @@ export default function ChinaPacking() {
   const [isDragging, setIsDragging] = useState(false);
   const [signing, setSigning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultsPanelRef = useRef<HTMLDivElement>(null);
 
   // Manual Selection Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,7 +148,13 @@ export default function ChinaPacking() {
     if (!file) return;
     setSigning(true);
     try {
-      await stampSignatureAndDownload(file);
+      if (file.type.startsWith('image/')) {
+        await stampSignatureAndDownload(file);
+      } else if (resultsPanelRef.current) {
+        await stampSignatureOnElementAndDownload(resultsPanelRef.current, verification?.fileName || file.name);
+      } else {
+        throw new Error('엑셀 파일은 먼저 데이터를 동기화한 뒤에 서명을 추가할 수 있어요.');
+      }
     } catch (e: any) {
       alert(e.message || '서명 추가 중 오류가 발생했습니다.');
     } finally {
@@ -945,8 +952,8 @@ export default function ChinaPacking() {
             {file && (
               <button
                   onClick={handleAddSignature}
-                  disabled={signing || !file.type.startsWith('image/')}
-                  title={!file.type.startsWith('image/') ? '이미지 파일(PNG/JPG)에서만 서명을 추가할 수 있어요' : '업로드한 이미지에 David 서명을 추가해서 다운로드합니다'}
+                  disabled={signing || (!file.type.startsWith('image/') && !results)}
+                  title={file.type.startsWith('image/') ? '업로드한 이미지에 David 서명을 추가해서 다운로드합니다' : (results ? '변환 결과 화면을 캡쳐해서 David 서명을 추가합니다' : '엑셀 파일은 먼저 데이터를 동기화한 뒤 이용할 수 있어요')}
                   className="w-full mt-4 bg-white border-2 border-slate-200 hover:border-slate-900 text-slate-700 font-bold py-4 rounded-2xl transition-all shadow-sm flex items-center justify-center gap-3 active:scale-95 text-base disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {signing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Signature className="w-5 h-5" />}
@@ -981,7 +988,7 @@ export default function ChinaPacking() {
         </div>
 
         <div className="lg:col-span-8 h-full max-h-[calc(100vh-200px)]">
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
+          <div ref={resultsPanelRef} className="bg-white border border-slate-200 rounded-[2.5rem] h-full flex flex-col shadow-xl shadow-slate-200/50 overflow-hidden">
              {verification && (() => {
                 const activeOriginal = results ? results.filter((item: any) => getChinaTabGroup(item.originSheet) === activeTab).reduce((acc, cur) => acc + (cur.pdfQty || cur.qty || 0), 0) : verification.originalTotal;
                 const activeMatched = results ? results.filter((item: any) => getChinaTabGroup(item.originSheet) === activeTab).reduce((acc, cur) => acc + (cur.qty || 0), 0) : verification.matchedTotal;
