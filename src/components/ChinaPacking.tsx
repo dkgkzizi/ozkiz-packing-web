@@ -510,6 +510,37 @@ export default function ChinaPacking() {
     return (parts[0] || '').trim().replace(/^:/, '');
   };
 
+  // 패킹리스트가 색상을 영어(IVORY 등)로 표기하는 경우 상품 DB엔 한글(아이보리)로만
+  // 저장돼 있어서 수동교정 그룹 일괄 적용 시 색상 비교가 실패할 수 있다.
+  // matcher.ts와 동일한 매핑으로 번역해서 비교한다.
+  const COLOR_MAP: Record<string, string[]> = {
+    'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
+    'WHITE': ['화이트', '아이보리', '백아이보리'],
+    'BLACK': ['블랙', '검정'],
+    'PINK': ['핑크', '분홍'],
+    'YELLOW': ['옐로우', '노랑'],
+    'MELANGE': ['멜란지', '회색', '그레이'],
+    'GRAY': ['그레이', '회색', '멜란지'],
+    'BEIGE': ['베이지'],
+    'BLUE': ['블루', '파랑'],
+    'NAVY': ['네이비', '남색'],
+    'RED': ['레드', '빨강'],
+    'GREEN': ['그린', '초록'],
+    'MINT': ['민트'],
+    'PURPLE': ['퍼플', '보라'],
+    'CHARCOAL': ['차콜', '먹색'],
+    'CORAL': ['코랄'],
+    'PEACH': ['피치'],
+    'BROWN': ['브라운', '갈색']
+  };
+
+  const getColorCandidates = (rawColor: string, normalize: (s: string) => string) => {
+    const upper = (rawColor || '').trim().toUpperCase();
+    if (!upper) return [];
+    const synonyms = COLOR_MAP[upper];
+    return [normalize(rawColor), ...(synonyms ? synonyms.map(normalize) : [])];
+  };
+
   const handleSearch = (val: string) => {
     setSearchTerm(val);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -601,18 +632,19 @@ export default function ChinaPacking() {
           } else {
             // 같은 그룹 내 다른 사이즈/색상 행들도 지능적으로 매칭
             const resSize = normalize(resItem.size);
-            const resColor = normalize(resItem.color);
-            
+            const colorCandidates = getColorCandidates(resItem.color, normalize);
+
             // 우선순위 1: 색상과 사이즈가 모두 일치하는 옵션 찾기
             let match = allOptions.find((opt: any) => {
               const optNorm = normalize(opt.option);
               const sizeMatch = optNorm.includes(resSize);
-              const colorMatch = resColor === "" || optNorm.includes(resColor);
+              const colorMatch = colorCandidates.length === 0 || colorCandidates.some(c => optNorm.includes(c));
               return sizeMatch && colorMatch;
             });
-            
-            // 우선순위 2: 색상이 안 맞으면 사이즈만이라도 일치하는 옵션 찾기
-            if (!match) {
+
+            // 우선순위 2: 색상 정보가 애초에 없던 행만 사이즈 단독 매칭으로 재시도.
+            // 색상이 있는데 못 찾은 경우 엉뚱한 색상을 집어버리는 것보다 그대로 두는 게 안전하다.
+            if (!match && colorCandidates.length === 0) {
               match = allOptions.find((opt: any) => normalize(opt.option).includes(resSize));
             }
 

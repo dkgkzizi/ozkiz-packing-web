@@ -182,6 +182,38 @@ export default function DomesticPacking() {
     return (parts[0] || '').trim().replace(/^:/, '');
   };
 
+  // 패킹리스트가 색상을 영어(IVORY 등)로 표기하는 경우 상품 DB엔 한글(아이보리)로만
+  // 저장돼 있어서 수동교정 그룹 일괄 적용 시 색상 비교가 실패할 수 있다.
+  // matcher.ts와 동일한 매핑으로 번역해서 비교한다.
+  const COLOR_MAP: Record<string, string[]> = {
+    'IVORY': ['아이보리', '화이트', '크림', '백아이보리'],
+    'WHITE': ['화이트', '아이보리', '백아이보리'],
+    'BLACK': ['블랙', '검정'],
+    'PINK': ['핑크', '분홍'],
+    'YELLOW': ['옐로우', '노랑'],
+    'MELANGE': ['멜란지', '회색', '그레이'],
+    'GRAY': ['그레이', '회색', '멜란지'],
+    'BEIGE': ['베이지'],
+    'BLUE': ['블루', '파랑'],
+    'NAVY': ['네이비', '남색'],
+    'RED': ['레드', '빨강'],
+    'GREEN': ['그린', '초록'],
+    'MINT': ['민트'],
+    'PURPLE': ['퍼플', '보라'],
+    'CHARCOAL': ['차콜', '먹색'],
+    'CORAL': ['코랄'],
+    'PEACH': ['피치'],
+    'BROWN': ['브라운', '갈색']
+  };
+
+  const getColorCandidates = (rawColor: string) => {
+    const upper = (rawColor || '').trim().toUpperCase();
+    if (!upper) return [];
+    const normalize = (s: string) => (s || '').replace(/\s/g, '').toUpperCase();
+    const synonyms = COLOR_MAP[upper];
+    return [normalize(rawColor), ...(synonyms ? synonyms.map(normalize) : [])];
+  };
+
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleSearch = (val: string) => {
@@ -267,15 +299,16 @@ export default function DomesticPacking() {
         } else {
           // 같은 그룹의 다른 행들은 검색 결과 리스트에서 적절한 사이즈를 찾아 매칭
           const resSize = resItem.size.replace(/\s/g, '').toUpperCase();
-          const resColor = resItem.color.replace(/\s/g, '').toUpperCase();
+          const colorCandidates = getColorCandidates(resItem.color);
 
           const bestMatchOption = searchResults.find(opt => {
             const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
-            return optRaw.includes(resSize) && (resColor === "" || optRaw.includes(resColor));
-          }) || searchResults.find(opt => {
+            const colorMatch = colorCandidates.length === 0 || colorCandidates.some(c => optRaw.includes(c));
+            return optRaw.includes(resSize) && colorMatch;
+          }) || (colorCandidates.length === 0 ? searchResults.find(opt => {
             const optRaw = (opt.option || "").replace(/\s/g, '').toUpperCase();
             return optRaw.includes(resSize);
-          });
+          }) : undefined);
 
           if (bestMatchOption) {
             newResults[idx] = {
