@@ -504,6 +504,12 @@ export default function ChinaPacking() {
     return isNaN(num) ? 999 : num;
   };
 
+  // 옵션 문자열(":라벤더, :100")에서 색상 부분만 뽑아 사이즈가 같을 때 정렬을 안정적으로 만든다
+  const getOptionColor = (option: string) => {
+    const parts = (option || '').split(',');
+    return (parts[0] || '').trim().replace(/^:/, '');
+  };
+
   const handleSearch = (val: string) => {
     setSearchTerm(val);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -551,7 +557,9 @@ export default function ChinaPacking() {
           }
 
           const sorted = items.sort((a: any, b: any) => {
-            return getSizeScore(a.option || "") - getSizeScore(b.option || "");
+            const sizeDiff = getSizeScore(a.option || "") - getSizeScore(b.option || "");
+            if (sizeDiff !== 0) return sizeDiff;
+            return getOptionColor(a.option || "").localeCompare(getOptionColor(b.option || ""), 'ko');
           });
           setSearchResults(sorted);
         }
