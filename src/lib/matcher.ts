@@ -226,6 +226,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         let tiedMatches: any[] = [];
         let bestSizeMatched = false;
         let bestColorMatched = false;
+        let bestEffectiveSize = record.size;
 
         dbRows.forEach(row => {
             let score = 0;
@@ -295,11 +296,13 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             // 스타일 패밀리 번호가 실제 사이즈 값과 우연히 겹칠 수 있다(예: S140044~S140048
             // 시리즈에서 사이즈 140과 코드 앞자리 "140"이 겹쳐 전부 오매칭되던 버그).
             let sizeMatched = !record.size; // 사이즈 정보가 없으면 통과 처리
+            let effectiveSize = record.size;
             if (record.size) {
                 // "(인디)" 상품군은 패킹리스트 표기 사이즈와 마스터 DB 등록 사이즈가
-                // 40 차이로 어긋나 있다(100→140, 110→150, 120→160, 130→170).
+                // 40 차이로 어긋나 있다(100→140, 110→150, 120→160, 130→170). 매칭뿐 아니라
+                // 최종 표시/출력 사이즈도 마스터 DB 기준(140~170)으로 보정해야 한다.
                 const isIndiProduct = (row['상품명'] || '').includes('(인디)');
-                const effectiveSize = isIndiProduct && INDI_SIZE_REMAP[record.size]
+                effectiveSize = isIndiProduct && INDI_SIZE_REMAP[record.size]
                     ? INDI_SIZE_REMAP[record.size]
                     : record.size;
                 const nSize = normalizeStr(effectiveSize);
@@ -371,6 +374,7 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                 tiedMatches = [row];
                 bestSizeMatched = sizeMatched;
                 bestColorMatched = colorMatched;
+                bestEffectiveSize = effectiveSize;
             } else if (score === bestScore) {
                 tiedMatches.push(row);
             }
@@ -392,7 +396,8 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             productCode: !isValidMatch ? '미매칭' : (isAmbiguous ? '중복확인' : bestMatch!['상품코드']),
             sheetName: !isValidMatch ? record.pdfName : (isAmbiguous ? `${bestMatch!['상품명']} [후보코드: ${distinctTiedCodes.join('/')}]` : bestMatch!['상품명']),
             color: normalizeColor(record.color),
-            size: record.size,
+            // "(인디)" 상품군은 매칭에 성공하면 마스터 DB 기준 사이즈(140~170)로 표시/출력한다.
+            size: isValidMatch && !isAmbiguous ? bestEffectiveSize : record.size,
             qty: record.qty,
             originalStyle: record.styleNo,
             originSheet: record.sheetName,
