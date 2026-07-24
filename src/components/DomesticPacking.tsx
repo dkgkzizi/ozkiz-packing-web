@@ -20,9 +20,11 @@ import {
   Edit2,
   Smartphone,
   Inbox,
-  ArrowDownToLine
+  ArrowDownToLine,
+  Signature
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { stampSignatureAndDownload } from '@/lib/signature';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
@@ -260,9 +262,9 @@ export default function DomesticPacking() {
         }
 
         const sorted = items.sort((a: any, b: any) => {
-          const sizeDiff = getSizeScore(a.option || "") - getSizeScore(b.option || "");
-          if (sizeDiff !== 0) return sizeDiff;
-          return getOptionColor(a.option || "").localeCompare(getOptionColor(b.option || ""), 'ko');
+          const colorDiff = getOptionColor(a.option || "").localeCompare(getOptionColor(b.option || ""), 'ko');
+          if (colorDiff !== 0) return colorDiff;
+          return getSizeScore(a.option || "") - getSizeScore(b.option || "");
         });
         setSearchResults(sorted);
       }

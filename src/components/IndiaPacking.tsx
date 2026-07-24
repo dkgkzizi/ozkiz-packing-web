@@ -442,9 +442,9 @@ export default function IndiaPacking() {
           }
 
           const sorted = items.sort((a: any, b: any) => {
-            const sizeDiff = getSizeScore(a.option || '') - getSizeScore(b.option || '');
-            if (sizeDiff !== 0) return sizeDiff;
-            return getOptionColor(a.option || '').localeCompare(getOptionColor(b.option || ''), 'ko');
+            const colorDiff = getOptionColor(a.option || '').localeCompare(getOptionColor(b.option || ''), 'ko');
+            if (colorDiff !== 0) return colorDiff;
+            return getSizeScore(a.option || '') - getSizeScore(b.option || '');
           });
           setSearchResults(sorted);
         }
