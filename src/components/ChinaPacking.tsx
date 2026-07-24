@@ -20,11 +20,13 @@ import {
   ShieldCheck,
   Settings,
   Tag,
-  Plus
+  Plus,
+  Signature
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { stampSignatureAndDownload } from '@/lib/signature';
 
 type PackingItem = {
   matchedCode: string;
@@ -75,8 +77,9 @@ export default function ChinaPacking() {
   const [activeTab, setActiveTab] = useState<string>('');
   const [verification, setVerification] = useState<VerificationData | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [signing, setSigning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Manual Selection Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -138,6 +141,18 @@ export default function ChinaPacking() {
     e.preventDefault(); e.stopPropagation(); setIsDragging(false);
     const f = e.dataTransfer.files?.[0];
     if (f) setFile(f);
+  };
+
+  const handleAddSignature = async () => {
+    if (!file) return;
+    setSigning(true);
+    try {
+      await stampSignatureAndDownload(file);
+    } catch (e: any) {
+      alert(e.message || '서명 추가 중 오류가 발생했습니다.');
+    } finally {
+      setSigning(false);
+    }
   };
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
@@ -926,6 +941,18 @@ export default function ChinaPacking() {
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
               중국 데이터 동기화
             </button>
+
+            {file && (
+              <button
+                  onClick={handleAddSignature}
+                  disabled={signing || !file.type.startsWith('image/')}
+                  title={!file.type.startsWith('image/') ? '이미지 파일(PNG/JPG)에서만 서명을 추가할 수 있어요' : '업로드한 이미지에 David 서명을 추가해서 다운로드합니다'}
+                  className="w-full mt-4 bg-white border-2 border-slate-200 hover:border-slate-900 text-slate-700 font-bold py-4 rounded-2xl transition-all shadow-sm flex items-center justify-center gap-3 active:scale-95 text-base disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {signing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Signature className="w-5 h-5" />}
+                서명 추가
+              </button>
+            )}
 
             {results && (
               <>
