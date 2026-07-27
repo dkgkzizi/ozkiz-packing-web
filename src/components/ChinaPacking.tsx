@@ -117,10 +117,22 @@ export default function ChinaPacking() {
       localStorage.setItem('india_shoe_keywords', JSON.stringify(defaults));
     }
     
+    // "상의-비비아나(발레복)", "하의-블랙미니멀"처럼 구체적인 품목명 대신 "상의"/"하의"라는
+    // 범용 접두어만 붙는 상품명이 있는데, 예전 기본 키워드 목록에는 이 범용 접두어가 빠져있어서
+    // 명백한 의류 상품이 키워드 매�칭에 실패해 부자재로 잘못 분류되는 치명적인 문제가 있었다.
+    // 이미 저장된(커스터마이징된) 목록에도 없으면 1회성으로 자동 추가해준다.
+    const clothingMustHave = ['상의', '하의'];
+
     if (savedClothing) {
-      setClothingKeywords(JSON.parse(savedClothing));
+      let list = JSON.parse(savedClothing);
+      const missing = clothingMustHave.filter(k => !list.includes(k));
+      if (missing.length > 0) {
+        list = [...list, ...missing];
+        localStorage.setItem('india_clothing_keywords', JSON.stringify(list));
+      }
+      setClothingKeywords(list);
     } else {
-      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '가디건', '후드', '레깅스', '한복', '의류', 'CLOTHING'];
+      const defaults = ['원피스', '세트', '티셔츠', '바지', '팬츠', '치마', '스커트', '재킷', '코트', '블라우스', '셔츠', '가디건', '후드', '레깅스', '한복', '의류', ...clothingMustHave, 'CLOTHING'];
       setClothingKeywords(defaults);
       localStorage.setItem('india_clothing_keywords', JSON.stringify(defaults));
     }
@@ -843,14 +855,27 @@ export default function ChinaPacking() {
 
     // 박스는 정렬 순서상 맨 위 상품의 카테고리로 분류되지만(위 boxMap 생성부 참고), 그 박스에
     // 실제로 섞여 들어있는 다른 카테고리 상품도 라벨에서 안 보이면 "왜 신발 상품이 의류 파레트에
-    // 찍히지" 하고 헷갈릴 수 있다. 그래서 상품명은 전부 보여주되, 박스의 대표 카테고리와 실제
-    // 상품 카테고리가 다른 경우 "(혼적)" 표시를 붙여 왜 같이 나오는지 알 수 있게 한다.
+    // 찍히지" 하고 헷갈릴 수 있다. 섞인 박스만 상품명을 "누아르/라이팅가드(혼합)"처럼 슬래시로
+    // 묶어서 하나의 박스 안에 같이 들어있다는 걸 보여주고, 섞이지 않은 박스는 그대로 개별 표시한다.
     const buildProductsLabel = (boxesInPallet: any[], categoryLabel: string): string => {
-        return Array.from(new Set(boxesInPallet.flatMap(b => b.items).map((i: any) => {
-            const n = i.matchedName || i.style;
-            const base = n.split('-')[1] || n;
-            return getCategory(i) !== categoryLabel ? `${base}(혼적)` : base;
-        }))).slice(0, 5).join(', ');
+        const labels = new Set<string>();
+        boxesInPallet.forEach(box => {
+            const namesInBox: string[] = [];
+            const seenNames = new Set<string>();
+            let isMixed = false;
+            box.items.forEach((i: any) => {
+                const n = i.matchedName || i.style;
+                const base = n.split('-')[1] || n;
+                if (getCategory(i) !== categoryLabel) isMixed = true;
+                if (!seenNames.has(base)) { seenNames.add(base); namesInBox.push(base); }
+            });
+            if (isMixed && namesInBox.length > 1) {
+                labels.add(`${namesInBox.join('/')}(혼합)`);
+            } else {
+                namesInBox.forEach(n => labels.add(n));
+            }
+        });
+        return Array.from(labels).slice(0, 5).join(', ');
     };
 
     const createPalletsInternal = (boxes: any[], capacity: number, categoryLabel: string) => {
