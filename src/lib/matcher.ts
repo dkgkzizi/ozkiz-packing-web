@@ -221,6 +221,11 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         
         const nStyle = normalizeStr(record.styleNo);
         const nName = normalizeStr(record.pdfName || '');
+        // "세트-모기장옷(캐노피)"처럼 괄호로 상품 변형을 표기하는 패킹리스트가 있는데, 마스터DB에는
+        // 그 괄호 문구 없이 "세트-모기장옷"으로만 등록된 경우가 많다. normalizeStr는 괄호 자체를
+        // 지워버려서("세트모기장옷캐노피") 이후엔 괄호 문구 시작 지점을 알 수 없으므로, 정규화 전
+        // 원본 문자열에서 괄호 안 내용을 통째로 잘라낸 버전을 별도로 준비해 함께 비교한다.
+        const styleNoBracket = normalizeStr((record.styleNo || '').replace(/\([^)]*\)/g, ''));
         let bestMatch: any = null;
         let bestScore = -1;
         let tiedMatches: any[] = [];
@@ -234,6 +239,14 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             const dbCode = normalizeStr(row['상품코드']);
             const dbBarcode = normalizeStr(row['바코드']);
             const dbOption = normalizeStr(row['옵션'] || '');
+            // 옵션 원본은 보통 ":색상, :사이즈" 형식이라, 콤마로 나눈 마지막 필드가 실제 사이즈다.
+            // 아래 사이즈 채점에서 단순 포함(includes) 검사만 쓰면 "S"가 "XS"/"XXL"의 부분
+            // 문자열이라 사이즈가 다른 상품끼리 점수가 동점 처리되고, 그러면 그 다음은 상품코드
+            // 순서로 승부가 갈려서 사이즈가 틀린 쪽이 이겨버리는 문제가 있다(예: 사이즈 "S"인
+            // 패킹 행이 실제로는 "XS" 옵션인 상품에 매칭). 정확한 사이즈 필드 일치를 더 높게
+            // 채점해서 이런 동점 오매칭을 막는다.
+            const rawOptionFields = String(row['옵션'] || '').split(',').map(f => normalizeStr(f));
+            const dbOptionSizeField = rawOptionFields.length > 0 ? rawOptionFields[rawOptionFields.length - 1] : '';
 
             // 0. AI 학습 가중치
             if (learned) {
@@ -270,6 +283,20 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
             ) {
                 score += 10;
                 isBaseMatch = true;
+            } else if (
+                styleNoBracket && styleNoBracket !== nStyle && (
+                    dbName === styleNoBracket || dbCode === styleNoBracket || dbOption === styleNoBracket
+                )
+            ) {
+                score += 18; // 괄호 문구 제거 후 정확히 일치
+                isBaseMatch = true;
+            } else if (
+                styleNoBracket && styleNoBracket !== nStyle && (
+                    dbName.includes(styleNoBracket) || dbCode.includes(styleNoBracket) || dbOption.includes(styleNoBracket)
+                )
+            ) {
+                score += 8; // 괄호 문구 제거 후 부분 일치
+                isBaseMatch = true;
             } else {
                 // '아쿠아슈즈-요요' -> '아쿠아-요요' 매칭을 위해 '슈즈', '신발' 등 노이즈 제거 후 재시도
                 const cleanedStyle = nStyle.replace(/슈즈|신발|샌들|장화|구두/g, '');
@@ -286,8 +313,17 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
 
             // 학습 데이터가 없고 이름 매칭도 실패했다면 제외
             // 학습 데이터가 있더라도 (학습된 코드와 다름) AND (이름 매칭 실패)라면 제외
+            //
+            // 단, 학습 기록이 "스타일만 일치"하는 느슨한 기록(색상/사이즈까지는 정확히 일치하지
+            // 않는 과거 다른 옵션의 교정 기록)일 때, 그 학습된 상품코드 단 하나만 통과시키면
+            // 나머지 같은 상품명의 색상/사이즈 형제 상품들이 전부 걸러져서 실제 색상/사이즈가
+            // 뭐든 간에 그 학습된 코드 하나로만 몰리는 문제가 있었다(예: "세트-모기장옷(캐노피)"
+            // 처럼 DB에 없는 괄호 표기라 이름 매칭 자체가 실패하는 상품에서 전량 오매칭).
+            // 그래서 학습된 상품명과 같은 상품명을 가진 형제 후보도 통과시켜, 아래 사이즈/색상
+            // 채점으로 실제 맞는 형제를 골라내게 한다.
             const isLearnedCodeMatch = learned && row['상품코드'] === learned.product_code;
-            if (!isLearnedCodeMatch && !isBaseMatch) {
+            const isLearnedNameSibling = learned && row['상품명'] === learned.matched_name;
+            if (!isLearnedCodeMatch && !isLearnedNameSibling && !isBaseMatch) {
                 return;
             }
 
@@ -306,8 +342,14 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     ? INDI_SIZE_REMAP[record.size]
                     : record.size;
                 const nSize = normalizeStr(effectiveSize);
-                if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
+                if (nSize && dbOptionSizeField && dbOptionSizeField === nSize) {
+                    // 옵션의 사이즈 필드와 정확히 일치 — 가장 신뢰할 수 있는 신호
                     score += 40;
+                    sizeMatched = true;
+                } else if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
+                    // 정확한 필드 일치가 아닌 부분/바코드 포함 일치는 "S"가 "XS"에 포함되는 식의
+                    // 우연일 수 있으므로 더 낮게 채점해, 진짜 정확히 일치하는 형제 상품에 밀리게 한다.
+                    score += 15;
                     sizeMatched = true;
                 }
             }
