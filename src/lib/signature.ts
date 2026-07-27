@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 // next/font는 실제로 CSS에서 쓰여야만 폰트 파일을 내려받는 지연 로딩 방식이라, 이 페이지
 // 어디에도 이 폰트가 적용된 요소가 없으면 document.fonts.ready가 있어도 폰트 자체는
 // 로드되지 않은 채로 남는다. document.fonts.load()로 명시적으로 강제 로드한다.
-async function drawSignature(canvas: HTMLCanvasElement): Promise<void> {
+async function drawSignature(canvas: HTMLCanvasElement, signerName: string = 'David'): Promise<void> {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('캔버스를 초기화할 수 없습니다.');
 
@@ -36,7 +36,7 @@ async function drawSignature(canvas: HTMLCanvasElement): Promise<void> {
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText('David', 0, 0);
+  ctx.fillText(signerName || 'David', 0, 0);
   ctx.restore();
 }
 
@@ -47,8 +47,9 @@ async function downloadCanvas(canvas: HTMLCanvasElement, filename: string): Prom
   saveAs(blob, filename);
 }
 
-// 업로드한 이미지 파일에 직접 "David" 서명을 그려넣고 다운로드한다.
-export async function stampSignatureAndDownload(file: File): Promise<void> {
+// 업로드한 이미지 파일에 직접 서명을 그려넣고 다운로드한다. signerName을 지정하지 않으면
+// 기존과 동일하게 "David"로 찍힌다(하위 호환).
+export async function stampSignatureAndDownload(file: File, signerName?: string): Promise<void> {
   if (!file.type.startsWith('image/')) {
     throw new Error('이미지 파일(PNG/JPG)에서만 서명을 추가할 수 있습니다.');
   }
@@ -73,7 +74,7 @@ export async function stampSignatureAndDownload(file: File): Promise<void> {
   if (!ctx) throw new Error('캔버스를 초기화할 수 없습니다.');
   ctx.drawImage(img, 0, 0);
 
-  await drawSignature(canvas);
+  await drawSignature(canvas, signerName);
 
   const cleanName = file.name.replace(/\.[^/.]+$/, '');
   await downloadCanvas(canvas, `${cleanName}_서명.png`);
@@ -83,14 +84,14 @@ export async function stampSignatureAndDownload(file: File): Promise<void> {
 // 결과 화면을 캡쳐해서 그 위에 서명을 찍어 다운로드한다.
 // (html2canvas는 Tailwind v4가 쓰는 oklch() 색상 문법을 파싱하지 못해 실패하므로,
 // SVG foreignObject 기반으로 브라우저 자체 렌더링을 활용하는 modern-screenshot을 사용한다.)
-export async function stampSignatureOnElementAndDownload(element: HTMLElement, baseName: string): Promise<void> {
+export async function stampSignatureOnElementAndDownload(element: HTMLElement, baseName: string, signerName?: string): Promise<void> {
   const { domToCanvas } = await import('modern-screenshot');
   const canvas = await domToCanvas(element, {
     backgroundColor: '#ffffff',
     scale: Math.min(2, window.devicePixelRatio || 1.5),
   });
 
-  await drawSignature(canvas);
+  await drawSignature(canvas, signerName);
 
   const cleanName = baseName.replace(/\.[^/.]+$/, '');
   await downloadCanvas(canvas, `${cleanName}_서명.png`);

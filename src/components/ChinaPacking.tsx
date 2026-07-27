@@ -78,8 +78,16 @@ export default function ChinaPacking() {
   const [verification, setVerification] = useState<VerificationData | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [signerName, setSignerName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultsPanelRef = useRef<HTMLDivElement>(null);
+
+  // 마지막으로 사용한 서명 이름을 기억해뒀다가 다음에 기본값으로 채워준다.
+  React.useEffect(() => {
+    const saved = localStorage.getItem('signature_name');
+    setSignerName(saved || 'David');
+  }, []);
 
   // Manual Selection Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -156,14 +164,14 @@ export default function ChinaPacking() {
     if (f) setFile(f);
   };
 
-  const handleAddSignature = async () => {
+  const handleAddSignature = async (name: string) => {
     if (!file) return;
     setSigning(true);
     try {
       if (file.type.startsWith('image/')) {
-        await stampSignatureAndDownload(file);
+        await stampSignatureAndDownload(file, name);
       } else if (resultsPanelRef.current) {
-        await stampSignatureOnElementAndDownload(resultsPanelRef.current, verification?.fileName || file.name);
+        await stampSignatureOnElementAndDownload(resultsPanelRef.current, verification?.fileName || file.name, name);
       } else {
         throw new Error('엑셀 파일은 먼저 데이터를 동기화한 뒤에 서명을 추가할 수 있어요.');
       }
@@ -172,6 +180,13 @@ export default function ChinaPacking() {
     } finally {
       setSigning(false);
     }
+  };
+
+  const confirmSignature = () => {
+    const name = signerName.trim() || 'David';
+    localStorage.setItem('signature_name', name);
+    setIsSignatureModalOpen(false);
+    handleAddSignature(name);
   };
 
   const generateAndDownload = async (items: PackingItem[], originalName: string) => {
@@ -1077,15 +1092,61 @@ export default function ChinaPacking() {
 
             {file && (
               <button
-                  onClick={handleAddSignature}
+                  onClick={() => setIsSignatureModalOpen(true)}
                   disabled={signing || (!file.type.startsWith('image/') && !results)}
-                  title={file.type.startsWith('image/') ? '업로드한 이미지에 David 서명을 추가해서 다운로드합니다' : (results ? '변환 결과 화면을 캡쳐해서 David 서명을 추가합니다' : '엑셀 파일은 먼저 데이터를 동기화한 뒤 이용할 수 있어요')}
+                  title={file.type.startsWith('image/') ? '업로드한 이미지에 서명을 추가해서 다운로드합니다' : (results ? '변환 결과 화면을 캡쳐해서 서명을 추가합니다' : '엑셀 파일은 먼저 데이터를 동기화한 뒤 이용할 수 있어요')}
                   className="w-full mt-4 bg-white border-2 border-slate-200 hover:border-slate-900 text-slate-700 font-bold py-4 rounded-2xl transition-all shadow-sm flex items-center justify-center gap-3 active:scale-95 text-base disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {signing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Signature className="w-5 h-5" />}
                 서명 추가
               </button>
             )}
+
+            <AnimatePresence>
+              {isSignatureModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setIsSignatureModalOpen(false)}
+                    className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    className="relative bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm"
+                  >
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight mb-1">서명 이름 입력</h3>
+                    <p className="text-xs text-slate-400 font-medium mb-5">패킹리스트에 도장처럼 찍힐 이름을 입력하세요.</p>
+                    <input
+                      type="text"
+                      value={signerName}
+                      onChange={(e) => setSignerName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') confirmSignature(); }}
+                      placeholder="예: David"
+                      autoFocus
+                      className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-slate-900 outline-none text-sm font-bold text-slate-800 mb-5"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setIsSignatureModalOpen(false)}
+                        className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors"
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={confirmSignature}
+                        className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold text-sm hover:bg-red-700 transition-colors"
+                      >
+                        서명 추가
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             {results && (
               <>
