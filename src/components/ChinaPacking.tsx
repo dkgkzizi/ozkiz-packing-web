@@ -264,7 +264,14 @@ export default function ChinaPacking() {
 
           // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
           const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number, boxCol: number, ctCol: number }[] = [];
-          
+          // OH 포맷은 패킹 박스 표 오른쪽에 "제품사진/품명/칼라/합계/사이즈별수량" 참고용 표가
+          // 같은 행에 나란히 붙어있는 경우가 있다. 그 참고표의 헤더 텍스트가 박스 표의 데이터 행과
+          // 같은 행 배열에 섞여 들어오면(예: 4행) rowStr에 "품명"+"합계"가 우연히 다시 나타나서
+          // 이를 반복되는 진짜 헤더로 오인하게 된다 — 그러면 그 지점부터 완전히 다른(박스번호 컬럼이
+          // 없는) 참고표 컬럼을 데이터로 잘못 추출하게 된다. 첫 헤더에서 확정된 품명 컬럼 위치와
+          // 다른 위치에서 발견된 "품명"은 반복 헤더로 인정하지 않아 이 문제를 막는다.
+          let establishedNameCol = -1;
+
           jsonData.forEach((row, idx) => {
               if (!Array.isArray(row)) return;
               const rowStr = row.join('|');
@@ -272,8 +279,12 @@ export default function ChinaPacking() {
                   let nameCol = -1, colorCol = -1, totalCol = -1, subtotalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1, ctCol = -1;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim().toUpperCase();
-                      if (c === '품명') nameCol = cellIdx;
-                      else if (c === '칼라' || c === '색상') colorCol = cellIdx;
+                      // 품명/칼라는 첫 매치만 채택한다 — OH 포맷은 같은 행에 오른쪽으로
+                      // "제품사진/품명/칼라/합계/사이즈별수량" 참고용 표가 나란히 붙어있어 "품명"/"칼라"가
+                      // 한 행에 두 번 나타날 수 있는데, 나중 매치로 덮어쓰면 실제 박스 표의 컬럼
+                      // 위치 대신 참고표의 컬럼 위치를 잡아버려 이후 데이터 추출 전체가 어긋난다.
+                      if (c === '품명') { if (nameCol === -1) nameCol = cellIdx; }
+                      else if (c === '칼라' || c === '색상') { if (colorCol === -1) colorCol = cellIdx; }
                       // "수량"/"포장수량"은 행별 실제 작업수량이라 항상 우선한다. "합계/소계/총계/총수량"은
                       // 병합된 소계 컬럼이라(OH 포맷처럼 같은 시트에 둘 다 있을 수 있음) 행별 수량이
                       // 없을 때만 대체로 사용한다 — 안 그러면 스캔 순서상 나중에 나오는 소계 컬럼이
@@ -318,7 +329,14 @@ export default function ChinaPacking() {
                       sizeEndCol = sizeStartCol;
                   }
                   
+                  if (nameCol !== -1 && establishedNameCol !== -1 && nameCol !== establishedNameCol) {
+                      // 이미 확정된 품명 컬럼과 다른 위치의 "품명" — 별도 참고표의 헤더가 우연히
+                      // 섞여든 것이므로 반복 헤더로 인정하지 않는다.
+                      return;
+                  }
+
                   if (nameCol !== -1) {
+                      if (establishedNameCol === -1) establishedNameCol = nameCol;
                       headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix, boxCol, ctCol } as any);
                   }
               }
@@ -350,17 +368,26 @@ export default function ChinaPacking() {
                   if (!row || !Array.isArray(row)) break;
                   
                   // 다음 도표의 공식 헤더를 만나도 중단하지 않고 계속 수집 (데이터 유실 방지)
-                  const rowStrAll = row.join('|');
-                  if (rIdx > dataStartRowIdx && rowStrAll.includes('품명') && rowStrAll.includes('칼라') && (rowStrAll.includes('합계') || rowStrAll.includes('수량'))) {
-                      continue; 
+                  // 단, "품명"/"칼라"가 실제로 이 표의 품명/칼라 컬럼 위치에 있을 때만 반복 헤더로 인정한다.
+                  // (오른쪽에 붙은 별도 참고표의 헤더 텍스트가 데이터 행에 우연히 섞여 들어와도
+                  // 그건 다른 컬럼 위치이므로 잘못 걸러지지 않는다.)
+                  if (rIdx > dataStartRowIdx &&
+                      String(row[header.nameCol] || '').trim() === '품명' &&
+                      String(row[header.colorCol] || '').trim() === '칼라') {
+                      continue;
                   }
 
                   let currentName = String(row[header.nameCol] || "").trim();
-                  
+
                   // 섹션 종료 조건 대신 행 건너뛰기 로직으로 변경 (데이터 유실 방지)
-                  const fullRowStr = row.join('|');
+                  // 이 표가 실제로 쓰는 컬럼 범위(품명~C/T 등) 안에서만 합계/총계 키워드를 검사한다.
+                  // 행 전체를 검사하면 오른쪽에 붙은 별도 참고표(제품사진/품명/칼라/합계/사이즈별수량)의
+                  // "합계" 헤더 텍스트 때문에 정상적인 박스 데이터 행이 합계 행으로 오인되어 유실된다.
+                  const relevantCols = [header.nameCol, header.colorCol, header.totalCol, header.sizeStartCol, header.sizeEndCol, header.boxCol, header.ctCol].filter((c: number) => c !== -1 && c !== undefined);
+                  const tableEndCol = relevantCols.length > 0 ? Math.max(...relevantCols) : row.length - 1;
+                  const fullRowStr = row.slice(0, tableEndCol + 1).join('|');
                   if (fullRowStr.includes('합계') || fullRowStr.includes('TOTAL') || fullRowStr.includes('소계') || fullRowStr.includes('총계') || fullRowStr.includes('총수량')) {
-                      continue; 
+                      continue;
                   }
                   
                   const rowStr = row.slice(header.nameCol, header.nameCol + 10).join('').trim();
