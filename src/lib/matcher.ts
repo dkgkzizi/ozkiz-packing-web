@@ -346,10 +346,17 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
                     // 옵션의 사이즈 필드와 정확히 일치 — 가장 신뢰할 수 있는 신호
                     score += 40;
                     sizeMatched = true;
+                } else if (nSize && dbOptionSizeField && dbOptionSizeField.includes(nSize)) {
+                    // "S(100)"/"M(110,120)"처럼 옵션 사이즈 필드가 복합 표기인 경우, 정확히
+                    // 일치하진 않아도 그 필드 안에 사이즈가 포함되면 신뢰할 수 있는 신호다.
+                    score += 20;
+                    sizeMatched = true;
                 } else if (nSize && (dbBarcode.includes(nSize) || dbOption.includes(nSize))) {
-                    // 정확한 필드 일치가 아닌 부분/바코드 포함 일치는 "S"가 "XS"에 포함되는 식의
-                    // 우연일 수 있으므로 더 낮게 채점해, 진짜 정확히 일치하는 형제 상품에 밀리게 한다.
-                    score += 15;
+                    // 사이즈 필드 자체가 아니라 바코드/옵션 전체 문자열에서의 포함 일치는 약하게
+                    // 채점한다. 상품코드=바코드로 등록된 상품군(예: "S100823")은 코드가 전부 "S"로
+                    // 시작해서 사이즈 "S" 검색어와 우연히 겹치는 등, 진짜 사이즈와 무관하게 걸릴
+                    // 수 있으므로 사이즈 필드 일치 신호보다 항상 낮게 잡아 밀리게 한다.
+                    score += 8;
                     sizeMatched = true;
                 }
             }
