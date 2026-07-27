@@ -878,56 +878,18 @@ export default function ChinaPacking() {
         return Array.from(labels).slice(0, 5).join(', ');
     };
 
-    // 패킹리스트 한 줄이 "144-173"처럼 하이픈 범위로 여러 박스를 한번에 표기하는 경우가 있는데,
-    // 이 범위 하나(예: 30박스)가 파레트 용량(예: 16박스)보다 크면 통째로 파레트 하나에 몰아넣어서
-    // 파레트당 박스 수가 용량을 초과해버리는 문제가 있었다. 이런 범위는 용량 단위로 쪼개서
-    // (예: 144~159, 160~173) 여러 파레트에 나눠 담기게 한다.
-    const splitOversizedBoxes = (boxes: any[], capacity: number): any[] => {
-        const result: any[] = [];
-        boxes.forEach(box => {
-            if (box.count <= capacity) {
-                result.push(box);
-                return;
-            }
-            let cursor = box.start;
-            let remaining = box.count;
-            while (remaining > 0) {
-                const chunkCount = Math.min(capacity, remaining);
-                result.push({ ...box, start: cursor, end: cursor + chunkCount - 1, count: chunkCount });
-                cursor += chunkCount;
-                remaining -= chunkCount;
-            }
-        });
-        return result;
-    };
-
+    // 박스 번호 순서대로 끊김 없이 정확히 용량(capacity)만큼씩 채워나가고, 맨 마지막 파레트에만
+    // 나머지가 남도록 한다. 패킹리스트 한 줄이 "144-173"처럼 하이픈 범위로 여러 박스를 한번에
+    // 표기하거나, 앞 파레트가 용량을 다 못 채운 채로 다음 줄로 넘어가는 경우 둘 다, 그 줄을
+    // 파레트 경계에서 필요한 만큼 쪼개어 이어붙인다 — 그래야 중간에 용량 미만인 파레트가
+    // 생기지 않는다 (16,16,16... 쭉 채우다가 마지막에만 남는 만큼).
     const createPalletsInternal = (rawBoxes: any[], capacity: number, categoryLabel: string) => {
-        const boxes = splitOversizedBoxes(rawBoxes, capacity);
         let currentPalletBoxes: any[] = [];
         let currentCount = 0;
         let palletNum = 1;
 
-        boxes.forEach(box => {
-            if (currentCount + box.count > capacity) {
-                if (currentPalletBoxes.length > 0) {
-                    pallets.push({
-                        no: palletNum,
-                        category: categoryLabel,
-                        range: formatBoxRangeLabel(currentPalletBoxes),
-                        products: buildProductsLabel(currentPalletBoxes, categoryLabel),
-                        totalBox: currentCount
-                    });
-                    palletNum++;
-                }
-                currentPalletBoxes = [box];
-                currentCount = box.count;
-            } else {
-                currentPalletBoxes.push(box);
-                currentCount += box.count;
-            }
-        });
-
-        if (currentPalletBoxes.length > 0) {
+        const flushPallet = () => {
+            if (currentPalletBoxes.length === 0) return;
             pallets.push({
                 no: palletNum,
                 category: categoryLabel,
@@ -935,7 +897,26 @@ export default function ChinaPacking() {
                 products: buildProductsLabel(currentPalletBoxes, categoryLabel),
                 totalBox: currentCount
             });
-        }
+            palletNum++;
+            currentPalletBoxes = [];
+            currentCount = 0;
+        };
+
+        rawBoxes.forEach(box => {
+            let cursor = box.start;
+            let remaining = box.count;
+            while (remaining > 0) {
+                const spaceLeft = capacity - currentCount;
+                const take = Math.min(spaceLeft, remaining);
+                currentPalletBoxes.push({ ...box, start: cursor, end: cursor + take - 1, count: take });
+                currentCount += take;
+                cursor += take;
+                remaining -= take;
+                if (currentCount >= capacity) flushPallet();
+            }
+        });
+
+        flushPallet();
     };
 
     createPalletsInternal(shoeBoxes, 16, "신발");
