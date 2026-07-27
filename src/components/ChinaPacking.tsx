@@ -795,6 +795,26 @@ export default function ChinaPacking() {
     const getCategory = (item: any) => {
         const name = (item.matchedName || "").toUpperCase();
         const original = (item.style || "").toUpperCase();
+
+        // 매칭된 상품명(matchedName)은 보통 "카테고리-구체적품명" 형식이라(우비-딸기베리우비,
+        // 세트-모기장옷, 발레복-레인보우리본 등), 실제 카테고리를 나타내는 건 하이픈 앞의
+        // 접두어다. 원본 패킹리스트 텍스트(item.style)는 하이픈 없이 구체적품명만 있는 경우가
+        // 많은데("레인보우리본"), 이때 하이픈이 없다고 전체 문자열을 그대로 "접두어"로 쓰면
+        // 색상/구체적품명 부분이 다른 카테고리 키워드와 우연히 겹칠 수 있다 — "레인보우"(색상)가
+        // "레인코트"류를 잡으려던 신발 키워드 "레인"을 부분 포함해서, 의류 키워드 "발레복"을
+        // matchedName엔 있는데도 신발로 잘못 분류되던 문제가 있었다. 그래서 실제로 하이픈이
+        // 있는 문자열에서만 접두어를 뽑아 쓰고, 하이픈이 없으면 그 텍스트는 접두어 판별에서
+        // 아예 제외한다(전체 문자열 폴백 단계에서만 사용).
+        const namePrefix = (item.matchedName || "").includes('-') ? (item.matchedName || "").split('-')[0].toUpperCase() : '';
+        const stylePrefix = (item.style || "").includes('-') ? (item.style || "").split('-')[0].toUpperCase() : '';
+        const matchesAny = (keywords: string[], ...texts: string[]) =>
+            keywords.some(k => texts.some(t => t && t.includes(k.toUpperCase())));
+
+        if (namePrefix || stylePrefix) {
+            if (matchesAny(shoeKeywords, namePrefix, stylePrefix)) return '신발';
+            if (matchesAny(clothingKeywords, namePrefix, stylePrefix)) return '의류';
+        }
+
         if (shoeKeywords.some(k => name.includes(k.toUpperCase()) || original.includes(k.toUpperCase()))) return '신발';
         if (clothingKeywords.some(k => name.includes(k.toUpperCase()) || original.includes(k.toUpperCase()))) return '의류';
         return '부자재';
