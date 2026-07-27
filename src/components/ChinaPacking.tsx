@@ -1177,11 +1177,38 @@ export default function ChinaPacking() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {results.map((item: any, originalIndex: number) => ({ item, originalIndex }))
-                          .filter(({ item }: any) => {
-                             const isTotalRow = !item.matchedName && !item.size && !item.color && item.qty > 0;
-                             return getChinaTabGroup(item.originSheet) === activeTab && !isTotalRow;
-                        }).map(({ item, originalIndex }: any, idx: number, displayedResults: any[]) => {
+                        {(() => {
+                          const filtered = results.map((item: any, originalIndex: number) => ({ item, originalIndex }))
+                            .filter(({ item }: any) => {
+                               const isTotalRow = !item.matchedName && !item.size && !item.color && item.qty > 0;
+                               return getChinaTabGroup(item.originSheet) === activeTab && !isTotalRow;
+                          });
+
+                          // 같은 상품(스타일+매칭코드+색상+사이즈)이 서로 다른 박스에 나뉘어 있는 경우
+                          // 화면에서는 하나로 합쳐서 보여준다 (엑셀 다운로드/파레트 출력은 지금처럼
+                          // 박스 단위 원본 그대로 사용하므로 박스별 정확도에는 영향이 없다).
+                          // 그룹의 대표 인덱스로 수정하면 selectProduct의 기존 "같은 스타일 일괄
+                          // 교정" 로직이 같은 그룹의 다른 박스 행도 알아서 같이 고쳐준다.
+                          const groupOrder: string[] = [];
+                          const groupMap = new Map<string, any>();
+                          filtered.forEach(({ item, originalIndex }: any) => {
+                              const key = `${item.style}|${item.matchedCode}|${item.matchedName}|${item.color}|${item.size}`;
+                              if (!groupMap.has(key)) {
+                                  groupOrder.push(key);
+                                  groupMap.set(key, { item: { ...item }, indices: [originalIndex], allVerified: !!item.verified });
+                              } else {
+                                  const g = groupMap.get(key);
+                                  g.item.qty += item.qty;
+                                  g.indices.push(originalIndex);
+                                  g.allVerified = g.allVerified && !!item.verified;
+                              }
+                          });
+                          const displayedResults = groupOrder.map(key => groupMap.get(key));
+
+                          return displayedResults.map((group: any, idx: number) => {
+                          const { item, indices, allVerified } = group;
+                          const originalIndex = indices[0];
+                          const boxCount = indices.length;
                           const isNewGroup = idx > 0 && item.style !== displayedResults[idx - 1].item.style;
                           return (
                             <React.Fragment key={originalIndex}>
@@ -1190,7 +1217,7 @@ export default function ChinaPacking() {
                                   <td colSpan={4} className="h-2 border-t border-slate-100"></td>
                                 </tr>
                               )}
-                              <tr 
+                              <tr
                                 onClick={() => {
                                     setEditingIndex(originalIndex);
                                     setSearchTerm('');
@@ -1201,8 +1228,8 @@ export default function ChinaPacking() {
                               >
                                 <td className="p-6 text-sm font-black text-slate-400 tracking-widest group-hover:text-red-600 transition-colors flex items-center gap-2">
                                    <span
-                                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.verified ? 'bg-green-500' : 'bg-red-500'}`}
-                                     title={item.verified ? '상품코드/상품명/색상/사이즈 DB 일치 확인됨' : 'DB와 완전히 일치하지 않음 — 확인 필요'}
+                                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${allVerified ? 'bg-green-500' : 'bg-red-500'}`}
+                                     title={allVerified ? '상품코드/상품명/색상/사이즈 DB 일치 확인됨' : 'DB와 완전히 일치하지 않음 — 확인 필요'}
                                    />
                                    {item.matchedCode}
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1212,7 +1239,10 @@ export default function ChinaPacking() {
                                        <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
                                    </div>
                                    <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-900 transition-colors">{item.matchedName}</span>
-                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">{item.size} / {item.color}</span>
+                                   <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">
+                                       {item.size} / {item.color}
+                                       {boxCount > 1 && <span className="ml-1 text-slate-300 normal-case">({boxCount}박스 합산)</span>}
+                                   </span>
                                 </td>
                                 <td className="p-4 text-center">
                                    <div className="flex items-center justify-center gap-3">
@@ -1233,7 +1263,8 @@ export default function ChinaPacking() {
                                        <button
                                            onClick={(e) => {
                                                e.stopPropagation();
-                                               const newResults = results.filter((_, i) => i !== originalIndex);
+                                               const indexSet = new Set(indices);
+                                               const newResults = results.filter((_, i) => !indexSet.has(i));
                                                setResults(newResults);
                                            }}
                                            className="bg-white text-slate-300 hover:bg-red-100 hover:text-red-600 p-1.5 rounded-lg shadow-sm transition-all border border-slate-100 hover:border-red-200"
@@ -1246,7 +1277,8 @@ export default function ChinaPacking() {
                               </tr>
                             </React.Fragment>
                           );
-                        })}
+                          });
+                        })()}
                       </tbody>
                     </table>
                   ) : (
