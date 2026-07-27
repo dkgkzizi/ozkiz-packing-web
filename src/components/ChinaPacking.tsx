@@ -878,7 +878,31 @@ export default function ChinaPacking() {
         return Array.from(labels).slice(0, 5).join(', ');
     };
 
-    const createPalletsInternal = (boxes: any[], capacity: number, categoryLabel: string) => {
+    // 패킹리스트 한 줄이 "144-173"처럼 하이픈 범위로 여러 박스를 한번에 표기하는 경우가 있는데,
+    // 이 범위 하나(예: 30박스)가 파레트 용량(예: 16박스)보다 크면 통째로 파레트 하나에 몰아넣어서
+    // 파레트당 박스 수가 용량을 초과해버리는 문제가 있었다. 이런 범위는 용량 단위로 쪼개서
+    // (예: 144~159, 160~173) 여러 파레트에 나눠 담기게 한다.
+    const splitOversizedBoxes = (boxes: any[], capacity: number): any[] => {
+        const result: any[] = [];
+        boxes.forEach(box => {
+            if (box.count <= capacity) {
+                result.push(box);
+                return;
+            }
+            let cursor = box.start;
+            let remaining = box.count;
+            while (remaining > 0) {
+                const chunkCount = Math.min(capacity, remaining);
+                result.push({ ...box, start: cursor, end: cursor + chunkCount - 1, count: chunkCount });
+                cursor += chunkCount;
+                remaining -= chunkCount;
+            }
+        });
+        return result;
+    };
+
+    const createPalletsInternal = (rawBoxes: any[], capacity: number, categoryLabel: string) => {
+        const boxes = splitOversizedBoxes(rawBoxes, capacity);
         let currentPalletBoxes: any[] = [];
         let currentCount = 0;
         let palletNum = 1;
