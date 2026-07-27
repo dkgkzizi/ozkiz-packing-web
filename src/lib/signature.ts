@@ -8,7 +8,10 @@ async function drawSignature(canvas: HTMLCanvasElement, signerName: string = 'Da
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('캔버스를 초기화할 수 없습니다.');
 
-  const fontSize = Math.max(32, Math.round(canvas.width * 0.045));
+  const name = signerName || 'David';
+  // 실제 사용해보니 서명이 눈에 잘 안 띈다는 피드백이 있어, 글씨를 훨씬 크게 키우고
+  // 도장처럼 네모 테두리를 둘러서 한눈에 "서명이다"라고 알아볼 수 있게 한다.
+  const fontSize = Math.max(56, Math.round(canvas.width * 0.075));
   const signatureFontVar = getComputedStyle(document.documentElement)
     .getPropertyValue('--font-signature')
     .trim();
@@ -26,17 +29,36 @@ async function drawSignature(canvas: HTMLCanvasElement, signerName: string = 'Da
   }
 
   // 서명 위치: 우측 하단, 여백을 두고 살짝 기울여서 손글씨 느낌을 낸다.
-  const marginX = canvas.width * 0.05;
-  const marginY = canvas.height * 0.04;
+  const marginX = canvas.width * 0.06;
+  const marginY = canvas.height * 0.05;
 
   ctx.save();
   ctx.translate(canvas.width - marginX, canvas.height - marginY);
   ctx.rotate(-0.05);
   ctx.font = `bold ${fontSize}px ${fontFamily}`;
-  ctx.fillStyle = '#000000';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(signerName || 'David', 0, 0);
+
+  // 텍스트 크기를 재서 딱 맞는 도장 테두리 박스를 그린다 (텍스트는 x=0 기준 오른쪽 정렬,
+  // y=0이 베이스라인이라 박스도 그 기준으로 감싼다).
+  const metrics = ctx.measureText(name);
+  const textWidth = metrics.width;
+  const ascent = metrics.actualBoundingBoxAscent || fontSize * 0.75;
+  const descent = metrics.actualBoundingBoxDescent || fontSize * 0.25;
+  const padX = fontSize * 0.45;
+  const padY = fontSize * 0.3;
+
+  const boxLeft = -textWidth - padX;
+  const boxTop = -ascent - padY;
+  const boxWidth = textWidth + padX * 2;
+  const boxHeight = ascent + descent + padY * 2;
+
+  ctx.lineWidth = Math.max(4, fontSize * 0.06);
+  ctx.strokeStyle = '#000000';
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+
+  ctx.fillStyle = '#000000';
+  ctx.fillText(name, 0, 0);
   ctx.restore();
 }
 
