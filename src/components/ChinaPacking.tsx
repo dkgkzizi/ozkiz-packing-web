@@ -386,7 +386,10 @@ export default function ChinaPacking() {
                   const relevantCols = [header.nameCol, header.colorCol, header.totalCol, header.sizeStartCol, header.sizeEndCol, header.boxCol, header.ctCol].filter((c: number) => c !== -1 && c !== undefined);
                   const tableEndCol = relevantCols.length > 0 ? Math.max(...relevantCols) : row.length - 1;
                   const fullRowStr = row.slice(0, tableEndCol + 1).join('|');
-                  if (fullRowStr.includes('합계') || fullRowStr.includes('TOTAL') || fullRowStr.includes('소계') || fullRowStr.includes('총계') || fullRowStr.includes('총수량')) {
+                  // "추가신고수량:" 같은 통관 신고용 푸터 라벨 행은 "합계/총수량" 키워드에 걸리지
+                  // 않아서(예: "신고총수량:"과 달리 "총수량"이라는 글자가 없음) 그냥 통과되면 직전
+                  // 품명/박스번호가 그대로 승계되어 수량 0짜리 가짜 "미매칭" 항목이 생겨버린다.
+                  if (fullRowStr.includes('합계') || fullRowStr.includes('TOTAL') || fullRowStr.includes('소계') || fullRowStr.includes('총계') || fullRowStr.includes('총수량') || fullRowStr.includes('신고')) {
                       continue;
                   }
                   
@@ -781,7 +784,8 @@ export default function ChinaPacking() {
         const name = (item.matchedName || "").toUpperCase();
         const original = (item.style || "").toUpperCase();
         if (shoeKeywords.some(k => name.includes(k.toUpperCase()) || original.includes(k.toUpperCase()))) return '신발';
-        return '의류';
+        if (clothingKeywords.some(k => name.includes(k.toUpperCase()) || original.includes(k.toUpperCase()))) return '의류';
+        return '부자재';
     };
 
     const boxMap = new Map<string, any>();
@@ -805,6 +809,7 @@ export default function ChinaPacking() {
     const allBoxes = Array.from(boxMap.values()).sort((a, b) => a.start - b.start);
     const shoeBoxes = allBoxes.filter(b => b.category === '신발');
     const clothingBoxes = allBoxes.filter(b => b.category === '의류');
+    const materialBoxes = allBoxes.filter(b => b.category === '부자재');
 
     const pallets: any[] = [];
     
@@ -856,6 +861,8 @@ export default function ChinaPacking() {
 
     createPalletsInternal(shoeBoxes, 16, "신발");
     createPalletsInternal(clothingBoxes, 14, "의류");
+    // 부자재 박스 크기 기준은 별도로 안내받은 바 없어 의류(14박스/파레트)와 동일하게 적용한다.
+    createPalletsInternal(materialBoxes, 14, "부자재");
 
     const allPallets = pallets;
 
