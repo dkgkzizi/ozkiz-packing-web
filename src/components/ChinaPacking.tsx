@@ -797,9 +797,15 @@ export default function ChinaPacking() {
         const start = parts[0] || 0;
         const end = parts[parts.length - 1] || start;
         const count = (end >= start) ? (end - start + 1) : 1;
-        const category = getCategory(item);
 
         if (!boxMap.has(bNo)) {
+            // 한 박스 안에 서로 다른 카테고리의 상품이 혼적된 경우(예: 원피스-누아르 +
+            // 우비-라이팅가드가 같은 박스에 들어있는 경우), 박스를 카테고리별로 쪼개서 같은
+            // 박스 번호가 신발/의류 파레트에 걸쳐 중복으로 나오면 현장에서 헷갈린다. 그래서
+            // 박스는 항상 하나의 카테고리로만 취급하고, 그 박스 안에서 정렬 순서상 가장 먼저
+            // 나오는(원본 패킹리스트 행 순서상 위에 있는) 상품의 카테고리를 박스 전체의
+            // 카테고리로 사용한다 — 이후 같은 박스의 다른 상품이 들어와도 카테고리는 바꾸지 않는다.
+            const category = getCategory(item);
             boxMap.set(bNo, { boxNo: bNo, start, end, count, category, items: [item] });
         } else {
             boxMap.get(bNo).items.push(item);
@@ -812,7 +818,41 @@ export default function ChinaPacking() {
     const materialBoxes = allBoxes.filter(b => b.category === '부자재');
 
     const pallets: any[] = [];
-    
+
+    // 한 파레트 안에 담긴 박스들의 번호를 "첫박스~끝박스"로 뭉뚱그려 표시하면, 그 사이 번호가
+    // 다른 카테고리 파레트로 빠져서 실제로는 이 파레트에 없는데도 있는 것처럼 보여 헷갈린다
+    // (예: 신발 박스가 22번, 64~68번뿐인데 "22~68"로 적으면 23~63번도 이 파레트에 있는 것처럼
+    // 보임). 연속된 박스 구간만 각각 표시하고, 끊기는 지점은 쉼표로 구분한다 (예: "22, 64~68").
+    const formatBoxRangeLabel = (boxesInPallet: any[]): string => {
+        const runs: string[] = [];
+        let runStart = boxesInPallet[0].start;
+        let runEnd = boxesInPallet[0].end;
+        for (let i = 1; i < boxesInPallet.length; i++) {
+            const b = boxesInPallet[i];
+            if (b.start === runEnd + 1) {
+                runEnd = b.end;
+            } else {
+                runs.push(runStart === runEnd ? `${runStart}` : `${runStart} ~ ${runEnd}`);
+                runStart = b.start;
+                runEnd = b.end;
+            }
+        }
+        runs.push(runStart === runEnd ? `${runStart}` : `${runStart} ~ ${runEnd}`);
+        return runs.join(', ');
+    };
+
+    // 박스는 정렬 순서상 맨 위 상품의 카테고리로 분류되지만(위 boxMap 생성부 참고), 그 박스에
+    // 실제로 섞여 들어있는 다른 카테고리 상품도 라벨에서 안 보이면 "왜 신발 상품이 의류 파레트에
+    // 찍히지" 하고 헷갈릴 수 있다. 그래서 상품명은 전부 보여주되, 박스의 대표 카테고리와 실제
+    // 상품 카테고리가 다른 경우 "(혼적)" 표시를 붙여 왜 같이 나오는지 알 수 있게 한다.
+    const buildProductsLabel = (boxesInPallet: any[], categoryLabel: string): string => {
+        return Array.from(new Set(boxesInPallet.flatMap(b => b.items).map((i: any) => {
+            const n = i.matchedName || i.style;
+            const base = n.split('-')[1] || n;
+            return getCategory(i) !== categoryLabel ? `${base}(혼적)` : base;
+        }))).slice(0, 5).join(', ');
+    };
+
     const createPalletsInternal = (boxes: any[], capacity: number, categoryLabel: string) => {
         let currentPalletBoxes: any[] = [];
         let currentCount = 0;
@@ -821,16 +861,11 @@ export default function ChinaPacking() {
         boxes.forEach(box => {
             if (currentCount + box.count > capacity) {
                 if (currentPalletBoxes.length > 0) {
-                    const pStart = currentPalletBoxes[0].start;
-                    const pEnd = currentPalletBoxes[currentPalletBoxes.length - 1].end;
                     pallets.push({
                         no: palletNum,
                         category: categoryLabel,
-                        range: `${pStart} ~ ${pEnd}`,
-                        products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.items).map(i => {
-                            const n = i.matchedName || i.style;
-                            return n.split('-')[1] || n;
-                        }))).slice(0, 5).join(', '),
+                        range: formatBoxRangeLabel(currentPalletBoxes),
+                        products: buildProductsLabel(currentPalletBoxes, categoryLabel),
                         totalBox: currentCount
                     });
                     palletNum++;
@@ -844,16 +879,11 @@ export default function ChinaPacking() {
         });
 
         if (currentPalletBoxes.length > 0) {
-            const pStart = currentPalletBoxes[0].start;
-            const pEnd = currentPalletBoxes[currentPalletBoxes.length - 1].end;
             pallets.push({
                 no: palletNum,
                 category: categoryLabel,
-                range: `${pStart} ~ ${pEnd}`,
-                products: Array.from(new Set(currentPalletBoxes.flatMap(b => b.items).map(i => {
-                    const n = i.matchedName || i.style;
-                    return n.split('-')[1] || n;
-                }))).slice(0, 5).join(', '),
+                range: formatBoxRangeLabel(currentPalletBoxes),
+                products: buildProductsLabel(currentPalletBoxes, categoryLabel),
                 totalBox: currentCount
             });
         }
