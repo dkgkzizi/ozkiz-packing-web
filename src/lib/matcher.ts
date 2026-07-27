@@ -441,13 +441,21 @@ export async function matchExcelBuffer(buffer: Buffer, type: string = 'india', f
         // 상품코드/상품명/색상/사이즈가 실제 DB 데이터와 전부 일치하는지 (프론트 초록/빨강 표시용)
         const isVerified = isValidMatch && !isAmbiguous && bestSizeMatched && bestColorMatched;
 
+        // 인도 패킹리스트는 "세트"(상의+하의 세트) 상품일 때 상의 수량과 하의 수량을 각각 세어
+        // 합친 숫자를 한 줄에 적는 경우가 있어, 실제 세트 개수는 그 절반이다. PDF 원본 텍스트에는
+        // 카테고리가 한글로 적혀있지 않아 매칭 전에는 판단할 수 없으므로, 여기서 확정된(또는
+        // 중복확인이라도 후보로 잡힌) 매칭 상품명을 기준으로 판단한다. 인도 워크플로우에서만
+        // 적용한다(중국/국내는 이런 이중 집계 관행이 없음).
+        const isSetProduct = type === 'india' && !!bestMatch && (bestMatch['상품명'] || '').includes('세트');
+        const finalQty = isSetProduct ? Math.round(record.qty / 2) : record.qty;
+
         return {
             productCode: !isValidMatch ? '미매칭' : (isAmbiguous ? '중복확인' : bestMatch!['상품코드']),
             sheetName: !isValidMatch ? record.pdfName : (isAmbiguous ? `${bestMatch!['상품명']} [후보코드: ${distinctTiedCodes.join('/')}]` : bestMatch!['상품명']),
             color: normalizeColor(record.color),
             // "(인디)" 상품군은 매칭에 성공하면 마스터 DB 기준 사이즈(140~170)로 표시/출력한다.
             size: isValidMatch && !isAmbiguous ? bestEffectiveSize : record.size,
-            qty: record.qty,
+            qty: finalQty,
             originalStyle: record.styleNo,
             originSheet: record.sheetName,
             boxNo: record.boxNo,
