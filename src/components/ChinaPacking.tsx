@@ -900,7 +900,13 @@ export default function ChinaPacking() {
             let isMixed = false;
             box.items.forEach((i: any) => {
                 const n = i.matchedName || i.style;
-                const base = n.split('-')[1] || n;
+                const split = n.split('-')[1] || n;
+                // "우비-딸기베리우비" → "딸기베리우비"처럼 "카테고리-품목명"에서 뒷부분만 보여주려는
+                // 의도인데, "링크 백 -M"처럼 하이픈 뒤가 실제 품목명이 아니라 사이즈 코드(S/M/L 등)인
+                // 상품도 있다. 그런 경우 뒷부분만 쓰면 라벨에 "M"만 덜렁 남아 무슨 상품인지 알 수
+                // 없으므로, 사이즈처럼 보이는 짧은 조각이면 원래 전체 이름을 그대로 쓴다.
+                const looksLikeSizeCode = /^(XS|S|M|L|XL|XXL|FREE|[0-9]+)$/i.test(split.trim());
+                const base = looksLikeSizeCode ? n : split;
                 if (getCategory(i) !== categoryLabel) isMixed = true;
                 if (!seenNames.has(base)) { seenNames.add(base); namesInBox.push(base); }
             });
