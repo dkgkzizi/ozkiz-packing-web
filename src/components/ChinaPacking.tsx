@@ -280,8 +280,14 @@ export default function ChinaPacking() {
       const XLSX = await import('xlsx');
       const workbook = XLSX.read(buffer, { type: 'array' });
       
+      // 왼쪽 "패킹NO/품명/칼라/사이즈/포장수량/C-T/총수량" 박스표는 박스번호 추출(파레트 출력용)
+      // 에만 쓰고, 실제 매칭/수량 검증은 오른쪽 "제품사진/품명/칼라/합계/사이즈별수량" 참고표를
+      // 기준으로 한다 — 박스표는 박스 범위(예: "19-39")와 C/T가 뒤섞여 있어 실제 수량 계산이
+      // 복잡하고 실수가 잦은 반면, 오른쪽 표는 상품별 "합계"와 사이즈별 수량이 이미 정확하게
+      // 집계되어 있어 훨씬 신뢰할 수 있다.
+      let boxAssocData: any[] = [];
       let clientExtractedData: any[] = [];
-      const targetSheets = workbook.SheetNames.filter(name => 
+      const targetSheets = workbook.SheetNames.filter(name =>
           name.includes('OZ') || name.includes('OH') || name.includes('오즈') || name.includes('오에이치') || name.includes('매칭')
       );
       // 만약 타겟 시트가 없으면 2번째 시트(Index 1)를 우선순위로 두고, 그것도 없으면 전체 시트 처리
@@ -392,6 +398,7 @@ export default function ChinaPacking() {
           });
 
           // 2. 각 헤더 아래 데이터 추출
+          const boxAssocLenBeforeSheet = boxAssocData.length;
           headerRows.forEach((header: any, hIdx: number) => {
               let lastName = "";
               let lastColor = "";
@@ -520,12 +527,12 @@ export default function ChinaPacking() {
                               if (sVal > 0) {
                                   let sHeader = String(jsonData[sizeHeaderRowIdx]?.[sIdx] || "").trim();
                                   if (!sHeader || sHeader.includes('사이즈')) sHeader = "FREE";
-                                  
-                                  clientExtractedData.push({ 
-                                      style: currentName, 
-                                      name: currentName, 
-                                      color: color, 
-                                      size: sHeader, 
+
+                                  boxAssocData.push({
+                                      style: currentName,
+                                      name: currentName,
+                                      color: color,
+                                      size: sHeader,
                                       qty: sVal,
                                       originSheet: sheetName,
                                       boxNo: boxNoVal,
@@ -534,13 +541,13 @@ export default function ChinaPacking() {
                                   foundSizes = true;
                               }
                           }
-                          
+
                           if (!foundSizes && (totalQty > 0 || boxNoVal)) {
-                              clientExtractedData.push({ 
-                                  style: currentName, 
-                                  name: currentName, 
-                                  color: color, 
-                                  size: "FREE", 
+                              boxAssocData.push({
+                                  style: currentName,
+                                  name: currentName,
+                                  color: color,
+                                  size: "FREE",
                                   qty: totalQty,
                                   originSheet: sheetName,
                                   boxNo: boxNoVal,
@@ -551,11 +558,11 @@ export default function ChinaPacking() {
                           // 수직 레이아웃 (사이즈가 세로로 나열된 형태)
                           const sizeStr = header.sizeStartCol !== -1 ? String(row[header.sizeStartCol] || "FREE").trim() : "FREE";
                           // 수직 레이아웃일 때는 포장수량(총수량)을 수량으로 사용
-                          clientExtractedData.push({ 
-                              style: currentName, 
-                              name: currentName, 
-                              color: color, 
-                              size: sizeStr, 
+                          boxAssocData.push({
+                              style: currentName,
+                              name: currentName,
+                              color: color,
+                              size: sizeStr,
                               qty: totalQty,
                               originSheet: sheetName,
                               boxNo: boxNoVal,
@@ -565,7 +572,155 @@ export default function ChinaPacking() {
                   }
               }
           });
+
+          // 3. 오른쪽 "제품사진/품명/칼라/합계/사이즈별수량" 참고표를 실제 매칭/수량 검증의
+          // 주 출처로 파싱한다. "제품사진" 셀을 기준점으로 삼아 그 다음 3칸이 품명/칼라/합계이고,
+          // 그 다음 행(사이즈 라벨 행)부터 숫자 또는 XS/S/M/L/XL/FREE로 보이는 라벨이 이어지는
+          // 구간을 사이즈별수량 매트릭스로 인식한다. 이 표는 한 행이 상품+색상 하나의 전체 사이즈
+          // 구성을 담고 있어(예: 82+29=111=합계), 박스표처럼 여러 행에 걸쳐 이어지지 않는다.
+          const rightHeaderRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, matrixStart: number, matrixEnd: number }[] = [];
+          jsonData.forEach((row, idx) => {
+              if (!Array.isArray(row)) return;
+              const photoCol = row.findIndex((c: any) => String(c || '').trim() === '제품사진');
+              if (photoCol === -1) return;
+              const nameCol = photoCol + 1;
+              const colorCol = photoCol + 2;
+              const totalCol = photoCol + 3;
+              const labelRow = jsonData[idx + 1] || [];
+              let matrixStart = -1, matrixEnd = -1;
+              for (let i = photoCol + 4; i < labelRow.length; i++) {
+                  const label = String(labelRow[i] || '').trim().toUpperCase();
+                  const looksLikeSize = /^[0-9]{2,3}$/.test(label) || ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'FREE'].includes(label);
+                  if (looksLikeSize) {
+                      if (matrixStart === -1) matrixStart = i;
+                      matrixEnd = i;
+                  } else if (matrixStart !== -1) {
+                      break;
+                  }
+              }
+              if (matrixStart !== -1) {
+                  rightHeaderRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, matrixStart, matrixEnd });
+              }
+          });
+
+          // "OZ-롤라루"류 시트는 "제품사진/합계/사이즈별수량" 참고표 구조 자체가 없다
+          // (사이즈가 헤더 행에 바로 인치 컬럼으로 붙어있는 단일 표 구조). 이런 시트는
+          // 오른쪽 표를 신뢰할 수 없으므로 방금 이 시트에서 뽑은 박스표 데이터를 그대로
+          // 매칭/수량 출처로 쓴다 — 박스번호도 이미 갖고 있으니 뒤의 박스연결 단계에서
+          // 다시 추정하지 않고 그대로 사용한다.
+          if (rightHeaderRows.length === 0) {
+              for (let i = boxAssocLenBeforeSheet; i < boxAssocData.length; i++) {
+                  clientExtractedData.push({ ...boxAssocData[i] });
+              }
+          }
+
+          rightHeaderRows.forEach((rHeader, rhIdx) => {
+              const sizeLabelRow = jsonData[rHeader.rowIdx + 1] || [];
+              const dataStartRowIdx = rHeader.rowIdx + 2;
+              const nextHeaderRowIdx = rhIdx + 1 < rightHeaderRows.length ? rightHeaderRows[rhIdx + 1].rowIdx : jsonData.length;
+
+              for (let rIdx = dataStartRowIdx; rIdx < nextHeaderRowIdx; rIdx++) {
+                  const row = jsonData[rIdx];
+                  if (!row || !Array.isArray(row)) continue;
+
+                  const name = String(row[rHeader.nameCol] || '').trim();
+                  if (!name) continue;
+                  // "TTL:"/"합계" 류의 표 마감 행은 건너뛴다.
+                  if (name.includes('TTL') || name.includes('합계') || name.includes('총계')) continue;
+
+                  const color = String(row[rHeader.colorCol] || '').trim();
+
+                  let foundSizes = false;
+                  for (let sIdx = rHeader.matrixStart; sIdx <= rHeader.matrixEnd; sIdx++) {
+                      const sVal = parseInt(String(row[sIdx] || '0').replace(/[^0-9]/g, ''));
+                      if (sVal > 0) {
+                          const sHeader = String(sizeLabelRow[sIdx] || '').trim() || 'FREE';
+                          clientExtractedData.push({
+                              style: name,
+                              name: name,
+                              color: color,
+                              size: sHeader,
+                              qty: sVal,
+                              originSheet: sheetName
+                          });
+                          foundSizes = true;
+                      }
+                  }
+
+                  // 매트릭스에 값이 없는데 "합계"만 있는 경우 FREE 사이즈 한 줄로라도 반영
+                  if (!foundSizes) {
+                      const totalVal = parseInt(String(row[rHeader.totalCol] || '0').replace(/[^0-9]/g, ''));
+                      if (totalVal > 0) {
+                          clientExtractedData.push({
+                              style: name,
+                              name: name,
+                              color: color,
+                              size: 'FREE',
+                              qty: totalVal,
+                              originSheet: sheetName
+                          });
+                      }
+                  }
+              }
+          });
       });
+
+      // 4. 박스표에서 모은 (품명+칼라+사이즈) → 박스번호 매핑을 오른쪽 표 기준 결과에 붙인다.
+      // 파레트 출력은 이 boxNo 필드로 박스 범위를 그룹핑하므로, 매칭 자체(상품코드/수량)는
+      // 오른쪽 표를 신뢰하되 박스 위치 정보만 박스표에서 가져오는 셈이다.
+      // 같은 (품명+칼라+사이즈)가 서로 다른 박스그룹에 나뉘어 있을 수 있어(예: 박스1-9와
+      // 박스10에 똑같이 150사이즈가 있음) 첫 매칭 하나만 쓰면 나머지 박스가 통째로 누락된다.
+      // 그래서 해당 키의 박스그룹을 전부 모아서, 오른쪽 표의 신뢰할 수 있는 합계 수량을 각
+      // 박스그룹의 박스표 수량 비중대로 나눠 배분한다 — 합계는 항상 오른쪽 표 기준으로 보존된다.
+      const normalizeForBoxKey = (s: string) => (s || '').replace(/[^0-9A-Za-z가-힣]/g, '').toUpperCase();
+      const boxAssocMap = new Map<string, { boxNo: string; boxCount: number; qty: number }[]>();
+      const boxAssocMapByNameColor = new Map<string, { boxNo: string; boxCount: number; qty: number }[]>();
+      boxAssocData.forEach((item: any) => {
+          if (!item.boxNo) return;
+          const key = `${normalizeForBoxKey(item.name)}|${normalizeForBoxKey(item.color)}|${normalizeForBoxKey(item.size)}`;
+          if (!boxAssocMap.has(key)) boxAssocMap.set(key, []);
+          boxAssocMap.get(key)!.push({ boxNo: item.boxNo, boxCount: item.boxCount, qty: item.qty || 0 });
+
+          // 오른쪽 표에 사이즈별수량 매트릭스가 없는 상품(예: 가방류)은 사이즈를 'FREE'로만
+          // 기록하므로 박스표의 실제 치수(예: "21*8*12.5cm")와 절대 일치하지 않는다.
+          // 이런 경우를 대비해 품명+칼라만으로도 찾을 수 있는 보조 맵을 같이 만든다.
+          const ncKey = `${normalizeForBoxKey(item.name)}|${normalizeForBoxKey(item.color)}`;
+          if (!boxAssocMapByNameColor.has(ncKey)) boxAssocMapByNameColor.set(ncKey, []);
+          boxAssocMapByNameColor.get(ncKey)!.push({ boxNo: item.boxNo, boxCount: item.boxCount, qty: item.qty || 0 });
+      });
+
+      const splitData: any[] = [];
+      clientExtractedData.forEach((item: any) => {
+          // 박스표에서 그대로 옮겨온 항목(예: 롤라루 시트)은 이미 자기 박스번호를 갖고 있으니
+          // 키 기반 재추정 없이 그대로 쓴다.
+          if (item.boxNo !== undefined) {
+              splitData.push(item);
+              return;
+          }
+          const key = `${normalizeForBoxKey(item.name)}|${normalizeForBoxKey(item.color)}|${normalizeForBoxKey(item.size)}`;
+          let groups = boxAssocMap.get(key);
+          if ((!groups || groups.length === 0) && item.size === 'FREE') {
+              const ncKey = `${normalizeForBoxKey(item.name)}|${normalizeForBoxKey(item.color)}`;
+              groups = boxAssocMapByNameColor.get(ncKey);
+          }
+          if (!groups || groups.length === 0) {
+              splitData.push({ ...item, boxNo: '', boxCount: 1 });
+          } else if (groups.length === 1) {
+              splitData.push({ ...item, boxNo: groups[0].boxNo, boxCount: groups[0].boxCount });
+          } else {
+              const totalWeight = groups.reduce((acc, g) => acc + (g.qty || 0), 0) || groups.length;
+              let allocated = 0;
+              groups.forEach((g, gi) => {
+                  const isLast = gi === groups.length - 1;
+                  const share = isLast ? (item.qty - allocated) : Math.round(item.qty * (g.qty || 1) / totalWeight);
+                  allocated += share;
+                  if (share > 0) {
+                      splitData.push({ ...item, qty: share, boxNo: g.boxNo, boxCount: g.boxCount });
+                  }
+              });
+          }
+      });
+      clientExtractedData = splitData;
 
       if (clientExtractedData.length === 0) {
           throw new Error("엑셀 파일의 OZ/OH 탭에서 유효한 매칭 데이터를 찾지 못했습니다.");
