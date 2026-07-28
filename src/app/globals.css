@@ -53,3 +53,80 @@ body {
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
+
+/* 사용 매뉴얼(Markdown) 렌더링 스타일 */
+.manual-prose {
+  color: #334155; /* slate-700 */
+  font-size: 15px;
+  line-height: 1.75;
+}
+.manual-prose > *:first-child { margin-top: 0; }
+.manual-prose h1 {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+.manual-prose h2 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #0f172a;
+  margin: 40px 0 14px;
+  padding-top: 20px;
+  border-top: 1px solid #f1f5f9;
+  scroll-margin-top: 24px;
+}
+.manual-prose h2:first-of-type { border-top: none; padding-top: 0; }
+.manual-prose h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 22px 0 8px;
+}
+.manual-prose p { margin: 0 0 14px; }
+.manual-prose ul, .manual-prose ol { margin: 0 0 14px; padding-left: 20px; }
+.manual-prose li { margin-bottom: 6px; }
+.manual-prose li::marker { color: #dc2626; font-weight: 700; }
+.manual-prose a { color: #dc2626; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.manual-prose strong { font-weight: 700; color: #0f172a; }
+.manual-prose hr { border: none; border-top: 1px solid #f1f5f9; margin: 36px 0; }
+.manual-prose img {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.12);
+  margin: 12px 0 6px;
+  display: block;
+}
+.manual-prose blockquote {
+  margin: 18px 0;
+  padding: 14px 18px;
+  background: #fef2f2;
+  border-left: 3px solid #dc2626;
+  border-radius: 0 12px 12px 0;
+  color: #7f1d1d;
+  font-size: 14px;
+}
+.manual-prose blockquote p { margin: 0; }
+.manual-prose blockquote p:first-child strong { display: block; margin-bottom: 4px; color: #991b1b; }
+.manual-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 20px;
+  font-size: 13.5px;
+}
+.manual-prose th, .manual-prose td {
+  border: 1px solid #e2e8f0;
+  padding: 9px 12px;
+  text-align: left;
+}
+.manual-prose th { background: #f8fafc; font-weight: 700; color: #0f172a; }
+.manual-prose code {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.manual-prose em { color: #64748b; }

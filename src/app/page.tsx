@@ -12,11 +12,13 @@ import {
   Lock,
   Unlock,
   ShieldAlert,
-  Key
+  Key,
+  BookOpen
 } from 'lucide-react';
 import IndiaPacking from '@/components/IndiaPacking';
 import DomesticPacking from '@/components/DomesticPacking';
 import ChinaPacking from '@/components/ChinaPacking';
+import Manual from '@/components/Manual';
 
 // Tailwind의 기본 transition easing(cubic-bezier(0.4, 0, 0.2, 1))과 동일한 커브
 const EASE_STANDARD: [number, number, number, number] = [0.4, 0, 0.2, 1];
@@ -52,15 +54,25 @@ export default function Home() {
       activeColor: 'text-red-700',
       bg: 'bg-red-50/80'
     },
-    { 
-      id: 3, 
-      name: 'India Packing', 
-      label: '인도 패킹리스트', 
-      icon: <Globe className="w-5 h-5" />, 
+    {
+      id: 3,
+      name: 'India Packing',
+      label: '인도 패킹리스트',
+      icon: <Globe className="w-5 h-5" />,
       desc: 'Global Matcher',
       color: 'from-rose-600 to-red-500',
       activeColor: 'text-rose-600',
       bg: 'bg-rose-50'
+    },
+    {
+      id: 4,
+      name: 'Manual',
+      label: '사용 매뉴얼',
+      icon: <BookOpen className="w-5 h-5" />,
+      desc: 'How to use',
+      color: 'from-slate-700 to-slate-500',
+      activeColor: 'text-slate-700',
+      bg: 'bg-slate-50'
     }
   ];
 
@@ -82,6 +94,7 @@ export default function Home() {
       case 1: return <DomesticPacking />;
       case 2: return <ChinaPacking />;
       case 3: return <IndiaPacking />;
+      case 4: return <Manual />;
       default: return <DomesticPacking />;
     }
   };
