@@ -211,7 +211,24 @@ export default function ChinaPacking() {
     });
 
     for (const sheetName of Object.keys(groups)) {
-        const groupItems = groups[sheetName];
+        // 같은 상품(코드+상품명+색상+사이즈)이 서로 다른 박스에 나뉘어 있으면 최종 엑셀에서는
+        // 하나로 합쳐서 수량을 더하고, 상품명 → 색상 → 사이즈 순으로 정렬한다. 박스 단위 원본은
+        // 화면의 파레트 라벨 출력 기능이 별도로 참조하므로 이 다운로드 파일에는 영향이 없다.
+        const merged = new Map<string, PackingItem>();
+        groups[sheetName].forEach(item => {
+            const key = `${(item as any).matchedCode}|${(item as any).matchedName}|${item.color}|${item.size}`;
+            const existing = merged.get(key);
+            if (existing) {
+                existing.qty += item.qty;
+            } else {
+                merged.set(key, { ...item });
+            }
+        });
+        const groupItems = Array.from(merged.values()).sort((a: any, b: any) => {
+            if (a.matchedName !== b.matchedName) return (a.matchedName || '').localeCompare(b.matchedName || '');
+            if (a.color !== b.color) return (a.color || '').localeCompare(b.color || '');
+            return getSizeScore(a.size || '') - getSizeScore(b.size || '');
+        });
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('중국매칭결과');
         
@@ -290,7 +307,7 @@ export default function ChinaPacking() {
           }
 
           // 1. 헤더 위치 찾기 (품명, 칼라, 합계 등이 포함된 행)
-          const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number, boxCol: number, ctCol: number }[] = [];
+          const headerRows: { rowIdx: number, nameCol: number, colorCol: number, totalCol: number, sizeStartCol: number, boxCol: number, ctCol: number, isPerBoxQty: boolean }[] = [];
           // OH 포맷은 패킹 박스 표 오른쪽에 "제품사진/품명/칼라/합계/사이즈별수량" 참고용 표가
           // 같은 행에 나란히 붙어있는 경우가 있다. 그 참고표의 헤더 텍스트가 박스 표의 데이터 행과
           // 같은 행 배열에 섞여 들어오면(예: 4행) rowStr에 "품명"+"합계"가 우연히 다시 나타나서
@@ -304,6 +321,11 @@ export default function ChinaPacking() {
               const rowStr = row.join('|');
               if (rowStr.includes('품명') && (rowStr.includes('합계') || rowStr.includes('수량'))) {
                   let nameCol = -1, colorCol = -1, totalCol = -1, subtotalCol = -1, sizeStartCol = -1, sizeEndCol = -1, boxCol = -1, ctCol = -1;
+                  // "수량" 컬럼은 박스 1개당 수량이고, 박스번호가 "19-39"처럼 여러 박스를 가리키는
+                  // 범위일 때는 실제 총 수량 = 수량 × 박스수(C/T)다. "합계/총계/소계/총수량" 폴백
+                  // 컬럼은 반대로 이미 그 줄의 최종 합계라서 다시 박스수를 곱하면 안 된다 — 그래서
+                  // 어느 쪽으로 totalCol이 잡혔는지 구분해서 기억해둔다.
+                  let isPerBoxQty = false;
                   row.forEach((cell, cellIdx) => {
                       const c = String(cell || "").trim().toUpperCase();
                       // 품명/칼라는 첫 매치만 채택한다 — OH 포맷은 같은 행에 오른쪽으로
@@ -316,13 +338,13 @@ export default function ChinaPacking() {
                       // 병합된 소계 컬럼이라(OH 포맷처럼 같은 시트에 둘 다 있을 수 있음) 행별 수량이
                       // 없을 때만 대체로 사용한다 — 안 그러면 스캔 순서상 나중에 나오는 소계 컬럼이
                       // 앞서 찾은 행별 수량 컬럼을 덮어써서 병합 소계값을 모든 행에 잘못 적용하게 된다.
-                      else if (c === '수량' || c === '포장수량') totalCol = cellIdx;
+                      else if (c === '수량' || c === '포장수량') { totalCol = cellIdx; isPerBoxQty = true; }
                       else if (c === '합계' || c === '소계' || c === '총계' || c === '총수량') { if (subtotalCol === -1) subtotalCol = cellIdx; }
                       else if (c === '사이즈') sizeStartCol = cellIdx;
                       else if (c.includes('NO') || c.includes('박스') || c.includes('번호') || c.includes('PACKING')) boxCol = cellIdx;
                       else if (c === 'C/T' || c.includes('박스수') || c.includes('BOX수') || c.includes('수량(BOX)')) ctCol = cellIdx;
                   });
-                  if (totalCol === -1 && subtotalCol !== -1) totalCol = subtotalCol;
+                  if (totalCol === -1 && subtotalCol !== -1) { totalCol = subtotalCol; isPerBoxQty = false; }
 
                   // 사이즈 매트릭스 레이아웃인지 판단 — "사이즈"라는 정확한 헤더 셀이 이미 발견됐다면
                   // (수직/단일 사이즈 레이아웃이라는 확실한 증거) 휴리스틱 탐지는 건너뛴다. 안 그러면
@@ -364,7 +386,7 @@ export default function ChinaPacking() {
 
                   if (nameCol !== -1) {
                       if (establishedNameCol === -1) establishedNameCol = nameCol;
-                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix, boxCol, ctCol } as any);
+                      headerRows.push({ rowIdx: idx, nameCol, colorCol, totalCol, sizeStartCol, sizeEndCol, isMatrix, boxCol, ctCol, isPerBoxQty } as any);
                   }
               }
           });
@@ -481,6 +503,13 @@ export default function ChinaPacking() {
                       lastBoxCount = boxCountVal;
                   } else if (boxCountVal === 0 && !lastBoxCount) {
                       boxCountVal = 1; // 기본값
+                  }
+
+                  // "수량"(박스 1개당 수량) 컬럼일 때만 박스수(C/T)를 곱해 실제 총수량을 구한다.
+                  // 예: 박스번호 "19-39"(21박스), 수량 20 → 20×21=420. "합계/총수량" 폴백 컬럼은
+                  // 이미 그 줄의 최종 합계이므로 여기서 다시 곱하지 않는다.
+                  if (header.isPerBoxQty && boxCountVal > 1) {
+                      totalQty = totalQty * boxCountVal;
                   }
 
                   if (totalQty > 0 || boxNoVal) {
