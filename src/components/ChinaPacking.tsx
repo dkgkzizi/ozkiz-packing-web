@@ -1103,12 +1103,24 @@ export default function ChinaPacking() {
         return Array.from(labels).slice(0, 5).join(', ');
     };
 
+    // 박스 하나를 대표하는 "스타일"명 — buildProductsLabel과 동일한 방식으로 "카테고리-품목명"에서
+    // 품목명만 뽑아낸다(사이즈 코드로 보이면 원래 이름 그대로). 신발 파레트를 스타일별로 나눌 때
+    // 이 값으로 그룹을 짓는다.
+    const getStyleKey = (box: any): string => {
+        const n = box.items[0]?.matchedName || box.items[0]?.style || '';
+        const split = n.split('-')[1] || n;
+        const looksLikeSizeCode = /^(XS|S|M|L|XL|XXL|FREE|[0-9]+)$/i.test(split.trim());
+        return looksLikeSizeCode ? n : split;
+    };
+
     // 박스 번호 순서대로 끊김 없이 정확히 용량(capacity)만큼씩 채워나가고, 맨 마지막 파레트에만
     // 나머지가 남도록 한다. 패킹리스트 한 줄이 "144-173"처럼 하이픈 범위로 여러 박스를 한번에
     // 표기하거나, 앞 파레트가 용량을 다 못 채운 채로 다음 줄로 넘어가는 경우 둘 다, 그 줄을
     // 파레트 경계에서 필요한 만큼 쪼개어 이어붙인다 — 그래야 중간에 용량 미만인 파레트가
     // 생기지 않는다 (16,16,16... 쭉 채우다가 마지막에만 남는 만큼).
-    const createPalletsInternal = (rawBoxes: any[], capacity: number, categoryLabel: string) => {
+    // splitByStyle이 켜지면(신발) 스타일이 바뀌는 지점에서 파레트가 꽉 안 찼어도 강제로
+    // 마감해서, 한 파레트 안에 서로 다른 스타일이 섞이지 않게 한다(의류/부자재는 그대로 이어붙임).
+    const createPalletsInternal = (rawBoxes: any[], capacity: number, categoryLabel: string, splitByStyle: boolean = false) => {
         let currentPalletBoxes: any[] = [];
         let currentCount = 0;
         let palletNum = 1;
@@ -1127,24 +1139,40 @@ export default function ChinaPacking() {
             currentCount = 0;
         };
 
-        rawBoxes.forEach(box => {
-            let cursor = box.start;
-            let remaining = box.count;
-            while (remaining > 0) {
-                const spaceLeft = capacity - currentCount;
-                const take = Math.min(spaceLeft, remaining);
-                currentPalletBoxes.push({ ...box, start: cursor, end: cursor + take - 1, count: take });
-                currentCount += take;
-                cursor += take;
-                remaining -= take;
-                if (currentCount >= capacity) flushPallet();
-            }
-        });
+        const processBoxes = (boxes: any[]) => {
+            boxes.forEach(box => {
+                let cursor = box.start;
+                let remaining = box.count;
+                while (remaining > 0) {
+                    const spaceLeft = capacity - currentCount;
+                    const take = Math.min(spaceLeft, remaining);
+                    currentPalletBoxes.push({ ...box, start: cursor, end: cursor + take - 1, count: take });
+                    currentCount += take;
+                    cursor += take;
+                    remaining -= take;
+                    if (currentCount >= capacity) flushPallet();
+                }
+            });
+        };
 
-        flushPallet();
+        if (splitByStyle) {
+            const groups = new Map<string, any[]>();
+            rawBoxes.forEach(box => {
+                const key = getStyleKey(box);
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(box);
+            });
+            groups.forEach(boxesForStyle => {
+                processBoxes(boxesForStyle);
+                flushPallet();
+            });
+        } else {
+            processBoxes(rawBoxes);
+            flushPallet();
+        }
     };
 
-    createPalletsInternal(shoeBoxes, 16, "신발");
+    createPalletsInternal(shoeBoxes, 16, "신발", true);
     createPalletsInternal(clothingBoxes, 14, "의류");
     // 부자재 박스 크기 기준은 별도로 안내받은 바 없어 의류(14박스/파레트)와 동일하게 적용한다.
     createPalletsInternal(materialBoxes, 14, "부자재");
