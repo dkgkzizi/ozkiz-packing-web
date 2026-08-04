@@ -69,6 +69,7 @@ export default function Home() {
   const externalApps = [
     { name: 'Barcode', url: 'https://ozkiz-barcode-print-1rwx.vercel.app/', accent: 'text-red-600' },
     { name: 'DMC', url: 'https://easyadmin-shipping-web.onrender.com/', accent: 'text-rose-500' },
+    { name: 'CRS', url: 'https://cod-receipt-web.vercel.app/', accent: 'text-red-500' },
   ];
 
   const renderContent = () => {
