@@ -102,9 +102,12 @@ export default function ChinaPacking() {
   const [isSettingOpen, setIsSettingOpen] = useState(false);
   
   const getChinaTabGroup = (sheetName: string) => {
-      const s = (sheetName || '').toUpperCase();
+      const s = (sheetName || '').trim().toUpperCase();
       if (s.includes('롤라루')) return '그로잉업';
-      if (s.includes('OZ') || s.includes('OH') || s.includes('오즈')) return '오즈키즈';
+      // "OZ"/"OH"는 시트 이름 맨 앞에 오는 접두어일 때만 오즈키즈로 묶는다. includes()로만 보면
+      // "OHP-타업체"처럼 전혀 다른 업체 시트도 "OH"를 부분 포함해서 오즈키즈에 잘못 합쳐진다 —
+      // 뒤에 다른 글자가 이어지면(에: OHP의 "P") 접두어가 아니라 다른 단어이므로 제외한다.
+      if (/^(OZ|OH)(?![A-Za-z])/.test(s) || s.includes('오즈')) return '오즈키즈';
       return sheetName || '기본';
   };
   const [shoeKeywords, setShoeKeywords] = useState<string[]>([]);
@@ -981,10 +984,7 @@ export default function ChinaPacking() {
   const handlePrint = () => {
     if (!results) return;
 
-    const currentItems = results.filter((r: any) => {
-        const s = r.originSheet || '';
-        return (s.includes('롤라루') ? '그로잉업' : '오즈키즈') === activeTab;
-    });
+    const currentItems = results.filter((r: any) => getChinaTabGroup(r.originSheet) === activeTab);
 
     if (currentItems.length === 0) {
         alert("출력할 데이터가 없습니다.");
@@ -1466,7 +1466,11 @@ export default function ChinaPacking() {
                       <p className="text-xs font-black text-red-400 uppercase tracking-widest animate-pulse italic tracking-tighter">Analyzing Factory Orders...</p>
                     </div>
                   ) : results ? (
-                    <table className="w-full text-left border-collapse">
+                    // w-full만 쓰면 컨테이너가 좁아질 때 테이블이 그 안에 맞춰 억지로 찌그러들면서
+                    // (예: "미매칭"이 세로로 쪼개짐) 오른쪽 QTY SCORE/VALID(삭제 버튼 포함) 컬럼이
+                    // 스크롤도 안 되는 채로 통째로 안 보이게 된다. min-width를 줘서 좁은 창에서는
+                    // 대신 부모의 overflow-auto가 가로 스크롤을 만들어내 항상 삭제 버튼까지 닿을 수 있게 한다.
+                    <table className="w-full min-w-[640px] text-left border-collapse">
                       <thead className="sticky top-0 bg-white/100 backdrop-blur-md z-10 border-b border-slate-100">
                         <tr>
                           <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Master SKU</th>
@@ -1533,9 +1537,13 @@ export default function ChinaPacking() {
                                    {item.matchedCode}
                                    <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
-                                <td className="p-6">
+                                <td className="p-6 max-w-[320px]">
                                    <div className="mb-1.5 flex items-center gap-2">
-                                       <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter">REF: {item.style}</span>
+                                       {/* "중복확인" 항목은 REF에 후보코드 목록이 "S144010/S144011/..."처럼
+                                           슬래시로만 이어진 끊어지지 않는 긴 텍스트로 붙는다. break-all이
+                                           없으면 이 한 덩어리가 줄바꿈을 못 해서 컬럼 전체가 억지로 넓어지고,
+                                           그 여파로 옆의 MASTER SKU/QTY/VALID(삭제 버튼) 컬럼이 짜부라진다. */}
+                                       <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] font-black rounded uppercase tracking-tighter break-all">REF: {item.style}</span>
                                    </div>
                                    <span className="text-sm font-bold text-slate-800 block mb-1 group-hover:text-red-900 transition-colors">{item.matchedName}</span>
                                    <span className="text-[9px] text-slate-400 font-bold uppercase block italic group-hover:text-red-400">
